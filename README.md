@@ -6,8 +6,9 @@ Repositorio: <https://github.com/khronos-blip/fontana-web>
 
 ## Arquitectura
 
-- Hosting objetivo: publicación estática desde GitHub, sin servidor local.
-- Código: este repositorio; cada `push` a `main` se publica automáticamente.
+- Hosting: Cloudflare Pages, sin servidor local ni dependencia del Mac mini.
+- Código: este repositorio; cada `push` a `main` se publica automáticamente desde Cloudflare Pages.
+- Dominio: <https://fontanasingluten.com>.
 - Pedidos: enlace oficial `wa.me` con resumen, total, modalidad, pago y datos del cliente.
 - Coste recurrente de infraestructura: cero, aparte del dominio.
 
@@ -16,11 +17,11 @@ Repositorio: <https://github.com/khronos-blip/fontana-web>
 1. Conectar la cuenta de GitHub a Codex.
 2. Seleccionar el repositorio `khronos-blip/fontana-web` y la rama `main`.
 3. Dar a Codex la tarea concreta. Codex leerá automáticamente `AGENTS.md`, donde están las reglas del proyecto.
-4. Pedir siempre que ejecute `npm test`, haga commit/push y confirme el resultado de GitHub Actions.
+4. Pedir siempre que ejecute `npm run build` y `npm test`, haga commit/push y confirme el despliegue de Cloudflare Pages.
 
 Prompt recomendado:
 
-> Trabaja en `khronos-blip/fontana-web`. Lee `AGENTS.md` y `README.md` antes de editar. Implementa [CAMBIO], conserva el checkout de WhatsApp, ejecuta las pruebas, revisa móvil y escritorio, haz commit y push, y verifica el despliegue. No cambies datos comerciales no confirmados.
+> Trabaja en `khronos-blip/fontana-web`. Lee `AGENTS.md`, `README.md` y `config.js`. Implementa [CAMBIO], conserva el checkout de WhatsApp, ejecuta `npm run build` y `npm test`, revisa móvil y escritorio, haz commit y push a `main`, y verifica `fontanasingluten.com`. No cambies datos comerciales no confirmados.
 
 Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a GitHub. El Mac mini no forma parte del hosting ni es necesario para que la web permanezca online.
 
@@ -34,14 +35,15 @@ Editar `config.js`:
 
 También deben confirmarse catálogo, precios, reseñas, horarios, zonas de delivery, dirección y textos legales. El sitio conserva `noindex` hasta esa aprobación.
 
-## Dominio
+## Despliegue
 
-Cuando la clienta compre el dominio, se añadirá al proveedor de hosting estático elegido y se apuntarán sus DNS. No será necesario mover ni reconstruir la web.
+Cloudflare Pages usa la rama `main`, el comando `npm run build` y el directorio de salida `dist`. El dominio de producción es `fontanasingluten.com`; no se debe usar Cloudflare Tunnel para esta web.
 
 ## Verificación
 
 ```bash
 npm ci
+npm run build
 npm test
 ```
 

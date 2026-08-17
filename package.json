@@ -2,6 +2,7 @@
   "name": "fontana-web",
   "private": true,
   "scripts": {
+    "build": "mkdir -p dist && cp index.html app.js config.js dist/ && cp -R assets dist/assets",
     "test": "playwright test"
   },
   "devDependencies": {
