@@ -42,8 +42,11 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
 
   const nav = page.locator("#nav");
   const brand = nav.locator(".brand");
+  const wordmark = brand.locator(".brand-wordmark");
   await expect(nav).toBeVisible();
   await expect(brand).toBeVisible();
+  await expect(wordmark).toBeVisible();
+  await expect(wordmark).toHaveAttribute("src", "assets/fontana-wordmark-official.png");
   await expect(nav.getByRole("link", { name: "Menú", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Reseñas", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Ubicación", exact: true })).toBeVisible();
@@ -51,6 +54,17 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await expect(page.locator("#mas-pedida")).toHaveCount(0);
   await expect(page.locator("#ubicacion h2")).toHaveText("Mañongo.");
   await expect(page.getByText("TerraNostra")).toHaveCount(0);
+
+  const heroClearsFixedNav = await page.evaluate(() => {
+    const navBottom = document.querySelector("#nav").getBoundingClientRect().bottom;
+    const heroTop = document.querySelector("#inicio").getBoundingClientRect().top;
+    const heroRect = document.querySelector("#inicio").getBoundingClientRect();
+    const logoRect = document.querySelector(".hero-logo").getBoundingClientRect();
+    return heroTop >= navBottom - 1
+      && logoRect.top >= heroRect.top
+      && logoRect.bottom <= heroRect.bottom;
+  });
+  expect(heroClearsFixedNav).toBe(true);
 
   await nav.getByRole("link", { name: "Ubicación", exact: true }).click();
   const clearsFixedNav = await page.evaluate(() => {
