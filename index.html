@@ -276,8 +276,15 @@
     .allergy-warning{padding:14px;border-left:3px solid #d96f78;background:rgba(217,111,120,.1);color:rgba(248,241,245,.78);font-size:.74rem;line-height:1.5}
     .allergy-status{color:var(--accent);font-size:.72rem;font-weight:800}
 
+    @media(max-width:960px){
+      .nav-inner{height:auto;min-height:104px;display:grid;grid-template-columns:1fr auto;grid-template-rows:58px auto;gap:0 12px;padding:6px 0 10px}
+      .nav .brand{grid-column:1;grid-row:1}
+      .nav-links{display:flex;grid-column:1/-1;grid-row:2;justify-content:center;gap:clamp(20px,7vw,42px);font-size:.67rem}
+      .nav-actions{grid-column:2;grid-row:1}
+      .nav-actions>.btn,.menu-btn{display:none}
+    }
     @media(max-width:640px){
-      .nav-inner{height:66px}.nav-links{display:none}.hero{height:43svh;min-height:340px;max-height:440px;padding:0}.hero-grid{height:100%;min-height:0}.hero-logo{width:min(72vw,290px)}.hero-scroll{bottom:14px}.menu-section{padding-top:62px}
+      .hero{height:43svh;min-height:340px;max-height:440px;padding:0}.hero-grid{height:100%;min-height:0}.hero-logo{width:min(72vw,290px)}.hero-scroll{bottom:14px}.menu-section{padding-top:62px}
     }
   </style>
 </head>

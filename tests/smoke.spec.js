@@ -44,6 +44,9 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   const brand = nav.locator(".brand");
   await expect(nav).toBeVisible();
   await expect(brand).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Menú", exact: true })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Reseñas", exact: true })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Ubicación", exact: true })).toBeVisible();
   await expect(nav.getByText("Más pedida")).toHaveCount(0);
   await expect(page.locator("#mas-pedida")).toHaveCount(0);
   await expect(page.locator("#ubicacion")).toContainText("Visítanos en Mañongo");
@@ -52,6 +55,7 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect(nav).toBeVisible();
   await expect(brand).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Menú", exact: true })).toBeVisible();
   await expect(nav).toHaveCSS("position", "fixed");
 });
 
