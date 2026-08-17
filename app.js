@@ -153,6 +153,10 @@
   function buildMessage(form) {
     const data = new FormData(form);
     const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const hasAllergies = data.get("hasAllergies") === "yes";
+    const allergyList = data.getAll("allergens");
+    const otherAllergy = String(data.get("otherAllergy") || "").trim();
+    if (otherAllergy) allergyList.push(otherAllergy);
     const fulfillment = data.get("fulfillment") === "delivery"
       ? (config.deliveryLabel || "Delivery")
       : (config.pickupLabel || "Pickup");
@@ -166,12 +170,17 @@
       `*Total estimado: ${money(total)}*`,
       "",
       `Nombre: ${data.get("name")}`,
+      `Teléfono: ${data.get("phone")}`,
       `Modalidad: ${fulfillment}`,
       data.get("address") ? `Dirección: ${data.get("address")}` : "",
+      `Fecha solicitada: ${data.get("requestedDate")}`,
+      `Franja horaria solicitada: ${data.get("requestedTime")}`,
       `Forma de pago: ${data.get("payment")}`,
+      `Alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
+      hasAllergies ? "*Estado: PENDIENTE DE REVISIÓN POR FONTANA*" : "Estado: pendiente de confirmación",
       data.get("notes") ? `Observaciones: ${data.get("notes")}` : "",
       "",
-      "Enviaré el comprobante por este chat para confirmar el pedido."
+      "Enviaré el comprobante por este chat. El pedido se confirma únicamente cuando Fontana valide disponibilidad, pago y, si aplica, la solicitud de alergias."
     ].filter(Boolean).join("\n");
     return { message, orderId };
   }
@@ -179,6 +188,12 @@
   async function submitOrder(event) {
     event.preventDefault();
     if (!checkoutForm.reportValidity()) return;
+    const formData = new FormData(checkoutForm);
+    if (formData.get("hasAllergies") === "yes" && !formData.getAll("allergens").length && !String(formData.get("otherAllergy") || "").trim()) {
+      say("Indica al menos una alergia o intolerancia");
+      $("#otherAllergy").focus();
+      return;
+    }
     const { message, orderId } = buildMessage(checkoutForm);
     const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
 
@@ -200,9 +215,18 @@
     $$(".filter").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     $$(".product").forEach(product => {
-      product.classList.toggle("hidden", button.dataset.filter !== "all" && product.dataset.category !== button.dataset.filter);
+      const filter = button.dataset.filter;
+      const category = product.dataset.category;
+      const matches = filter === "all" || category === filter || (filter === "dulce" && ["cakes", "snacks"].includes(category));
+      product.classList.toggle("hidden", !matches);
     });
   }));
+
+  function toggleAllergyDetails() {
+    const hasAllergies = checkoutForm.elements.hasAllergies.value === "yes";
+    $("#allergyDetails").hidden = !hasAllergies;
+    $("#allergyStatus").hidden = !hasAllergies;
+  }
 
   $("#cartButton").addEventListener("click", openCart);
   $("#closeCart").addEventListener("click", closeCart);
@@ -218,6 +242,7 @@
   backdrop.addEventListener("click", closeCart);
   checkoutForm.addEventListener("submit", submitOrder);
   $("#fulfillment").addEventListener("change", toggleAddress);
+  $$('input[name="hasAllergies"]').forEach(input => input.addEventListener("change", toggleAllergyDetails));
   $("#menuButton").addEventListener("click", () => { window.location.hash = "menu"; });
   document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
   addEventListener("scroll", () => $("#nav").classList.toggle("scrolled", scrollY > 20), { passive: true });

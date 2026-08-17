@@ -252,6 +252,41 @@
     @media(max-width:640px){
       .topbar{font-size:.58rem}.nav{background:rgba(11,9,11,.83)}.hero{min-height:calc(100svh - 30px);padding:55px 0}.hero-grid{min-height:calc(100svh - 140px)}.hero h1{font-size:4.65rem;line-height:.8}.hero h1 em{font-size:.54em}.hero-lead{font-size:.92rem}.hero-card{right:12px;top:7%;transform:scale(.86);transform-origin:right top}.hero-stamp{left:10px;bottom:7%;width:92px;height:92px;border-width:5px;font-size:.7rem}.trust-row{font-size:.72rem}.pillars-grid{border-radius:0}.pillar{padding:18px 10px}section{padding:90px 0}.section-head h2{font-size:4.5rem}.product-media{aspect-ratio:1.05}.product h3{font-size:1.8rem}.signature-media{height:450px}.signature-copy{padding:0 22px 68px;margin-top:-35px}.signature h2{font-size:4.8rem}.signature-facts{margin-top:20px}.story{padding-top:100px}.location-copy{padding:46px 27px}.quote.featured{background:var(--accent);color:var(--night)}.final h2{font-size:4.4rem}
     }
+
+    /* Entrada Fontana: un único gesto de marca, sin copy promocional. */
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .topbar{display:none}
+    .nav{position:fixed;width:100%;background:transparent;border:0;box-shadow:none}
+    .nav-inner{height:78px}
+    .nav:not(.scrolled) .brand,.nav:not(.scrolled) .nav-links,.nav:not(.scrolled) .nav-actions>.btn{opacity:0;pointer-events:none}
+    .nav.scrolled{background:rgba(255,250,242,.94);border-color:rgba(110,35,111,.12);box-shadow:0 10px 30px rgba(79,22,81,.08)}
+    .nav.scrolled .brand,.nav.scrolled .nav-links{color:var(--plum)}
+    .nav.scrolled .icon-btn{background:#fff;border-color:rgba(110,35,111,.16);color:var(--plum)}
+    .nav .brand,.nav .nav-links,.nav .nav-actions>.btn{transition:opacity .25s ease,color .25s ease}
+    .icon-btn{color:var(--plum);background:transparent;border-color:rgba(110,35,111,.2)}
+    .bag-icon{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+    .hero{min-height:100svh;padding:0;background:radial-gradient(circle at 50% 44%,#f1e7f5 0,#fffaf2 42%,#fffaf2 100%)}
+    .hero:before,.hero:after{display:none}
+    .hero-grid{min-height:100svh;display:grid;grid-template-columns:1fr;place-items:center}
+    .hero-copy{display:grid;place-items:center;width:100%;max-width:none}
+    .hero-logo{width:clamp(150px,18vw,200px);height:auto;border-radius:50%;filter:drop-shadow(0 22px 55px rgba(0,0,0,.24));animation:logo-in .8s ease-out both}
+    .hero .hero-visual{display:none}
+    .hero-scroll{position:absolute;left:50%;bottom:30px;z-index:5;transform:translateX(-50%);width:36px;height:36px;border:1px solid rgba(110,35,111,.2);border-radius:50%;display:grid;place-items:center;color:var(--plum);font-size:1.1rem}
+    .hero-scroll:hover{border-color:var(--accent);color:var(--accent)}
+    @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+
+    .allergy-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
+    .allergy-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
+    .choice-row,.allergen-grid{display:flex;flex-wrap:wrap;gap:10px 16px}
+    .choice{display:flex;align-items:center;gap:7px;color:rgba(248,241,245,.78);font-size:.79rem}
+    .choice input{accent-color:var(--accent)}
+    .allergy-warning{padding:14px;border-left:3px solid #d96f78;background:rgba(217,111,120,.1);color:rgba(248,241,245,.78);font-size:.74rem;line-height:1.5}
+    .allergy-status{color:var(--accent);font-size:.72rem;font-weight:800}
+
+    @media(max-width:640px){
+      .nav-inner{height:66px}.nav-links{display:none}.hero{min-height:100svh;padding:0}.hero-grid{min-height:100svh}.hero-logo{width:160px}.hero-scroll{bottom:22px}
+    }
   </style>
 </head>
 <body>
@@ -262,7 +297,7 @@
       <div class="nav-links"><a href="#menu">Menú</a><a href="#mas-pedida">Más pedida</a><a href="#resenas">Reseñas</a><a href="#ubicacion">Ubicación</a></div>
       <div class="nav-actions">
         <a class="btn btn-primary" href="#menu">Ver delicias</a>
-        <button class="icon-btn" id="cartButton" aria-label="Abrir pedido"><span aria-hidden="true">🛍</span><span class="cart-count" id="cartCount">0</span></button>
+        <button class="icon-btn" id="cartButton" aria-label="Abrir pedido"><svg class="bag-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8.5h13l-1 11h-11z"/><path d="M9 9V6.5a3 3 0 0 1 6 0V9"/></svg><span class="cart-count" id="cartCount">0</span></button>
         <button class="icon-btn menu-btn" id="menuButton" aria-label="Abrir menú">☰</button>
       </div>
     </div>
@@ -272,18 +307,14 @@
     <header class="hero" id="inicio">
       <div class="container hero-grid">
         <div class="hero-copy">
-          <span class="eyebrow">Cocina de autor en Valencia</span>
-          <h1>El antojo que <em>sí te cuida.</em></h1>
-          <p class="hero-lead">Snacks y postres artesanales con todo el sabor y sin gluten, azúcar refinada ni lactosa. Una pausa rica, bonita y hecha con intención.</p>
-          <div class="hero-actions"><a class="btn btn-primary" href="#menu">Explorar el menú <span>→</span></a><a class="btn btn-light" href="#ubicacion">Visítanos en Mañongo</a></div>
-          <div class="trust-row"><div class="avatars"><span>💜</span><span>🌿</span><span>✨</span></div><span><b>5.490 Fontana lovers</b><br>ya disfrutan sin culpa</span></div>
+          <h1 class="sr-only">Fontana</h1>
+          <img class="hero-logo" src="assets/logo.png" alt="Fontana">
         </div>
         <div class="hero-visual">
           <div class="hero-frame"><img src="assets/pistachio.png" alt="Foncake de pistacho y frambuesa Fontana"></div>
-          <div class="hero-card"><div class="leaf">🌿</div><span><b>100% artesanal</b>Ingredientes seleccionados</span></div>
-          <div class="hero-stamp">SIN GLUTEN<br>SIN AZÚCAR<br>SIN LACTOSA</div>
         </div>
       </div>
+      <a class="hero-scroll" href="#menu" aria-label="Ver el menú">↓</a>
     </header>
 
     <div class="pillars"><div class="container pillars-grid">
@@ -295,7 +326,7 @@
 
     <section class="menu-section" id="menu">
       <div class="container">
-        <div class="section-head"><div><span class="eyebrow">Los favoritos</span><h2>El top de Fontana</h2><p>Recetas honestas, ingredientes nobles y texturas que no parecen “fit”.</p></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="cakes">Foncakes</button><button class="filter" data-filter="snacks">Snacks</button><button class="filter" data-filter="salado">Salado</button></div></div>
+        <div class="section-head"><div><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2><p>Fotografía, ingredientes y precio visibles para elegir sin fricción.</p></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="dulce">Dulce</button><button class="filter" data-filter="salado">Salado</button></div></div>
         <div class="products" id="products">
           <article class="product" data-category="cakes" data-id="pistacho" data-name="Foncake Pistacho & Frambuesa" data-price="34" data-image="assets/pistachio.png"><div class="product-media"><img src="assets/pistachio.png" alt="Foncake de pistacho y frambuesa"><span class="product-tag">Favorito</span></div><div class="product-body"><div class="product-top"><h3>Pistacho & Frambuesa</h3><span class="price">$34</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Pistacho y Frambuesa">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="chocolate" data-name="Foncake Triple Chocolate" data-price="32" data-image="assets/chocolate.jpg"><div class="product-media"><img src="assets/chocolate.jpg" alt="Foncake triple chocolate"><span class="product-tag">Intenso</span></div><div class="product-body"><div class="product-top"><h3>Triple Chocolate</h3><span class="price">$32</span></div><p>Chocolate vegano 70% cacao, harina de almendra y monk fruit.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Triple Chocolate">+</button></div></div></article>
@@ -353,10 +384,24 @@
       <p class="checkout-intro">Completa tus datos. Prepararemos el pedido para enviarlo directamente al WhatsApp de Fontana.</p>
       <div class="form-grid">
         <div class="field"><label for="customerName">Nombre y apellido</label><input id="customerName" name="name" autocomplete="name" required></div>
+        <div class="field"><label for="customerPhone">Teléfono de contacto</label><input id="customerPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>
         <div class="field"><label for="fulfillment">¿Cómo lo recibirás?</label><select id="fulfillment" name="fulfillment" required></select></div>
         <div class="field" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
+        <div class="field"><label for="requestedDate">Fecha solicitada</label><input id="requestedDate" name="requestedDate" type="date" required></div>
+        <div class="field"><label for="requestedTime">Franja horaria solicitada</label><input id="requestedTime" name="requestedTime" type="text" placeholder="Pendiente de confirmar por Fontana" required></div>
         <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select></div>
-        <div class="field"><label for="customerNotes">Observaciones <span aria-hidden="true">(opcional)</span></label><textarea id="customerNotes" name="notes" placeholder="Horario, dedicatoria, alergias u otra indicación"></textarea></div>
+        <fieldset class="allergy-panel">
+          <legend>¿Tienes alguna alergia o intolerancia alimentaria?</legend>
+          <div class="choice-row"><label class="choice"><input type="radio" name="hasAllergies" value="no" required> No</label><label class="choice"><input type="radio" name="hasAllergies" value="yes" required> Sí</label></div>
+          <div id="allergyDetails" hidden>
+            <div class="allergen-grid" aria-label="Alergias o intolerancias"><label class="choice"><input type="checkbox" name="allergens" value="Frutos secos"> Frutos secos</label><label class="choice"><input type="checkbox" name="allergens" value="Gluten"> Gluten</label><label class="choice"><input type="checkbox" name="allergens" value="Leche o lactosa"> Leche/lactosa</label><label class="choice"><input type="checkbox" name="allergens" value="Huevo"> Huevo</label><label class="choice"><input type="checkbox" name="allergens" value="Soya"> Soya</label></div>
+            <div class="field"><label for="otherAllergy">Otra alergia o intolerancia</label><input id="otherAllergy" name="otherAllergy" placeholder="Especifica cuál"></div>
+          </div>
+          <div class="allergy-warning">Aunque se retire un ingrediente, los productos pueden elaborarse en espacios o con utensilios donde también se manipulan alérgenos. Fontana revisará cada solicitud antes de aceptarla.</div>
+          <label class="choice"><input id="crossContamination" name="crossContamination" type="checkbox" required> He leído y acepto esta información.</label>
+          <div class="allergy-status" id="allergyStatus" hidden>Este pedido quedará pendiente de revisión por Fontana.</div>
+        </fieldset>
+        <div class="field"><label for="customerNotes">Observaciones <span aria-hidden="true">(opcional)</span></label><textarea id="customerNotes" name="notes" placeholder="Dedicatoria u otra indicación para el pedido"></textarea></div>
       </div>
       <button class="btn btn-green" type="submit">Enviar pedido por WhatsApp</button>
       <small class="checkout-help">El pedido queda pendiente hasta que Fontana confirme el pago.</small>
