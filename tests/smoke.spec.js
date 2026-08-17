@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const { readFile } = require("node:fs/promises");
+const { Script } = require("node:vm");
 
 test("el build integra la configuración para evitar datos obsoletos", async () => {
   const html = await readFile("dist/index.html", "utf8");
@@ -9,6 +10,9 @@ test("el build integra la configuración para evitar datos obsoletos", async () 
   expect(html).toContain('"Binance"');
   expect(html).not.toContain("Transferencia bancaria");
   expect(html).not.toContain('src="config.js"');
+  const appCode = html.match(/<script data-store-app="[a-f0-9]{12}">([\s\S]*?)<\/script>/)?.[1];
+  expect(appCode).toBeTruthy();
+  expect(() => new Script(appCode)).not.toThrow();
   await expect(readFile("dist/_headers", "utf8")).resolves.toContain("max-age=0");
 });
 

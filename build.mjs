@@ -23,7 +23,7 @@ function inlineScript(contents) {
 
 let html = await readFile("index.html", "utf8");
 html = html
-  .replace('<script src="config.js"></script>', `<script data-store-config="${configVersion}">\n${inlineScript(configContents)}\n</script>`)
-  .replace('<script src="app.js"></script>', `<script data-store-app="${appVersion}">\n${inlineScript(appContents)}\n</script>`);
+  .replace('<script src="config.js"></script>', () => `<script data-store-config="${configVersion}">\n${inlineScript(configContents)}\n</script>`)
+  .replace('<script src="app.js"></script>', () => `<script data-store-app="${appVersion}">\n${inlineScript(appContents)}\n</script>`);
 
 await writeFile(`${outputDirectory}/index.html`, html);
