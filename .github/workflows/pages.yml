@@ -25,9 +25,14 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Prepare static site
+        run: |
+          mkdir dist
+          cp index.html app.js config.js dist/
+          cp -R assets dist/assets
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
