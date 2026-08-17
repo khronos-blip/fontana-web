@@ -113,6 +113,12 @@
     .product h3{font-size:1.35rem}
     .price{font-weight:800;color:var(--plum);white-space:nowrap}
     .product p{color:var(--muted);font-size:.82rem;min-height:40px;margin:9px 0 18px}
+    .product-safety{margin:-3px 0 18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .product-safety summary{padding:11px 0;cursor:pointer;color:var(--plum);font-size:.72rem;font-weight:800;list-style:none}
+    .product-safety summary::-webkit-details-marker{display:none}
+    .product-safety summary:after{content:'+';float:right;font-size:1rem;line-height:1}
+    .product-safety[open] summary:after{content:'−'}
+    .product-safety div{padding:0 0 12px;color:var(--muted);font-size:.7rem;line-height:1.5}
     .product-footer{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .diet{font-size:.68rem;color:var(--green);font-weight:800}
     .add{border:0;background:var(--plum);color:#fff;width:42px;height:42px;border-radius:50%;font-size:1.35rem;display:grid;place-items:center}
@@ -229,10 +235,9 @@
     .section-head{align-items:end}.section-head h2{font-size:clamp(4.4rem,9vw,8.7rem);line-height:.8;text-transform:uppercase;max-width:790px}.section-head p{color:rgba(248,241,245,.56)}
     .filters{gap:10px}.filter{background:transparent;border-color:var(--night-line);color:rgba(248,241,245,.55);text-transform:uppercase;letter-spacing:.08em}.filter:hover,.filter.active{background:var(--acid);color:var(--night);border-color:var(--acid)}
     .products{gap:18px}.product{background:var(--surface);border-color:var(--night-line);border-radius:20px}.product:hover{box-shadow:0 25px 70px rgba(0,0,0,.35);border-color:rgba(217,174,220,.38)}
-    .product:nth-child(-n+3):after{position:absolute;top:8px;right:14px;font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:4.8rem;line-height:1;color:rgba(255,255,255,.82);text-shadow:0 4px 24px rgba(0,0,0,.6);z-index:3}
-    .product:nth-child(1):after{content:'01'}.product:nth-child(2):after{content:'02'}.product:nth-child(3):after{content:'03'}
     .product-media{background:var(--surface-2);aspect-ratio:.93}.product-tag{background:var(--acid);color:var(--night);backdrop-filter:none;text-transform:uppercase;letter-spacing:.08em}
     .product h3{font-size:2rem;letter-spacing:.02em}.product p{color:rgba(248,241,245,.52)}.price{color:var(--accent)}.diet{color:var(--acid)}.add{background:var(--accent);color:var(--night);border-radius:14px}.add:hover{background:var(--acid)}
+    .product-safety{border-color:var(--night-line)}.product-safety summary{color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.product-safety div{color:rgba(248,241,245,.58)}
     .demo-note{color:rgba(248,241,245,.38)}
 
     .story{background:var(--night)}.story-main,.story-small{border-radius:18px}.story-small{border-color:var(--night)}.story-copy>p{color:rgba(248,241,245,.58)}.check span{background:var(--surface-2);color:var(--acid)}
@@ -278,6 +283,11 @@
     .choice input{accent-color:var(--accent)}
     .allergy-warning{padding:14px;border-left:3px solid #d96f78;background:rgba(217,111,120,.1);color:rgba(248,241,245,.78);font-size:.74rem;line-height:1.5}
     .allergy-status{color:var(--accent);font-size:.72rem;font-weight:800}
+    .schedule-note{margin:0;color:rgba(248,241,245,.58);font-size:.7rem;line-height:1.45}
+    .item-allergy-list{display:grid;gap:12px;margin-top:14px}
+    .item-allergy-field{display:grid;gap:6px;padding:12px;border:1px solid var(--night-line);border-radius:14px;background:rgba(255,255,255,.025)}
+    .item-allergy-field label{font-size:.72rem;font-weight:800;color:var(--accent)}
+    .item-allergy-field textarea{min-height:70px}
 
     @media(max-width:960px){
       .nav-inner{height:auto;min-height:104px;display:grid;grid-template-columns:1fr auto;grid-template-rows:58px auto;gap:0 12px;padding:6px 0 10px}
@@ -377,7 +387,7 @@
         <div class="field"><label for="customerPhone">Teléfono de contacto</label><input id="customerPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>
         <div class="field"><label for="fulfillment">¿Cómo lo recibirás?</label><select id="fulfillment" name="fulfillment" required></select></div>
         <div class="field" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
-        <div class="field"><label for="requestedDate">Fecha solicitada</label><input id="requestedDate" name="requestedDate" type="date" required></div>
+        <div class="field"><label id="requestedDateLabel" for="requestedDate">Fecha deseada</label><input id="requestedDate" name="requestedDate" type="date" required><p class="schedule-note" id="scheduleNotice">La disponibilidad y anticipación se confirman por WhatsApp.</p></div>
         <div class="field"><label for="requestedTime">Franja horaria solicitada</label><input id="requestedTime" name="requestedTime" type="text" placeholder="Pendiente de confirmar por Fontana" required></div>
         <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select></div>
         <fieldset class="allergy-panel">
@@ -386,10 +396,11 @@
           <div id="allergyDetails" hidden>
             <div class="allergen-grid" aria-label="Alergias o intolerancias"><label class="choice"><input type="checkbox" name="allergens" value="Frutos secos"> Frutos secos</label><label class="choice"><input type="checkbox" name="allergens" value="Gluten"> Gluten</label><label class="choice"><input type="checkbox" name="allergens" value="Leche o lactosa"> Leche/lactosa</label><label class="choice"><input type="checkbox" name="allergens" value="Huevo"> Huevo</label><label class="choice"><input type="checkbox" name="allergens" value="Soya"> Soya</label></div>
             <div class="field"><label for="otherAllergy">Otra alergia o intolerancia</label><input id="otherAllergy" name="otherAllergy" placeholder="Especifica cuál"></div>
+            <div class="item-allergy-list" id="allergyItemNotes" aria-label="Instrucciones de alergia por producto"></div>
+            <div class="allergy-warning">No asumas que un producto puede adaptarse. Fontana revisará los ingredientes y las instrucciones de cada artículo antes de aceptar el pedido.</div>
+            <label class="choice"><input id="crossContamination" name="crossContamination" type="checkbox"> Entiendo que la solicitud debe ser revisada y confirmada por Fontana.</label>
+            <div class="allergy-status" id="allergyStatus">Este pedido quedará pendiente de revisión por Fontana.</div>
           </div>
-          <div class="allergy-warning">Aunque se retire un ingrediente, los productos pueden elaborarse en espacios o con utensilios donde también se manipulan alérgenos. Fontana revisará cada solicitud antes de aceptarla.</div>
-          <label class="choice"><input id="crossContamination" name="crossContamination" type="checkbox" required> He leído y acepto esta información.</label>
-          <div class="allergy-status" id="allergyStatus" hidden>Este pedido quedará pendiente de revisión por Fontana.</div>
         </fieldset>
         <div class="field"><label for="customerNotes">Observaciones <span aria-hidden="true">(opcional)</span></label><textarea id="customerNotes" name="notes" placeholder="Dedicatoria u otra indicación para el pedido"></textarea></div>
       </div>

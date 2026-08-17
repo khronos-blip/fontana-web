@@ -12,6 +12,9 @@ window.FONTANA_CONFIG = {
   previewMode: true,
   pickupLabel: "Pickup en Mañongo",
   deliveryLabel: "Delivery en Valencia",
+  // Días mínimos de anticipación por id de producto.
+  // Se completan cuando Fontana confirme los tiempos reales de cada receta.
+  leadDaysByProduct: {},
   paymentMethods: [
     "Pago Móvil",
     "Zelle",

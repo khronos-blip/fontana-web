@@ -31,6 +31,35 @@
     }).format(value);
   }
 
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>'"]/g, character => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "'": "&#39;",
+      '"': "&quot;"
+    })[character]);
+  }
+
+  function productIngredients(id) {
+    return $(`.product[data-id="${id}"] .product-body > p`)?.textContent.trim() || "Pendiente de confirmar con Fontana";
+  }
+
+  function enhanceProductSafety() {
+    $$(".product").forEach(product => {
+      const body = $(".product-body", product);
+      const footer = $(".product-footer", product);
+      const details = document.createElement("details");
+      details.className = "product-safety";
+      const summary = document.createElement("summary");
+      summary.textContent = "Ingredientes y alergias";
+      const note = document.createElement("div");
+      note.textContent = "Revisa los ingredientes declarados arriba. Si tienes una alergia o intolerancia, indícala por producto al finalizar; Fontana debe confirmar ingredientes y preparación antes de aceptar el pedido.";
+      details.append(summary, note);
+      body.insertBefore(details, footer);
+    });
+  }
+
   function say(message) {
     toast.textContent = message;
     toast.classList.add("show");
@@ -69,6 +98,7 @@
         name: card.dataset.name,
         price: Number(card.dataset.price),
         image: card.dataset.image,
+        ingredients: productIngredients(id),
         qty: 1
       });
     }
@@ -117,6 +147,9 @@
     checkoutForm.hidden = false;
     backToCart.hidden = false;
     drawerTitle.textContent = "Datos del pedido";
+    renderAllergyItemNotes();
+    setupRequestedDate();
+    toggleAllergyDetails();
     $("#customerName").focus();
   }
 
@@ -141,6 +174,43 @@
     const delivery = $("#fulfillment").value === "delivery";
     $("#addressGroup").hidden = !delivery;
     $("#customerAddress").required = delivery;
+    $("#requestedDateLabel").textContent = delivery ? "Fecha deseada para delivery" : "Fecha deseada para pickup";
+  }
+
+  function localDateValue(date) {
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+  }
+
+  function setupRequestedDate() {
+    const configured = cart
+      .map(item => Number(config.leadDaysByProduct?.[item.id]))
+      .filter(days => Number.isFinite(days) && days >= 0);
+    const minimumLeadDays = configured.length ? Math.max(...configured) : 0;
+    const minimumDate = new Date();
+    minimumDate.setHours(0, 0, 0, 0);
+    minimumDate.setDate(minimumDate.getDate() + minimumLeadDays);
+    const input = $("#requestedDate");
+    input.min = localDateValue(minimumDate);
+    if (input.value && input.value < input.min) input.value = "";
+
+    if (!configured.length) {
+      $("#scheduleNotice").textContent = "Selecciona una fecha deseada. La anticipación de cada producto se confirmará por WhatsApp.";
+    } else if (configured.length < cart.length) {
+      $("#scheduleNotice").textContent = `El calendario aplica al menos ${minimumLeadDays} día(s) de anticipación donde ya está configurado; los demás productos quedan sujetos a confirmación.`;
+    } else {
+      $("#scheduleNotice").textContent = `Este pedido requiere al menos ${minimumLeadDays} día(s) de anticipación. La fecha final se confirma por WhatsApp.`;
+    }
+  }
+
+  function renderAllergyItemNotes() {
+    $("#allergyItemNotes").innerHTML = cart.map(item => {
+      const fieldId = `allergyNote-${item.id.replace(/[^a-z0-9_-]/gi, "-")}`;
+      return `<div class="item-allergy-field">
+        <label for="${fieldId}">${escapeHtml(item.name)}</label>
+        <textarea id="${fieldId}" name="allergyNote:${escapeHtml(item.id)}" placeholder="Ingrediente que debe evitarse e instrucciones para este producto"></textarea>
+        <small>Ingredientes declarados: ${escapeHtml(item.ingredients || productIngredients(item.id))}</small>
+      </div>`;
+    }).join("");
   }
 
   function createOrderId() {
@@ -157,6 +227,12 @@
     const allergyList = data.getAll("allergens");
     const otherAllergy = String(data.get("otherAllergy") || "").trim();
     if (otherAllergy) allergyList.push(otherAllergy);
+    const itemAllergyLines = hasAllergies
+      ? cart.map(item => {
+        const note = String(data.get(`allergyNote:${item.id}`) || "").trim();
+        return note ? `• ${item.name}: ${note}` : "";
+      }).filter(Boolean)
+      : [];
     const fulfillment = data.get("fulfillment") === "delivery"
       ? (config.deliveryLabel || "Delivery")
       : (config.pickupLabel || "Pickup");
@@ -173,10 +249,12 @@
       `Teléfono: ${data.get("phone")}`,
       `Modalidad: ${fulfillment}`,
       data.get("address") ? `Dirección: ${data.get("address")}` : "",
-      `Fecha solicitada: ${data.get("requestedDate")}`,
+      `Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
       `Franja horaria solicitada: ${data.get("requestedTime")}`,
       `Forma de pago: ${data.get("payment")}`,
       `Alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
+      hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : "",
+      ...itemAllergyLines,
       hasAllergies ? "*Estado: PENDIENTE DE REVISIÓN POR FONTANA*" : "Estado: pendiente de confirmación",
       data.get("notes") ? `Observaciones: ${data.get("notes")}` : "",
       "",
@@ -225,7 +303,8 @@
   function toggleAllergyDetails() {
     const hasAllergies = checkoutForm.elements.hasAllergies.value === "yes";
     $("#allergyDetails").hidden = !hasAllergies;
-    $("#allergyStatus").hidden = !hasAllergies;
+    $("#crossContamination").required = hasAllergies;
+    $$('[name^="allergyNote:"]').forEach(field => { field.required = hasAllergies; });
   }
 
   $("#cartButton").addEventListener("click", openCart);
@@ -234,10 +313,14 @@
   backToCart.addEventListener("click", showCartStep);
   backdrop.addEventListener("click", closeCart);
   checkoutForm.addEventListener("submit", submitOrder);
-  $("#fulfillment").addEventListener("change", toggleAddress);
+  $("#fulfillment").addEventListener("change", () => {
+    toggleAddress();
+    setupRequestedDate();
+  });
   $$('input[name="hasAllergies"]').forEach(input => input.addEventListener("change", toggleAllergyDetails));
   $("#menuButton").addEventListener("click", () => { window.location.hash = "menu"; });
   document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
+  enhanceProductSafety();
   populateOptions();
   toggleAddress();
   renderCart();

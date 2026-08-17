@@ -18,8 +18,9 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page, context 
   await page.locator("#requestedTime").fill("Después de las 4 pm");
   await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
   await page.locator('input[name="hasAllergies"][value="no"]').check();
-  await page.locator("#crossContamination").check();
   await page.locator("#customerNotes").fill("Entregar después de las 4 pm");
+  await expect(page.locator("#scheduleNotice")).toContainText("anticipación");
+  await expect(page.locator("#requestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
   await page.locator('#checkoutForm button[type="submit"]').click();
 
   const message = await page.evaluate(() => navigator.clipboard.readText());
@@ -27,6 +28,7 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page, context 
   expect(message).toContain("1× Foncake Pistacho & Frambuesa");
   expect(message).toContain("Andrea Pérez");
   expect(message).toContain("Pago Móvil");
+  expect(message).toContain("Fecha deseada para Delivery en Valencia");
   expect(message).toContain("Enviaré el comprobante");
 });
 
@@ -35,6 +37,11 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator(".hero-logo")).toBeVisible();
   await expect(page.locator(".hero-copy .hero-lead")).toHaveCount(0);
   await expect(page.locator("#cartButton .bag-icon")).toBeVisible();
+  await expect(page.locator(".product-safety")).toHaveCount(6);
+  await expect(page.locator(".product-safety").first()).toContainText("Ingredientes y alergias");
+  const productNumbers = await page.locator(".product").evaluateAll(products => products.slice(0, 3).map(product => getComputedStyle(product, "::after").content));
+  expect(productNumbers.every(content => content === "none" || content === "normal")).toBe(true);
+  expect(await page.evaluate(() => window.FONTANA_CONFIG.leadDaysByProduct)).toEqual({});
 });
 
 test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }) => {
@@ -93,9 +100,12 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
   await page.locator("#requestedTime").fill("4:00 pm - 6:00 pm");
   await page.locator('input[name="hasAllergies"][value="yes"]').check();
   await page.locator('input[name="allergens"][value="Frutos secos"]').check();
+  await expect(page.locator("#allergyNote-pistacho")).toBeVisible();
+  await page.locator("#allergyNote-pistacho").fill("No agregar pistacho; confirmar si la receta puede adaptarse");
   await page.locator("#crossContamination").check();
   await page.locator('#checkoutForm button[type="submit"]').click();
   const message = await page.evaluate(() => navigator.clipboard.readText());
   expect(message).toContain("Frutos secos");
+  expect(message).toContain("Foncake Pistacho & Frambuesa: No agregar pistacho");
   expect(message).toContain("PENDIENTE DE REVISIÓN POR FONTANA");
 });
