@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#6e236f">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="description" content="Mockup web de Fontana: cocina de autor sin gluten, sin azúcar y sin lactosa en Valencia.">
+  <meta property="og:title" content="Fontana — sabor que te hace bien">
+  <meta property="og:description" content="Postres y snacks de autor, sin gluten, sin azúcar refinada y sin lactosa.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="assets/pistachio.png">
+  <title>Fontana — snacks y postres fit</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
+    :root {
+      --plum:#6e236f;
+      --plum-dark:#4f1651;
+      --lilac:#ead5ed;
+      --lilac-soft:#f7eff8;
+      --cream:#fffaf2;
+      --green:#78933e;
+      --ink:#251d25;
+      --muted:#746a73;
+      --line:rgba(74,36,72,.13);
+      --white:#fff;
+      --shadow:0 20px 60px rgba(79,22,81,.12);
+      --radius:26px;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{margin:0;background:var(--cream);color:var(--ink);font-family:'DM Sans',system-ui,sans-serif;line-height:1.55;overflow-x:hidden}
+    body.locked{overflow:hidden}
+    button,a,input,select,textarea{font:inherit}
+    button,a{transition:.22s ease}
+    a{color:inherit;text-decoration:none}
+    img{display:block;max-width:100%}
+    button{cursor:pointer}
+    :focus-visible{outline:3px solid rgba(110,35,111,.3);outline-offset:3px}
+    .container{width:min(1180px,calc(100% - 40px));margin:auto}
+    .eyebrow{display:inline-flex;align-items:center;gap:8px;color:var(--plum);font-size:.76rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+    .eyebrow:before{content:'';width:22px;height:2px;background:var(--green)}
+    h1,h2,h3{font-family:'Playfair Display',Georgia,serif;line-height:1.06;margin:0}
+    h2{font-size:clamp(2rem,4vw,3.5rem)}
+    .topbar{background:var(--plum);color:#fff;text-align:center;padding:9px 16px;font-size:.78rem;letter-spacing:.04em}
+
+    .nav{position:sticky;top:0;z-index:30;background:rgba(255,250,242,.88);backdrop-filter:blur(18px);border-bottom:1px solid transparent}
+    .nav.scrolled{border-color:var(--line);box-shadow:0 10px 30px rgba(79,22,81,.06)}
+    .nav-inner{height:84px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+    .brand{display:flex;align-items:center;gap:11px;font-family:'Playfair Display',serif;font-size:1.65rem;font-weight:700;color:var(--plum)}
+    .brand img{width:45px;height:45px;border-radius:50%;object-fit:cover;box-shadow:0 0 0 4px var(--lilac)}
+    .nav-links{display:flex;align-items:center;gap:30px;font-size:.89rem;font-weight:700}
+    .nav-links a:hover{color:var(--plum)}
+    .nav-actions{display:flex;align-items:center;gap:10px}
+    .icon-btn{border:1px solid var(--line);background:#fff;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;position:relative;color:var(--plum)}
+    .icon-btn:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(79,22,81,.1)}
+    .cart-count{position:absolute;right:-2px;top:-3px;background:var(--green);color:#fff;min-width:20px;height:20px;border-radius:20px;display:grid;place-items:center;font-size:.68rem;font-weight:800;padding:0 5px}
+    .menu-btn{display:none}
+
+    .btn{border:0;border-radius:999px;padding:14px 22px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:.88rem;font-weight:800}
+    .btn-primary{background:var(--plum);color:#fff;box-shadow:0 10px 30px rgba(110,35,111,.24)}
+    .btn-primary:hover{background:var(--plum-dark);transform:translateY(-2px)}
+    .btn-light{background:#fff;color:var(--plum);border:1px solid var(--line)}
+    .btn-light:hover{background:var(--lilac-soft);transform:translateY(-2px)}
+    .btn-green{background:var(--green);color:#fff}
+    .btn-green:hover{filter:brightness(.9);transform:translateY(-2px)}
+
+    .hero{position:relative;min-height:720px;display:grid;align-items:center;padding:72px 0 96px;isolation:isolate}
+    .hero:before{content:'';position:absolute;z-index:-2;width:580px;height:580px;border-radius:50%;right:-150px;top:10px;background:radial-gradient(circle,#efdff1 0,#ead5ed 42%,rgba(234,213,237,0) 72%)}
+    .hero:after{content:'f';font-family:Georgia,serif;position:absolute;z-index:-1;left:-25px;bottom:-150px;color:rgba(110,35,111,.035);font-size:520px;font-weight:700}
+    .hero-grid{display:grid;grid-template-columns:1.03fr .97fr;align-items:center;gap:78px}
+    .hero-copy{position:relative}
+    .hero h1{font-size:clamp(3.5rem,6.2vw,6rem);letter-spacing:-.045em;max-width:720px;margin:20px 0 24px}
+    .hero h1 em{color:var(--plum);font-weight:600}
+    .hero-lead{font-size:1.15rem;color:var(--muted);max-width:570px;margin:0 0 32px}
+    .hero-actions{display:flex;flex-wrap:wrap;gap:12px}
+    .trust-row{display:flex;gap:20px;align-items:center;margin-top:34px;color:var(--muted);font-size:.82rem}
+    .avatars{display:flex}
+    .avatars span{width:35px;height:35px;border-radius:50%;display:grid;place-items:center;background:var(--lilac);border:2px solid var(--cream);margin-left:-8px;font-size:.9rem}
+    .avatars span:first-child{margin-left:0}
+    .hero-visual{position:relative;padding:24px}
+    .hero-frame{position:relative;border-radius:48% 48% 32px 32px;overflow:hidden;aspect-ratio:.79;background:var(--lilac);box-shadow:var(--shadow);transform:rotate(2deg)}
+    .hero-frame img{width:100%;height:100%;object-fit:cover;transform:scale(1.02)}
+    .hero-stamp{position:absolute;width:126px;height:126px;left:-22px;bottom:72px;border-radius:50%;background:var(--plum);color:#fff;display:grid;place-items:center;text-align:center;font-family:'Playfair Display',serif;font-weight:700;line-height:1.2;transform:rotate(-9deg);box-shadow:0 14px 35px rgba(79,22,81,.28);border:7px solid var(--cream)}
+    .hero-card{position:absolute;right:-20px;top:84px;background:#fff;padding:15px 18px;border-radius:18px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;font-size:.78rem;font-weight:700}
+    .hero-card b{display:block;color:var(--plum);font-size:1rem}
+    .leaf{width:42px;height:42px;border-radius:50%;background:#edf2df;display:grid;place-items:center;font-size:1.3rem}
+
+    .pillars{padding:0 0 100px}
+    .pillars-grid{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:24px;background:rgba(255,255,255,.65);overflow:hidden}
+    .pillar{padding:26px;display:flex;gap:14px;align-items:center;border-right:1px solid var(--line)}
+    .pillar:last-child{border:0}
+    .pillar-icon{width:44px;height:44px;border-radius:14px;background:var(--lilac-soft);display:grid;place-items:center;font-size:1.2rem;flex:none}
+    .pillar b{display:block;font-size:.9rem}.pillar small{color:var(--muted)}
+
+    section{padding:105px 0}
+    .section-head{display:flex;justify-content:space-between;align-items:end;gap:28px;margin-bottom:44px}
+    .section-head p{max-width:470px;color:var(--muted);margin:12px 0 0}
+    .filters{display:flex;gap:8px;flex-wrap:wrap}
+    .filter{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:999px;padding:9px 15px;font-size:.76rem;font-weight:800}
+    .filter:hover,.filter.active{background:var(--plum);color:#fff;border-color:var(--plum)}
+    .menu-section{background:#fff}
+    .products{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+    .product{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--cream);transition:.25s ease;position:relative}
+    .product:hover{transform:translateY(-7px);box-shadow:var(--shadow)}
+    .product.hidden{display:none}
+    .product-media{aspect-ratio:1.05;overflow:hidden;background:var(--lilac-soft);position:relative}
+    .product-media img{width:100%;height:100%;object-fit:cover;transition:.5s ease}
+    .product:hover .product-media img{transform:scale(1.045)}
+    .product-tag{position:absolute;left:15px;top:15px;background:rgba(255,255,255,.92);border-radius:999px;padding:6px 10px;font-size:.67rem;font-weight:800;color:var(--plum);backdrop-filter:blur(8px)}
+    .product-body{padding:22px}
+    .product-top{display:flex;justify-content:space-between;gap:20px;align-items:start}
+    .product h3{font-size:1.35rem}
+    .price{font-weight:800;color:var(--plum);white-space:nowrap}
+    .product p{color:var(--muted);font-size:.82rem;min-height:40px;margin:9px 0 18px}
+    .product-footer{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .diet{font-size:.68rem;color:var(--green);font-weight:800}
+    .add{border:0;background:var(--plum);color:#fff;width:42px;height:42px;border-radius:50%;font-size:1.35rem;display:grid;place-items:center}
+    .add:hover{background:var(--plum-dark);transform:rotate(90deg)}
+    .demo-note{font-size:.72rem;color:var(--muted);text-align:center;margin:24px 0 0}
+
+    .story{overflow:hidden}
+    .story-grid{display:grid;grid-template-columns:.92fr 1.08fr;gap:76px;align-items:center}
+    .story-visual{position:relative;min-height:560px}
+    .story-main{position:absolute;width:74%;height:500px;right:0;top:0;border-radius:220px 220px 28px 28px;object-fit:cover;box-shadow:var(--shadow)}
+    .story-small{position:absolute;width:50%;height:280px;left:0;bottom:0;border:12px solid var(--cream);border-radius:26px;object-fit:cover;box-shadow:var(--shadow)}
+    .story-copy h2{margin:18px 0 24px}
+    .story-copy>p{color:var(--muted);font-size:1.03rem}
+    .checks{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:30px 0}
+    .check{display:flex;gap:10px;align-items:center;font-size:.86rem;font-weight:700}
+    .check span{width:28px;height:28px;border-radius:50%;background:#edf2df;color:var(--green);display:grid;place-items:center}
+
+    .location{padding-top:20px}
+    .location-card{background:var(--plum);border-radius:34px;color:#fff;overflow:hidden;display:grid;grid-template-columns:1.15fr .85fr;min-height:460px}
+    .location-copy{padding:70px;display:flex;flex-direction:column;justify-content:center}
+    .location-copy .eyebrow{color:#dfc6e2}.location-copy .eyebrow:before{background:#dce7c2}
+    .location-copy h2{margin:17px 0 20px}
+    .location-copy p{color:rgba(255,255,255,.75);max-width:520px}
+    .hours{display:flex;gap:30px;margin:26px 0 34px;font-size:.84rem}
+    .hours b{display:block;color:#fff}.hours span{color:rgba(255,255,255,.66)}
+    .location-visual{position:relative;background:linear-gradient(135deg,#ead5ed,#b9c98f);display:grid;place-items:center;overflow:hidden}
+    .map-orbit{width:270px;height:270px;border:1px solid rgba(110,35,111,.25);border-radius:50%;display:grid;place-items:center;position:relative}
+    .map-orbit:before,.map-orbit:after{content:'';position:absolute;border:1px solid rgba(110,35,111,.18);border-radius:50%}.map-orbit:before{inset:28px}.map-orbit:after{inset:62px}
+    .pin{position:relative;z-index:2;width:82px;height:82px;border-radius:50% 50% 50% 10%;background:var(--plum);transform:rotate(-45deg);display:grid;place-items:center;box-shadow:0 15px 40px rgba(79,22,81,.3)}
+    .pin img{width:48px;height:48px;border-radius:50%;transform:rotate(45deg)}
+
+    .testimonials{background:var(--lilac-soft)}
+    .quotes{display:grid;grid-template-columns:1.15fr .85fr;gap:24px}
+    .quote{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:34px}
+    .quote.featured{background:var(--plum);color:#fff;padding:46px}
+    .stars{color:#c29b42;letter-spacing:3px;margin-bottom:22px}
+    .quote blockquote{font-family:'Playfair Display',serif;font-size:1.45rem;line-height:1.35;margin:0 0 28px}
+    .quote.featured blockquote{font-size:1.9rem}
+    .person{display:flex;align-items:center;gap:12px;font-size:.82rem}.person span{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--lilac);color:var(--plum);font-weight:800}.person small{display:block;opacity:.65}
+
+    .final{padding:90px 0;text-align:center;background:var(--cream)}
+    .final-inner{max-width:760px;margin:auto}.final h2{margin:18px 0}.final p{color:var(--muted);margin:0 auto 30px;max-width:560px}
+    footer{background:#211321;color:#fff;padding:62px 0 28px}
+    .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:60px}.footer-brand p{color:rgba(255,255,255,.58);max-width:370px}.footer-title{font-weight:800;margin-bottom:14px}.footer-links{display:grid;gap:9px;color:rgba(255,255,255,.62);font-size:.84rem}.footer-links a:hover{color:#fff}.footer-bottom{border-top:1px solid rgba(255,255,255,.1);margin-top:46px;padding-top:24px;display:flex;justify-content:space-between;color:rgba(255,255,255,.42);font-size:.72rem}
+
+    .drawer-backdrop{position:fixed;inset:0;background:rgba(28,14,28,.48);z-index:60;opacity:0;pointer-events:none;transition:.25s ease;backdrop-filter:blur(3px)}
+    .drawer-backdrop.open{opacity:1;pointer-events:auto}
+    .drawer{position:fixed;right:0;top:0;bottom:0;width:min(440px,100%);background:var(--cream);z-index:61;transform:translateX(102%);transition:.34s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(40,20,39,.2)}
+    .drawer.open{transform:none}
+    .drawer-head{height:90px;padding:0 28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+    .drawer-heading{display:flex;align-items:center;gap:10px}.back{border:0;background:var(--lilac-soft);color:var(--plum);width:36px;height:36px;border-radius:50%;font-size:1.1rem}
+    .drawer-head h3{font-size:1.6rem}.close{border:0;background:#fff;border-radius:50%;width:40px;height:40px;font-size:1.25rem;color:var(--plum)}
+    .cart-items{padding:22px 28px;overflow:auto;flex:1}
+    .empty{text-align:center;color:var(--muted);padding:70px 20px}.empty b{display:block;font-family:'Playfair Display',serif;color:var(--ink);font-size:1.35rem;margin:12px 0}
+    .cart-item{display:grid;grid-template-columns:68px 1fr auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+    .cart-item img{width:68px;height:68px;object-fit:cover;border-radius:14px}.cart-item h4{margin:0 0 3px;font-size:.87rem}.cart-item small{color:var(--muted)}
+    .qty{display:flex;align-items:center;gap:10px;margin-top:7px}.qty button{border:0;background:var(--lilac-soft);width:25px;height:25px;border-radius:50%;color:var(--plum);font-weight:800}
+    .remove{border:0;background:transparent;color:var(--muted);font-size:1.2rem}
+    .drawer-foot{padding:24px 28px;border-top:1px solid var(--line);background:#fff}.total{display:flex;justify-content:space-between;font-weight:800;margin-bottom:17px}.drawer-foot .btn{width:100%}.drawer-foot small{display:block;text-align:center;color:var(--muted);margin-top:10px}
+    .checkout-form{padding:24px 28px 34px;overflow:auto;flex:1}.checkout-intro{margin:0 0 20px;color:var(--muted);font-size:.84rem}.form-grid{display:grid;gap:16px}.field{display:grid;gap:7px}.field label{font-size:.76rem;font-weight:800;color:var(--ink)}.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 14px;color:var(--ink)}.field textarea{min-height:82px;resize:vertical}.checkout-form .btn{width:100%;margin-top:20px}.checkout-help{display:block;text-align:center;color:var(--muted);font-size:.7rem;margin-top:10px}.empty-icon{font-size:2.4rem}
+    [hidden]{display:none!important}
+    .toast{position:fixed;z-index:80;left:50%;bottom:25px;transform:translate(-50%,30px);background:#211321;color:#fff;border-radius:999px;padding:13px 20px;font-size:.82rem;opacity:0;pointer-events:none;transition:.3s ease;box-shadow:0 12px 35px rgba(0,0,0,.22)}.toast.show{opacity:1;transform:translate(-50%,0)}
+
+    @media(max-width:960px){
+      .nav-links{display:none}.menu-btn{display:grid}.hero{min-height:auto}.hero-grid{grid-template-columns:1fr;gap:45px}.hero-copy{text-align:center}.hero-lead{margin-left:auto;margin-right:auto}.hero-actions,.trust-row{justify-content:center}.hero-visual{max-width:600px;margin:auto}.pillars-grid{grid-template-columns:1fr 1fr}.pillar:nth-child(2){border-right:0}.pillar:nth-child(-n+2){border-bottom:1px solid var(--line)}.products{grid-template-columns:1fr 1fr}.story-grid{grid-template-columns:1fr;gap:54px}.story-visual{max-width:640px;width:100%;margin:auto}.location-card{grid-template-columns:1fr}.location-visual{min-height:340px}.quotes{grid-template-columns:1fr}.footer-grid{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1}
+    }
+    @media(max-width:640px){
+      .container{width:calc(100% - 26px)}.topbar{font-size:.64rem;white-space:nowrap;overflow:hidden}.nav-inner{height:70px}.brand{font-size:1.35rem}.brand img{width:39px;height:39px}.nav-actions .btn,.menu-btn{display:none}.hero{padding:55px 0 72px}.hero h1{font-size:3.05rem}.hero-lead{font-size:1rem}.hero-actions{display:grid}.hero-actions .btn{width:100%}.hero-visual{padding:10px 3px}.hero-frame{border-radius:45% 45% 24px 24px}.hero-card{right:-3px;top:45px}.hero-stamp{width:105px;height:105px;left:-7px;bottom:34px;font-size:.83rem}.pillars{padding-bottom:64px}.pillars-grid{grid-template-columns:1fr 1fr}.pillar{padding:17px 12px;display:block;text-align:center}.pillar-icon{margin:0 auto 8px}.pillar:nth-child(2){border-right:0}.pillar small{font-size:.68rem}section{padding:74px 0}.section-head{display:block}.filters{margin-top:24px}.products{grid-template-columns:1fr}.product-media{aspect-ratio:1.22}.story-visual{min-height:430px}.story-main{height:390px}.story-small{height:210px;border-width:8px}.checks{grid-template-columns:1fr}.location-copy{padding:45px 28px}.hours{display:block}.hours>div+div{margin-top:12px}.location-visual{min-height:290px}.map-orbit{width:220px;height:220px}.quote.featured{padding:30px}.quote.featured blockquote{font-size:1.5rem}.footer-grid{grid-template-columns:1fr}.footer-brand{grid-column:auto}.footer-bottom{display:block}.footer-bottom span{display:block;margin-top:6px}
+    }
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <div class="topbar">DELIVERY + PICKUP EN MAÑONGO · 9:00 AM — 6:00 PM</div>
+  <nav class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="#inicio" aria-label="Fontana, inicio"><img src="assets/logo.png" alt="Logo Fontana">fontana</a>
+      <div class="nav-links"><a href="#menu">Menú</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a><a href="#resenas">Reseñas</a></div>
+      <div class="nav-actions">
+        <a class="btn btn-primary" href="#menu">Ver delicias</a>
+        <button class="icon-btn" id="cartButton" aria-label="Abrir pedido"><span aria-hidden="true">🛍</span><span class="cart-count" id="cartCount">0</span></button>
+        <button class="icon-btn menu-btn" id="menuButton" aria-label="Abrir menú">☰</button>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero" id="inicio">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">Cocina de autor en Valencia</span>
+          <h1>El antojo que <em>sí te cuida.</em></h1>
+          <p class="hero-lead">Snacks y postres artesanales con todo el sabor y sin gluten, azúcar refinada ni lactosa. Una pausa rica, bonita y hecha con intención.</p>
+          <div class="hero-actions"><a class="btn btn-primary" href="#menu">Explorar el menú <span>→</span></a><a class="btn btn-light" href="#ubicacion">Visítanos en Mañongo</a></div>
+          <div class="trust-row"><div class="avatars"><span>💜</span><span>🌿</span><span>✨</span></div><span><b>5.490 Fontana lovers</b><br>ya disfrutan sin culpa</span></div>
+        </div>
+        <div class="hero-visual">
+          <div class="hero-frame"><img src="assets/pistachio.png" alt="Foncake de pistacho y frambuesa Fontana"></div>
+          <div class="hero-card"><div class="leaf">🌿</div><span><b>100% artesanal</b>Ingredientes seleccionados</span></div>
+          <div class="hero-stamp">SIN GLUTEN<br>SIN AZÚCAR<br>SIN LACTOSA</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="pillars"><div class="container pillars-grid">
+      <div class="pillar"><div class="pillar-icon">🌾</div><div><b>Sin gluten</b><small>Para disfrutar con tranquilidad</small></div></div>
+      <div class="pillar"><div class="pillar-icon">🍃</div><div><b>Monk fruit</b><small>Dulzor sin azúcar refinada</small></div></div>
+      <div class="pillar"><div class="pillar-icon">🥛</div><div><b>Sin lactosa</b><small>Ligero, cremoso y delicioso</small></div></div>
+      <div class="pillar"><div class="pillar-icon">👩🏻‍🍳</div><div><b>Hecho a mano</b><small>Recetas propias de autor</small></div></div>
+    </div></div>
+
+    <section class="menu-section" id="menu">
+      <div class="container">
+        <div class="section-head"><div><span class="eyebrow">Favoritos Fontana</span><h2>Un gusto para cada antojo</h2><p>Recetas honestas, ingredientes nobles y texturas que no parecen “fit”.</p></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="cakes">Foncakes</button><button class="filter" data-filter="snacks">Snacks</button><button class="filter" data-filter="salado">Salado</button></div></div>
+        <div class="products" id="products">
+          <article class="product" data-category="cakes" data-id="pistacho" data-name="Foncake Pistacho & Frambuesa" data-price="34" data-image="assets/pistachio.png"><div class="product-media"><img src="assets/pistachio.png" alt="Foncake de pistacho y frambuesa"><span class="product-tag">Favorito</span></div><div class="product-body"><div class="product-top"><h3>Pistacho & Frambuesa</h3><span class="price">$34</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Pistacho y Frambuesa">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="chocolate" data-name="Foncake Triple Chocolate" data-price="32" data-image="assets/chocolate.jpg"><div class="product-media"><img src="assets/chocolate.jpg" alt="Foncake triple chocolate"><span class="product-tag">Intenso</span></div><div class="product-body"><div class="product-top"><h3>Triple Chocolate</h3><span class="price">$32</span></div><p>Chocolate vegano 70% cacao, harina de almendra y monk fruit.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Triple Chocolate">+</button></div></div></article>
+          <article class="product" data-category="snacks" data-id="fonkie" data-name="Fonkie Chocolate Blanco" data-price="4.5" data-image="assets/fonkie.png"><div class="product-media"><img src="assets/fonkie.png" alt="Fonkie de chocolate blanco"><span class="product-tag">Snack</span></div><div class="product-body"><div class="product-top"><h3>Fonkie Choco Blanco</h3><span class="price">$4,50</span></div><p>Galleta de almendra, monk fruit y chocolate vegano blanco.</p><div class="product-footer"><span class="diet">INDIVIDUAL</span><button class="add" aria-label="Agregar Fonkie">+</button></div></div></article>
+          <article class="product" data-category="snacks" data-id="trufa" data-name="Trufa Fontana" data-price="3.5" data-image="assets/truffle.png"><div class="product-media"><img src="assets/truffle.png" alt="Trufa saludable Fontana"><span class="product-tag">Nuevo</span></div><div class="product-body"><div class="product-top"><h3>Trufa de autor</h3><span class="price">$3,50</span></div><p>Un bocado cremoso de cacao, perfecto para la pausa de la tarde.</p><div class="product-footer"><span class="diet">SIN CULPA</span><button class="add" aria-label="Agregar Trufa">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="lemon" data-name="Foncake Lemon" data-price="30" data-image="assets/lemon.png"><div class="product-media"><img src="assets/lemon.png" alt="Foncake de limón"><span class="product-tag">Fresco</span></div><div class="product-body"><div class="product-top"><h3>Foncake Lemon</h3><span class="price">$30</span></div><p>Limón, harina de almendra, monk fruit y glaseado vegano blanco.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Foncake Lemon">+</button></div></div></article>
+          <article class="product" data-category="salado" data-id="tortellone" data-name="Tortellone Fit" data-price="12" data-image="assets/pasta.png"><div class="product-media"><img src="assets/pasta.png" alt="Tortellone fit Fontana"><span class="product-tag">Salado</span></div><div class="product-body"><div class="product-top"><h3>Tortellone Fit</h3><span class="price">$12</span></div><p>De ricota de cabra y espinaca o de carne, alto en proteína.</p><div class="product-footer"><span class="diet">POR STOCK O ENCARGO</span><button class="add" aria-label="Agregar Tortellone">+</button></div></div></article>
+        </div>
+        <p class="demo-note">Precios ilustrativos para el mockup. El catálogo final se conecta al menú y WhatsApp reales del negocio.</p>
+      </div>
+    </section>
+
+    <section class="story" id="historia"><div class="container story-grid">
+      <div class="story-visual"><img class="story-main" src="assets/chocolate.jpg" alt="Pastelería de autor Fontana"><img class="story-small" src="assets/fonkie.png" alt="Galletas Fonkies"></div>
+      <div class="story-copy"><span class="eyebrow">La esencia detrás del sabor</span><h2>No aceptamos que “saludable” signifique aburrido.</h2><p>En el taller de Fontana cada receta empieza con una obsesión: lograr una textura increíble y un sabor que haga olvidar todo lo que quitamos. Horneamos en pequeños lotes, cuidando cada ingrediente y cada detalle.</p><div class="checks"><div class="check"><span>✓</span>Harina 100% de almendra</div><div class="check"><span>✓</span>Chocolate vegano</div><div class="check"><span>✓</span>Bajo índice glucémico</div><div class="check"><span>✓</span>Producción artesanal</div></div><a class="btn btn-light" href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Conoce nuestra historia en Instagram</a></div>
+    </div></section>
+
+    <section class="location" id="ubicacion"><div class="container"><div class="location-card">
+      <div class="location-copy"><span class="eyebrow">Tu momento Fontana</span><h2>Visítanos en TerraNostra Mañongo.</h2><p>Ven por tu postre favorito, descubre lo recién salido del taller o retira tu pedido. También tenemos delivery en Valencia.</p><div class="hours"><div><b>Lunes a domingo</b><span>9:00 am — 6:00 pm</span></div><div><b>Modalidad</b><span>Pickup + delivery</span></div></div><div><a class="btn btn-light" href="https://www.google.com/maps/search/?api=1&query=TerraNostra+Mañongo+Valencia+Carabobo" target="_blank" rel="noopener">Cómo llegar ↗</a></div></div>
+      <div class="location-visual"><div class="map-orbit"><div class="pin"><img src="assets/logo.png" alt="Fontana"></div></div></div>
+    </div></div></section>
+
+    <section class="testimonials" id="resenas"><div class="container"><div class="section-head"><div><span class="eyebrow">Lo dicen los Fontana lovers</span><h2>Amor al primer bocado</h2></div></div><div class="quotes">
+      <article class="quote featured"><div class="stars">★★★★★</div><blockquote>“No parece un postre sin azúcar. La textura, el sabor y hasta la presentación se sienten realmente premium.”</blockquote><div class="person"><span>MG</span><div><b>María G.</b><small>Cliente frecuente · Valencia</small></div></div></article>
+      <article class="quote"><div class="stars">★★★★★</div><blockquote>“El Foncake de pistacho se convirtió en el favorito de toda la familia.”</blockquote><div class="person"><span>AC</span><div><b>Andrea C.</b><small>Fontana lover</small></div></div></article>
+    </div><p class="demo-note">Testimonios de muestra para presentar la experiencia visual; se sustituyen por reseñas verificadas del negocio.</p></div></section>
+
+    <section class="final"><div class="container final-inner"><span class="eyebrow">Haz espacio para algo rico</span><h2>Tu próximo antojo ya tiene nombre.</h2><p>Explora el menú, arma tu pedido y recíbelo en Valencia o retíralo en Mañongo.</p><a class="btn btn-primary" href="#menu">Elegir mi favorito</a></div></section>
+  </main>
+
+  <footer><div class="container"><div class="footer-grid"><div class="footer-brand"><a class="brand" href="#inicio"><img src="assets/logo.png" alt="Logo Fontana">fontana</a><p>Cocina de autor de alta calidad. Sin gluten, sin azúcar refinada y sin lactosa.</p></div><div><div class="footer-title">Descubre</div><div class="footer-links"><a href="#menu">Menú</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a></div></div><div><div class="footer-title">Conecta</div><div class="footer-links"><a href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Instagram ↗</a><a href="#ubicacion">TerraNostra Mañongo</a><span>Lun–Dom · 9am–6pm</span></div></div></div><div class="footer-bottom"><span>© 2026 Fontana. Todos los derechos reservados.</span><span>Versión de pre-lanzamiento · pedidos en pruebas</span></div></div></footer>
+
+  <div class="drawer-backdrop" id="backdrop"></div>
+  <aside class="drawer" id="drawer" aria-label="Carrito y datos del pedido" aria-hidden="true">
+    <div class="drawer-head">
+      <div class="drawer-heading"><button class="back" id="backToCart" type="button" aria-label="Volver al carrito" hidden>←</button><h3 id="drawerTitle">Tu pedido</h3></div>
+      <button class="close" id="closeCart" type="button" aria-label="Cerrar">×</button>
+    </div>
+    <div class="cart-items" id="cartItems"></div>
+    <div class="drawer-foot" id="cartFooter"><div class="total"><span>Total estimado</span><span id="cartTotal">$0,00</span></div><button class="btn btn-green" id="continueCheckout" type="button">Continuar pedido</button><small>El pago se confirma directamente con Fontana.</small></div>
+    <form class="checkout-form" id="checkoutForm" hidden>
+      <p class="checkout-intro">Completa tus datos. Prepararemos el pedido para enviarlo directamente al WhatsApp de Fontana.</p>
+      <div class="form-grid">
+        <div class="field"><label for="customerName">Nombre y apellido</label><input id="customerName" name="name" autocomplete="name" required></div>
+        <div class="field"><label for="fulfillment">¿Cómo lo recibirás?</label><select id="fulfillment" name="fulfillment" required></select></div>
+        <div class="field" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
+        <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select></div>
+        <div class="field"><label for="customerNotes">Observaciones <span aria-hidden="true">(opcional)</span></label><textarea id="customerNotes" name="notes" placeholder="Horario, dedicatoria, alergias u otra indicación"></textarea></div>
+      </div>
+      <button class="btn btn-green" type="submit">Enviar pedido por WhatsApp</button>
+      <small class="checkout-help">El pedido queda pendiente hasta que Fontana confirme el pago.</small>
+    </form>
+  </aside>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
