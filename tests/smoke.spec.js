@@ -3,8 +3,8 @@ const { readFile, access } = require("node:fs/promises");
 
 test("el build versiona la configuración para evitar datos obsoletos", async () => {
   const html = await readFile("dist/index.html", "utf8");
-  const configAsset = html.match(/src="(config\.[a-f0-9]{12}\.js)"/)?.[1];
-  const appAsset = html.match(/src="(app\.[a-f0-9]{12}\.js)"/)?.[1];
+  const configAsset = html.match(/src="(store-config-[a-f0-9]{12}\.js)"/)?.[1];
+  const appAsset = html.match(/src="(store-app-[a-f0-9]{12}\.js)"/)?.[1];
 
   expect(configAsset).toBeTruthy();
   expect(appAsset).toBeTruthy();

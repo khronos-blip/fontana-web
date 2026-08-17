@@ -14,8 +14,8 @@ await cp("_headers", `${outputDirectory}/_headers`);
 
 const configContents = await readFile("config.js", "utf8");
 const appContents = await readFile("app.js", "utf8");
-const configFilename = `config.${fingerprint(configContents)}.js`;
-const appFilename = `app.${fingerprint(appContents)}.js`;
+const configFilename = `store-config-${fingerprint(configContents)}.js`;
+const appFilename = `store-app-${fingerprint(appContents)}.js`;
 
 let html = await readFile("index.html", "utf8");
 html = html
