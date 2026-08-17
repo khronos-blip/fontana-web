@@ -10,7 +10,7 @@ window.FONTANA_CONFIG = {
   currency: "USD",
   locale: "es-VE",
   previewMode: true,
-  pickupLabel: "Pickup en TerraNostra Mañongo",
+  pickupLabel: "Pickup en Mañongo",
   deliveryLabel: "Delivery en Valencia",
   paymentMethods: [
     "Pago Móvil",

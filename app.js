@@ -231,13 +231,6 @@
   $("#cartButton").addEventListener("click", openCart);
   $("#closeCart").addEventListener("click", closeCart);
   $("#continueCheckout").addEventListener("click", showCheckoutStep);
-  $("#signatureAdd")?.addEventListener("click", () => {
-    const product = document.querySelector('[data-id="pistacho"]');
-    if (product) {
-      addProduct(product);
-      openCart();
-    }
-  });
   backToCart.addEventListener("click", showCartStep);
   backdrop.addEventListener("click", closeCart);
   checkoutForm.addEventListener("submit", submitOrder);
@@ -245,8 +238,6 @@
   $$('input[name="hasAllergies"]').forEach(input => input.addEventListener("change", toggleAllergyDetails));
   $("#menuButton").addEventListener("click", () => { window.location.hash = "menu"; });
   document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
-  addEventListener("scroll", () => $("#nav").classList.toggle("scrolled", scrollY > 20), { passive: true });
-
   populateOptions();
   toggleAddress();
   renderCart();

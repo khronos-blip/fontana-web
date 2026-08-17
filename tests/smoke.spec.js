@@ -37,6 +37,24 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator("#cartButton .bag-icon")).toBeVisible();
 });
 
+test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }) => {
+  await page.goto("/");
+
+  const nav = page.locator("#nav");
+  const brand = nav.locator(".brand");
+  await expect(nav).toBeVisible();
+  await expect(brand).toBeVisible();
+  await expect(nav.getByText("Más pedida")).toHaveCount(0);
+  await expect(page.locator("#mas-pedida")).toHaveCount(0);
+  await expect(page.locator("#ubicacion")).toContainText("Visítanos en Mañongo");
+  await expect(page.getByText("TerraNostra")).toHaveCount(0);
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(nav).toBeVisible();
+  await expect(brand).toBeVisible();
+  await expect(nav).toHaveCSS("position", "fixed");
+});
+
 test("un pedido con alergias queda marcado para revisión", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
