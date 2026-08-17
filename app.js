@@ -207,6 +207,13 @@
   $("#cartButton").addEventListener("click", openCart);
   $("#closeCart").addEventListener("click", closeCart);
   $("#continueCheckout").addEventListener("click", showCheckoutStep);
+  $("#signatureAdd")?.addEventListener("click", () => {
+    const product = document.querySelector('[data-id="pistacho"]');
+    if (product) {
+      addProduct(product);
+      openCart();
+    }
+  });
   backToCart.addEventListener("click", showCartStep);
   backdrop.addEventListener("click", closeCart);
   checkoutForm.addEventListener("submit", submitOrder);

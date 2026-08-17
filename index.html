@@ -12,7 +12,7 @@
   <meta property="og:image" content="assets/pistachio.png">
   <title>Fontana — snacks y postres fit</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
 
     :root {
       --plum:#6e236f;
@@ -184,6 +184,74 @@
       .container{width:calc(100% - 26px)}.topbar{font-size:.64rem;white-space:nowrap;overflow:hidden}.nav-inner{height:70px}.brand{font-size:1.35rem}.brand img{width:39px;height:39px}.nav-actions .btn,.menu-btn{display:none}.hero{padding:55px 0 72px}.hero h1{font-size:3.05rem}.hero-lead{font-size:1rem}.hero-actions{display:grid}.hero-actions .btn{width:100%}.hero-visual{padding:10px 3px}.hero-frame{border-radius:45% 45% 24px 24px}.hero-card{right:-3px;top:45px}.hero-stamp{width:105px;height:105px;left:-7px;bottom:34px;font-size:.83rem}.pillars{padding-bottom:64px}.pillars-grid{grid-template-columns:1fr 1fr}.pillar{padding:17px 12px;display:block;text-align:center}.pillar-icon{margin:0 auto 8px}.pillar:nth-child(2){border-right:0}.pillar small{font-size:.68rem}section{padding:74px 0}.section-head{display:block}.filters{margin-top:24px}.products{grid-template-columns:1fr}.product-media{aspect-ratio:1.22}.story-visual{min-height:430px}.story-main{height:390px}.story-small{height:210px;border-width:8px}.checks{grid-template-columns:1fr}.location-copy{padding:45px 28px}.hours{display:block}.hours>div+div{margin-top:12px}.location-visual{min-height:290px}.map-orbit{width:220px;height:220px}.quote.featured{padding:30px}.quote.featured blockquote{font-size:1.5rem}.footer-grid{grid-template-columns:1fr}.footer-brand{grid-column:auto}.footer-bottom{display:block}.footer-bottom span{display:block;margin-top:6px}
     }
     @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+    /* Dirección visual v2: editorial nocturna inspirada en restaurantes premium. */
+    :root{
+      --night:#0b090b;
+      --surface:#171217;
+      --surface-2:#211a21;
+      --paper:#f8f1f5;
+      --accent:#d9aedc;
+      --acid:#b8cd69;
+      --night-line:rgba(248,241,245,.13);
+    }
+    body{background:var(--night);color:var(--paper)}
+    h1,h2,h3{font-family:'Bebas Neue','Arial Narrow',sans-serif;letter-spacing:.015em}
+    .eyebrow{color:var(--accent)}.eyebrow:before{background:var(--acid)}
+    .topbar{position:relative;z-index:42;background:var(--acid);color:var(--night);font-weight:900;letter-spacing:.12em}
+    .nav{background:rgba(11,9,11,.74);border-color:var(--night-line);color:var(--paper)}
+    .nav.scrolled{background:rgba(11,9,11,.94);border-color:var(--night-line);box-shadow:0 16px 45px rgba(0,0,0,.3)}
+    .brand{color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.brand img{box-shadow:0 0 0 3px rgba(217,174,220,.2)}
+    .nav-links{color:rgba(248,241,245,.74);text-transform:uppercase;letter-spacing:.08em;font-size:.73rem}.nav-links a:hover{color:var(--acid)}
+    .icon-btn{background:var(--surface-2);border-color:var(--night-line);color:var(--paper)}.cart-count{background:var(--acid);color:var(--night)}
+    .btn{border-radius:18px;text-transform:uppercase;letter-spacing:.07em}
+    .btn-primary{background:var(--accent);color:var(--night);box-shadow:0 12px 35px rgba(217,174,220,.2)}.btn-primary:hover{background:#ebcbed;color:var(--night)}
+    .btn-light{background:transparent;color:var(--paper);border-color:rgba(248,241,245,.28)}.btn-light:hover{background:var(--surface-2);color:var(--paper)}
+    .btn-green{background:var(--acid);color:var(--night)}
+
+    .hero{min-height:calc(100svh - 34px);padding:80px 0;overflow:hidden;background:#070607}
+    .hero:before{inset:0;width:auto;height:auto;border-radius:0;background:linear-gradient(180deg,rgba(7,6,7,.22),rgba(7,6,7,.38) 45%,rgba(7,6,7,.94));z-index:0}
+    .hero:after{content:'';inset:0;left:0;bottom:0;font-size:0;background:radial-gradient(circle at center,transparent 20%,rgba(7,6,7,.64) 100%);z-index:0}
+    .hero-grid{display:flex;justify-content:center;text-align:center;min-height:calc(100svh - 194px)}
+    .hero-copy{z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;max-width:920px}
+    .hero .eyebrow{color:var(--acid)}
+    .hero h1{font-size:clamp(5rem,11vw,10.5rem);line-height:.78;letter-spacing:.005em;text-transform:uppercase;max-width:1000px;margin:22px 0 30px;text-shadow:0 10px 45px rgba(0,0,0,.5)}
+    .hero h1 em{display:block;color:var(--accent);font-family:'Playfair Display',serif;font-size:.58em;line-height:1.05;text-transform:none;letter-spacing:-.04em}
+    .hero-lead{color:rgba(248,241,245,.76);max-width:630px}
+    .hero-visual{position:absolute;inset:0;padding:0;z-index:0;max-width:none;margin:0}
+    .hero-frame{height:100%;aspect-ratio:auto;border-radius:0;transform:none;box-shadow:none;background:#070607}
+    .hero-frame img{width:100%;height:100%;object-fit:cover;filter:brightness(.54) saturate(.82);transform:scale(1.04)}
+    .hero-card{right:5vw;top:18%;z-index:5;background:rgba(23,18,23,.84);color:var(--paper);border:1px solid var(--night-line);backdrop-filter:blur(15px)}.hero-card b{color:var(--accent)}
+    .hero-stamp{left:6vw;bottom:11%;z-index:5;background:var(--acid);color:var(--night);border-color:var(--night);box-shadow:0 16px 45px rgba(0,0,0,.35)}
+    .trust-row{color:rgba(248,241,245,.62)}.avatars span{background:var(--surface-2);border-color:var(--night)}
+
+    .pillars{padding:0;background:var(--night)}.pillars-grid{border-radius:0;border-left:0;border-right:0;border-color:var(--night-line);background:transparent}.pillar{border-color:var(--night-line);padding:30px}.pillar-icon{background:var(--surface-2)}.pillar small{color:rgba(248,241,245,.5)}
+    section{padding:130px 0}
+    .menu-section{background:var(--night)}
+    .section-head{align-items:end}.section-head h2{font-size:clamp(4.4rem,9vw,8.7rem);line-height:.8;text-transform:uppercase;max-width:790px}.section-head p{color:rgba(248,241,245,.56)}
+    .filters{gap:10px}.filter{background:transparent;border-color:var(--night-line);color:rgba(248,241,245,.55);text-transform:uppercase;letter-spacing:.08em}.filter:hover,.filter.active{background:var(--acid);color:var(--night);border-color:var(--acid)}
+    .products{gap:18px}.product{background:var(--surface);border-color:var(--night-line);border-radius:20px}.product:hover{box-shadow:0 25px 70px rgba(0,0,0,.35);border-color:rgba(217,174,220,.38)}
+    .product:nth-child(-n+3):after{position:absolute;top:8px;right:14px;font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:4.8rem;line-height:1;color:rgba(255,255,255,.82);text-shadow:0 4px 24px rgba(0,0,0,.6);z-index:3}
+    .product:nth-child(1):after{content:'01'}.product:nth-child(2):after{content:'02'}.product:nth-child(3):after{content:'03'}
+    .product-media{background:var(--surface-2);aspect-ratio:.93}.product-tag{background:var(--acid);color:var(--night);backdrop-filter:none;text-transform:uppercase;letter-spacing:.08em}
+    .product h3{font-size:2rem;letter-spacing:.02em}.product p{color:rgba(248,241,245,.52)}.price{color:var(--accent)}.diet{color:var(--acid)}.add{background:var(--accent);color:var(--night);border-radius:14px}.add:hover{background:var(--acid)}
+    .demo-note{color:rgba(248,241,245,.38)}
+
+    .signature{position:relative;background:var(--surface);overflow:hidden;padding:0}.signature-grid{display:grid;grid-template-columns:1.1fr .9fr;min-height:760px}.signature-media{position:relative;overflow:hidden}.signature-media:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 55%,var(--surface))}.signature-media img{width:100%;height:100%;object-fit:cover}.signature-copy{padding:90px 7vw 90px 40px;display:flex;flex-direction:column;justify-content:center;position:relative;z-index:2}.signature-kicker{color:var(--acid);font-size:.74rem;letter-spacing:.17em;text-transform:uppercase;font-weight:900}.signature h2{font-size:clamp(5rem,9vw,9rem);line-height:.78;text-transform:uppercase;margin:18px 0 26px}.signature-copy p{color:rgba(248,241,245,.62);font-size:1rem;max-width:520px}.signature-facts{display:flex;gap:10px;flex-wrap:wrap;margin:24px 0 32px}.signature-facts span{border:1px solid var(--night-line);border-radius:999px;padding:8px 12px;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}.signature-copy .btn{align-self:flex-start}
+
+    .story{background:var(--night)}.story-main,.story-small{border-radius:18px}.story-small{border-color:var(--night)}.story-copy>p{color:rgba(248,241,245,.58)}.check span{background:var(--surface-2);color:var(--acid)}
+    .location{background:var(--night)}.location-card{background:var(--surface);border:1px solid var(--night-line);border-radius:20px}.location-copy .eyebrow{color:var(--accent)}.location-copy p,.hours span{color:rgba(248,241,245,.55)}.location-visual{background:radial-gradient(circle,var(--accent),#675269 45%,var(--surface) 72%)}.map-orbit,.map-orbit:before,.map-orbit:after{border-color:rgba(248,241,245,.18)}.pin{background:var(--accent)}
+    .testimonials{background:var(--surface)}.quote{background:var(--night);border-color:var(--night-line);border-radius:18px}.quote.featured{background:var(--accent);color:var(--night)}.person span{background:var(--surface-2);color:var(--accent)}
+    .final{background:var(--night)}.final h2{font-size:clamp(4.5rem,9vw,8rem);line-height:.8;text-transform:uppercase}.final p{color:rgba(248,241,245,.55)}
+    footer{background:#050405;border-top:1px solid var(--night-line)}
+    .drawer{background:var(--night);color:var(--paper)}.drawer-head,.drawer-foot{border-color:var(--night-line)}.drawer-foot{background:var(--surface)}.close{background:var(--surface-2);color:var(--accent)}.cart-item{border-color:var(--night-line)}.qty button,.back{background:var(--surface-2);color:var(--accent)}.field label{color:var(--paper)}.field input,.field select,.field textarea{background:var(--surface);border-color:var(--night-line);color:var(--paper)}
+
+    @media(max-width:960px){
+      .signature-grid{grid-template-columns:1fr;min-height:0}.signature-media{height:560px}.signature-media:after{background:linear-gradient(180deg,transparent 58%,var(--surface))}.signature-copy{padding:0 34px 80px;margin-top:-50px}.signature h2{font-size:6rem}.hero h1{font-size:clamp(5rem,15vw,8rem)}
+    }
+    @media(max-width:640px){
+      .topbar{font-size:.58rem}.nav{background:rgba(11,9,11,.83)}.hero{min-height:calc(100svh - 30px);padding:55px 0}.hero-grid{min-height:calc(100svh - 140px)}.hero h1{font-size:4.65rem;line-height:.8}.hero h1 em{font-size:.54em}.hero-lead{font-size:.92rem}.hero-card{right:12px;top:7%;transform:scale(.86);transform-origin:right top}.hero-stamp{left:10px;bottom:7%;width:92px;height:92px;border-width:5px;font-size:.7rem}.trust-row{font-size:.72rem}.pillars-grid{border-radius:0}.pillar{padding:18px 10px}section{padding:90px 0}.section-head h2{font-size:4.5rem}.product-media{aspect-ratio:1.05}.product h3{font-size:1.8rem}.signature-media{height:450px}.signature-copy{padding:0 22px 68px;margin-top:-35px}.signature h2{font-size:4.8rem}.signature-facts{margin-top:20px}.story{padding-top:100px}.location-copy{padding:46px 27px}.quote.featured{background:var(--accent);color:var(--night)}.final h2{font-size:4.4rem}
+    }
   </style>
 </head>
 <body>
@@ -191,7 +259,7 @@
   <nav class="nav" id="nav">
     <div class="container nav-inner">
       <a class="brand" href="#inicio" aria-label="Fontana, inicio"><img src="assets/logo.png" alt="Logo Fontana">fontana</a>
-      <div class="nav-links"><a href="#menu">Menú</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a><a href="#resenas">Reseñas</a></div>
+      <div class="nav-links"><a href="#menu">Menú</a><a href="#mas-pedida">Más pedida</a><a href="#resenas">Reseñas</a><a href="#ubicacion">Ubicación</a></div>
       <div class="nav-actions">
         <a class="btn btn-primary" href="#menu">Ver delicias</a>
         <button class="icon-btn" id="cartButton" aria-label="Abrir pedido"><span aria-hidden="true">🛍</span><span class="cart-count" id="cartCount">0</span></button>
@@ -227,7 +295,7 @@
 
     <section class="menu-section" id="menu">
       <div class="container">
-        <div class="section-head"><div><span class="eyebrow">Favoritos Fontana</span><h2>Un gusto para cada antojo</h2><p>Recetas honestas, ingredientes nobles y texturas que no parecen “fit”.</p></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="cakes">Foncakes</button><button class="filter" data-filter="snacks">Snacks</button><button class="filter" data-filter="salado">Salado</button></div></div>
+        <div class="section-head"><div><span class="eyebrow">Los favoritos</span><h2>El top de Fontana</h2><p>Recetas honestas, ingredientes nobles y texturas que no parecen “fit”.</p></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="cakes">Foncakes</button><button class="filter" data-filter="snacks">Snacks</button><button class="filter" data-filter="salado">Salado</button></div></div>
         <div class="products" id="products">
           <article class="product" data-category="cakes" data-id="pistacho" data-name="Foncake Pistacho & Frambuesa" data-price="34" data-image="assets/pistachio.png"><div class="product-media"><img src="assets/pistachio.png" alt="Foncake de pistacho y frambuesa"><span class="product-tag">Favorito</span></div><div class="product-body"><div class="product-top"><h3>Pistacho & Frambuesa</h3><span class="price">$34</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Pistacho y Frambuesa">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="chocolate" data-name="Foncake Triple Chocolate" data-price="32" data-image="assets/chocolate.jpg"><div class="product-media"><img src="assets/chocolate.jpg" alt="Foncake triple chocolate"><span class="product-tag">Intenso</span></div><div class="product-body"><div class="product-top"><h3>Triple Chocolate</h3><span class="price">$32</span></div><p>Chocolate vegano 70% cacao, harina de almendra y monk fruit.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Triple Chocolate">+</button></div></div></article>
@@ -237,6 +305,19 @@
           <article class="product" data-category="salado" data-id="tortellone" data-name="Tortellone Fit" data-price="12" data-image="assets/pasta.png"><div class="product-media"><img src="assets/pasta.png" alt="Tortellone fit Fontana"><span class="product-tag">Salado</span></div><div class="product-body"><div class="product-top"><h3>Tortellone Fit</h3><span class="price">$12</span></div><p>De ricota de cabra y espinaca o de carne, alto en proteína.</p><div class="product-footer"><span class="diet">POR STOCK O ENCARGO</span><button class="add" aria-label="Agregar Tortellone">+</button></div></div></article>
         </div>
         <p class="demo-note">Precios ilustrativos para el mockup. El catálogo final se conecta al menú y WhatsApp reales del negocio.</p>
+      </div>
+    </section>
+
+    <section class="signature" id="mas-pedida">
+      <div class="signature-grid">
+        <div class="signature-media"><img src="assets/pistachio.png" alt="Foncake de pistacho y frambuesa Fontana"></div>
+        <div class="signature-copy">
+          <span class="signature-kicker">La protagonista</span>
+          <h2>Pistacho &amp; Frambuesa</h2>
+          <p>Harina de almendra, frambuesa, pistacho y glaseado vegano. Una combinación intensa, fresca y completamente Fontana.</p>
+          <div class="signature-facts"><span>Sin gluten</span><span>Sin azúcar refinada</span><span>Sin lactosa</span></div>
+          <button class="btn btn-primary" id="signatureAdd" type="button">Añadir al pedido</button>
+        </div>
       </div>
     </section>
 
