@@ -14,16 +14,16 @@ await cp("_headers", `${outputDirectory}/_headers`);
 
 const configContents = await readFile("config.js", "utf8");
 const appContents = await readFile("app.js", "utf8");
-const configFilename = `store-config-${fingerprint(configContents)}.js`;
-const appFilename = `store-app-${fingerprint(appContents)}.js`;
+const configVersion = fingerprint(configContents);
+const appVersion = fingerprint(appContents);
+
+function inlineScript(contents) {
+  return contents.replace(/<\/script/gi, "<\\/script");
+}
 
 let html = await readFile("index.html", "utf8");
 html = html
-  .replace('src="config.js"', `src="${configFilename}"`)
-  .replace('src="app.js"', `src="${appFilename}"`);
+  .replace('<script src="config.js"></script>', `<script data-store-config="${configVersion}">\n${inlineScript(configContents)}\n</script>`)
+  .replace('<script src="app.js"></script>', `<script data-store-app="${appVersion}">\n${inlineScript(appContents)}\n</script>`);
 
-await Promise.all([
-  writeFile(`${outputDirectory}/index.html`, html),
-  writeFile(`${outputDirectory}/${configFilename}`, configContents),
-  writeFile(`${outputDirectory}/${appFilename}`, appContents)
-]);
+await writeFile(`${outputDirectory}/index.html`, html);

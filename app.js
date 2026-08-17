@@ -320,6 +320,24 @@
   $$('input[name="hasAllergies"]').forEach(input => input.addEventListener("change", toggleAllergyDetails));
   $("#menuButton").addEventListener("click", () => { window.location.hash = "menu"; });
   document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
+
+  const deployedConfigVersion = document.querySelector("script[data-store-config]")?.dataset.storeConfig;
+  async function refreshIfStoreChanged() {
+    if (!deployedConfigVersion || document.body.classList.contains("locked")) return;
+    try {
+      const response = await fetch(`/?store-version=${Date.now()}`, { cache: "no-store" });
+      const latestHtml = await response.text();
+      const latestVersion = latestHtml.match(/data-store-config="([a-f0-9]{12})"/)?.[1];
+      if (latestVersion && latestVersion !== deployedConfigVersion) window.location.reload();
+    } catch {
+      // La tienda sigue funcionando con la versión cargada si falla esta comprobación.
+    }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshIfStoreChanged();
+  });
+  window.setInterval(refreshIfStoreChanged, 5 * 60 * 1000);
+
   enhanceProductSafety();
   populateOptions();
   toggleAddress();

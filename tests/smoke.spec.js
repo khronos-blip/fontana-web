@@ -1,15 +1,14 @@
 const { test, expect } = require("@playwright/test");
-const { readFile, access } = require("node:fs/promises");
+const { readFile } = require("node:fs/promises");
 
-test("el build versiona la configuración para evitar datos obsoletos", async () => {
+test("el build integra la configuración para evitar datos obsoletos", async () => {
   const html = await readFile("dist/index.html", "utf8");
-  const configAsset = html.match(/src="(store-config-[a-f0-9]{12}\.js)"/)?.[1];
-  const appAsset = html.match(/src="(store-app-[a-f0-9]{12}\.js)"/)?.[1];
 
-  expect(configAsset).toBeTruthy();
-  expect(appAsset).toBeTruthy();
-  await access(`dist/${configAsset}`);
-  await access(`dist/${appAsset}`);
+  expect(html).toMatch(/data-store-config="[a-f0-9]{12}"/);
+  expect(html).toMatch(/data-store-app="[a-f0-9]{12}"/);
+  expect(html).toContain('"Binance"');
+  expect(html).not.toContain("Transferencia bancaria");
+  expect(html).not.toContain('src="config.js"');
   await expect(readFile("dist/_headers", "utf8")).resolves.toContain("max-age=0");
 });
 
@@ -38,6 +37,7 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page, context 
   await expect(page.locator("#scheduleNotice")).toContainText("anticipación");
   await expect(page.locator("#requestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
   await page.locator('#checkoutForm button[type="submit"]').click();
+  await expect(page.locator("#toast")).toContainText("copiado");
 
   const message = await page.evaluate(() => navigator.clipboard.readText());
   expect(message).toContain("Pedido FNT-");
@@ -120,6 +120,7 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
   await page.locator("#allergyNote-pistacho").fill("No agregar pistacho; confirmar si la receta puede adaptarse");
   await page.locator("#crossContamination").check();
   await page.locator('#checkoutForm button[type="submit"]').click();
+  await expect(page.locator("#toast")).toContainText("copiado");
   const message = await page.evaluate(() => navigator.clipboard.readText());
   expect(message).toContain("Frutos secos");
   expect(message).toContain("Foncake Pistacho & Frambuesa: No agregar pistacho");
