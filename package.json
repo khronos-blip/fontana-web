@@ -2,8 +2,8 @@
   "name": "fontana-web",
   "private": true,
   "scripts": {
-    "build": "mkdir -p dist && cp index.html app.js config.js dist/ && cp -R assets dist/assets",
-    "test": "playwright test"
+    "build": "node build.mjs",
+    "test": "npm run build && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0"
