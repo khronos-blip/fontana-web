@@ -16,6 +16,9 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page, context 
   await page.locator("#customerAddress").fill("Mañongo, edificio Fontana");
   await page.locator("#requestedDate").fill("2026-08-20");
   await page.locator("#requestedTime").fill("Después de las 4 pm");
+  const paymentOptions = await page.locator("#paymentMethod option").allTextContents();
+  expect(paymentOptions).toContain("Binance");
+  expect(paymentOptions).not.toContain("Transferencia bancaria");
   await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
   await page.locator('input[name="hasAllergies"][value="no"]').check();
   await page.locator("#customerNotes").fill("Entregar después de las 4 pm");

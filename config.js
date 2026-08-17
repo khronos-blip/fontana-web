@@ -18,7 +18,7 @@ window.FONTANA_CONFIG = {
   paymentMethods: [
     "Pago Móvil",
     "Zelle",
-    "Transferencia bancaria",
+    "Binance",
     "Efectivo al retirar"
   ]
 };
