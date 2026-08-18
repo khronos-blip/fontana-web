@@ -79,6 +79,8 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator('[data-id="naranja"] .price')).toHaveText("$47");
   await expect(page.locator('[data-id="zanahoria"] .price')).toHaveText("$47");
   await expect(page.locator('[data-id="pistacho-clasico"] .price')).toHaveText("$55");
+  await expect(page.locator('[data-id="zanahoria"] img')).toHaveAttribute("src", "assets/zanahoria-fontana-v2.jpg");
+  await expect(page.locator('[data-id="pistacho-clasico"] img')).toHaveAttribute("src", "assets/pistacho-fontana-v2.jpg");
   await expect(page.locator('[data-id="bombones"] .price')).toHaveText("$15");
   await expect(page.locator('[data-id="tortellone"] .price')).toHaveText("$20");
   await expect(page.locator("#menu .demo-note")).not.toContainText("ilustrativos");
