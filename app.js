@@ -54,7 +54,9 @@
       const summary = document.createElement("summary");
       summary.textContent = "Ingredientes y alergias";
       const note = document.createElement("div");
-      note.textContent = "Revisa los ingredientes declarados arriba. Si tienes una alergia o intolerancia, indícala por producto al finalizar; Fontana debe confirmar ingredientes y preparación antes de aceptar el pedido.";
+      const confirmedSafety = product.dataset.safety ? `Características confirmadas: ${product.dataset.safety}. ` : "";
+      const leadTime = config.leadTimesByProduct?.[product.dataset.id]?.label;
+      note.textContent = `${confirmedSafety}${leadTime ? `Preparación: ${leadTime}. ` : ""}Si tienes una alergia o intolerancia, indícala por producto al finalizar; Fontana debe confirmar ingredientes y preparación antes de aceptar el pedido.`;
       details.append(summary, note);
       body.insertBefore(details, footer);
     });
@@ -181,24 +183,35 @@
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
   }
 
+  function addBusinessDays(date, days) {
+    const result = new Date(date);
+    let added = 0;
+    while (added < days) {
+      result.setDate(result.getDate() + 1);
+      if (![0, 6].includes(result.getDay())) added += 1;
+    }
+    return result;
+  }
+
   function setupRequestedDate() {
-    const configured = cart
-      .map(item => Number(config.leadDaysByProduct?.[item.id]))
-      .filter(days => Number.isFinite(days) && days >= 0);
-    const minimumLeadDays = configured.length ? Math.max(...configured) : 0;
-    const minimumDate = new Date();
-    minimumDate.setHours(0, 0, 0, 0);
-    minimumDate.setDate(minimumDate.getDate() + minimumLeadDays);
+    const leadTimes = cart
+      .map(item => config.leadTimesByProduct?.[item.id])
+      .filter(Boolean);
+    const minimumBusinessDays = leadTimes.length
+      ? Math.max(...leadTimes.map(item => Number(item.minimumBusinessDays) || 0))
+      : 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const minimumDate = addBusinessDays(today, minimumBusinessDays);
     const input = $("#requestedDate");
     input.min = localDateValue(minimumDate);
     if (input.value && input.value < input.min) input.value = "";
 
-    if (!configured.length) {
+    const labels = [...new Set(leadTimes.map(item => item.label).filter(Boolean))];
+    if (!labels.length) {
       $("#scheduleNotice").textContent = "Selecciona una fecha deseada. La anticipación de cada producto se confirmará por WhatsApp.";
-    } else if (configured.length < cart.length) {
-      $("#scheduleNotice").textContent = `El calendario aplica al menos ${minimumLeadDays} día(s) de anticipación donde ya está configurado; los demás productos quedan sujetos a confirmación.`;
     } else {
-      $("#scheduleNotice").textContent = `Este pedido requiere al menos ${minimumLeadDays} día(s) de anticipación. La fecha final se confirma por WhatsApp.`;
+      $("#scheduleNotice").textContent = `${labels.join(" · ")}. La fecha y disponibilidad finales se confirman por WhatsApp.`;
     }
   }
 

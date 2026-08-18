@@ -25,15 +25,11 @@ Prompt recomendado:
 
 Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a GitHub. El Mac mini no forma parte del hosting ni es necesario para que la web permanezca online.
 
-## Configuración antes del lanzamiento
+## Configuración operativa
 
-Editar `config.js`:
+El WhatsApp comercial, las modalidades, el horario, la cobertura de delivery, las formas de pago y los tiempos generales de preparación están configurados en `config.js`. Los pedidos reales están activos y continúan sujetos a confirmación de Fontana.
 
-1. Añadir el teléfono real en `whatsappNumber` usando solo dígitos y código de país.
-2. Cambiar `previewMode` a `false`.
-3. Confirmar modalidades y formas de pago.
-
-También deben confirmarse catálogo, precios, reseñas, horarios, zonas de delivery, dirección y textos legales. El sitio conserva `noindex` hasta esa aprobación.
+Todavía deben confirmarse el catálogo final, los precios, las reseñas, los detalles de inventario y los textos legales. El sitio conserva `noindex` hasta esa aprobación final.
 
 ## Despliegue
 

@@ -2,6 +2,14 @@ const { test, expect } = require("@playwright/test");
 const { readFile } = require("node:fs/promises");
 const { Script } = require("node:vm");
 
+async function submitToWhatsApp(page) {
+  await page.route("https://wa.me/**", route => route.abort());
+  const requestPromise = page.waitForRequest(request => request.url().startsWith("https://wa.me/584244350800?text="));
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  const request = await requestPromise;
+  return new URL(request.url()).searchParams.get("text");
+}
+
 test("el build integra la configuración para evitar datos obsoletos", async () => {
   const html = await readFile("dist/index.html", "utf8");
 
@@ -16,8 +24,7 @@ test("el build integra la configuración para evitar datos obsoletos", async () 
   await expect(readFile("dist/_headers", "utf8")).resolves.toContain("max-age=0");
 });
 
-test("cliente prepara un pedido completo para WhatsApp", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   await page.goto("/");
 
   await page.locator('[data-id="pistacho"] .add').click();
@@ -38,17 +45,14 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page, context 
   await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
   await page.locator('input[name="hasAllergies"][value="no"]').check();
   await page.locator("#customerNotes").fill("Entregar después de las 4 pm");
-  await expect(page.locator("#scheduleNotice")).toContainText("anticipación");
+  await expect(page.locator("#scheduleNotice")).toContainText("Tortas: 1–2 días hábiles");
   await expect(page.locator("#requestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
-  await page.locator('#checkoutForm button[type="submit"]').click();
-  await expect(page.locator("#toast")).toContainText("copiado");
-
-  const message = await page.evaluate(() => navigator.clipboard.readText());
+  const message = await submitToWhatsApp(page);
   expect(message).toContain("Pedido FNT-");
   expect(message).toContain("1× Foncake Pistacho & Frambuesa");
   expect(message).toContain("Andrea Pérez");
   expect(message).toContain("Pago Móvil");
-  expect(message).toContain("Fecha deseada para Delivery en Valencia");
+  expect(message).toContain("Fecha deseada para Delivery en todo Carabobo (costo adicional)");
   expect(message).toContain("Enviaré el comprobante");
 });
 
@@ -58,13 +62,17 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator(".hero-copy .hero-lead")).toHaveCount(0);
   await expect(page.locator("#cartButton .bag-icon")).toBeVisible();
   await expect(page.locator(".product-safety")).toHaveCount(6);
-  await expect(page.locator(".product-safety").first()).toContainText("Ingredientes y alergias");
+  await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("Sin gluten · Sin lactosa · Sin azúcar");
+  await expect(page.locator('[data-id="trufa"] .product-safety')).toContainText("Sin huevo");
   const productNumbers = await page.locator(".product").evaluateAll(products => products.slice(0, 3).map(product => getComputedStyle(product, "::after").content));
   expect(productNumbers.every(content => content === "none" || content === "normal")).toBe(true);
-  expect(await page.evaluate(() => window.FONTANA_CONFIG.leadDaysByProduct)).toEqual({});
+  const runtimeConfig = await page.evaluate(() => window.FONTANA_CONFIG);
+  expect(runtimeConfig.whatsappNumber).toBe("584244350800");
+  expect(runtimeConfig.previewMode).toBe(false);
+  expect(runtimeConfig.leadTimesByProduct.pistacho.minimumBusinessDays).toBe(1);
 });
 
-test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }) => {
+test("el menú permanece visible y la ubicación conserva Mañongo", async ({ page }) => {
   await page.goto("/");
 
   const nav = page.locator("#nav");
@@ -80,7 +88,11 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await expect(nav.getByText("Más pedida")).toHaveCount(0);
   await expect(page.locator("#mas-pedida")).toHaveCount(0);
   await expect(page.locator("#ubicacion h2")).toHaveText("Mañongo.");
+  await expect(page.locator("#ubicacion")).toContainText("delivery en todo Carabobo con costo adicional");
+  await expect(page.locator("#ubicacion")).toContainText("9:30 am — 6:00 pm");
   await expect(page.getByText("TerraNostra")).toHaveCount(0);
+  await expect(nav).toHaveCSS("background-color", "rgba(234, 213, 237, 0.96)");
+  await expect(page.locator("#menu")).toHaveCSS("background-image", /linear-gradient/);
 
   const heroClearsFixedNav = await page.evaluate(() => {
     const navBottom = document.querySelector("#nav").getBoundingClientRect().bottom;
@@ -108,8 +120,7 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await expect(nav).toHaveCSS("position", "fixed");
 });
 
-test("un pedido con alergias queda marcado para revisión", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+test("un pedido con alergias queda marcado para revisión", async ({ page }) => {
   await page.goto("/");
   await page.locator('[data-id="pistacho"] .add').click();
   await page.locator("#cartButton").click();
@@ -123,9 +134,7 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
   await expect(page.locator("#allergyNote-pistacho")).toBeVisible();
   await page.locator("#allergyNote-pistacho").fill("No agregar pistacho; confirmar si la receta puede adaptarse");
   await page.locator("#crossContamination").check();
-  await page.locator('#checkoutForm button[type="submit"]').click();
-  await expect(page.locator("#toast")).toContainText("copiado");
-  const message = await page.evaluate(() => navigator.clipboard.readText());
+  const message = await submitToWhatsApp(page);
   expect(message).toContain("Frutos secos");
   expect(message).toContain("Foncake Pistacho & Frambuesa: No agregar pistacho");
   expect(message).toContain("PENDIENTE DE REVISIÓN POR FONTANA");
