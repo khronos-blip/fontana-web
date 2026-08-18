@@ -63,7 +63,11 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator("#cartButton .bag-icon")).toBeVisible();
   await expect(page.locator(".product-safety")).toHaveCount(6);
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("Sin gluten · Sin lactosa · Sin azúcar");
+  await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("semillas de amapola");
+  await expect(page.locator('[data-id="chocolate"] .product-safety')).toContainText("chispas de chocolate vegano");
+  await expect(page.locator('[data-id="lemon"] .product-safety')).toContainText("chocolate blanco vegano");
   await expect(page.locator('[data-id="trufa"] .product-safety')).toContainText("Sin huevo");
+  await expect(page.locator('[data-id="trufa"] .product-safety')).toContainText("Bombones / trufas de autor");
   const productNumbers = await page.locator(".product").evaluateAll(products => products.slice(0, 3).map(product => getComputedStyle(product, "::after").content));
   expect(productNumbers.every(content => content === "none" || content === "normal")).toBe(true);
   const runtimeConfig = await page.evaluate(() => window.FONTANA_CONFIG);
@@ -132,6 +136,7 @@ test("un pedido con alergias queda marcado para revisión", async ({ page }) => 
   await page.locator('input[name="hasAllergies"][value="yes"]').check();
   await page.locator('input[name="allergens"][value="Frutos secos"]').check();
   await expect(page.locator("#allergyNote-pistacho")).toBeVisible();
+  await expect(page.locator("#allergyNote-pistacho").locator("xpath=following-sibling::small")).toContainText("semillas de amapola");
   await page.locator("#allergyNote-pistacho").fill("No agregar pistacho; confirmar si la receta puede adaptarse");
   await page.locator("#crossContamination").check();
   const message = await submitToWhatsApp(page);

@@ -42,7 +42,7 @@
   }
 
   function productIngredients(id) {
-    return $(`.product[data-id="${id}"] .product-body > p`)?.textContent.trim() || "Pendiente de confirmar con Fontana";
+    return $(`.product[data-id="${id}"]`)?.dataset.ingredients || "Ingredientes completos pendientes de confirmar con Fontana";
   }
 
   function enhanceProductSafety() {
@@ -54,9 +54,11 @@
       const summary = document.createElement("summary");
       summary.textContent = "Ingredientes y alergias";
       const note = document.createElement("div");
+      const ingredients = productIngredients(product.dataset.id);
+      const productType = product.dataset.productType ? `Categoría: ${product.dataset.productType}. ` : "";
       const confirmedSafety = product.dataset.safety ? `Características confirmadas: ${product.dataset.safety}. ` : "";
       const leadTime = config.leadTimesByProduct?.[product.dataset.id]?.label;
-      note.textContent = `${confirmedSafety}${leadTime ? `Preparación: ${leadTime}. ` : ""}Si tienes una alergia o intolerancia, indícala por producto al finalizar; Fontana debe confirmar ingredientes y preparación antes de aceptar el pedido.`;
+      note.textContent = `${productType}Ingredientes: ${ingredients}. ${confirmedSafety}${leadTime ? `Preparación: ${leadTime}. ` : ""}Si tienes una alergia o intolerancia, indícala por producto al finalizar; Fontana debe confirmar ingredientes y preparación antes de aceptar el pedido.`;
       details.append(summary, note);
       body.insertBefore(details, footer);
     });
