@@ -86,6 +86,7 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator('[data-id="pistacho-clasico"] .price')).toHaveText("$55");
   await expect(page.locator('[data-id="zanahoria"] img')).toHaveAttribute("src", "assets/zanahoria-fontana-v2.jpg");
   await expect(page.locator('[data-id="pistacho-clasico"] img')).toHaveAttribute("src", "assets/pistacho-fontana-v2.jpg");
+  await expect(page.locator('[data-id="pistacho"] img')).toHaveAttribute("src", "assets/pistachio-raspberry-fontana-v2.jpg");
   await expect(page.locator('[data-id="chocolate"] img')).toHaveAttribute("src", "assets/chocolate-fontana-v2.jpg");
   await expect(page.locator('[data-id="vainilla"] img')).toHaveAttribute("src", "assets/vanilla-chips-fontana-v2.jpg");
   await expect(page.locator('[data-id="fonkie"] img')).toHaveAttribute("src", "assets/fonkie-fontana-v2.jpg");

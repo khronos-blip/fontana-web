@@ -33,6 +33,7 @@ Los productos y precios que ya aparecen en el menú están confirmados. Todavía
 
 Productos confirmados pendientes de fotografía individual o confirmación final para publicarse:
 
+- Pastel individual de pistacho fotografiado: imagen de producto lista; falta confirmar el nombre comercial, precio, presentación e ingredientes antes de publicarlo.
 - Ballerine ($12, bajo encargo o stock): faltan fotografía, presentación e ingredientes completos.
 - Mini Cake ($20, bajo encargo): faltan fotografía, tamaño/sabores e ingredientes completos.
 - Crumbl de Blueberry (precio sujeto a disponibilidad): harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, blueberry, alulosa y glaseado vegano; fotografía lista, falta confirmar el precio visible.
