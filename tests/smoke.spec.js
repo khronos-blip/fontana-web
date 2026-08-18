@@ -66,7 +66,7 @@ test("el catálogo usa el diseño solicitado y conserva el pedido", async ({ pag
   await expect(page.locator(".hero-logo")).toBeVisible();
   await expect(page.locator(".hero-copy .hero-lead")).toHaveCount(0);
   await expect(page.locator("#cartButton .hamburger-icon")).toBeVisible();
-  await expect(page.locator(".product-safety")).toHaveCount(13);
+  await expect(page.locator(".product-safety")).toHaveCount(11);
   await expect(page.locator('[data-id="pistacho"] .product-safety summary')).toHaveText("Ingredientes");
   await expect(page.locator('[data-id="pistacho"] .product-safety summary')).not.toContainText("alergias");
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("semillas de amapola");
@@ -77,7 +77,8 @@ test("el catálogo usa el diseño solicitado y conserva el pedido", async ({ pag
   await expect(page.locator('[data-id="lemon"] .product-safety')).toContainText("chocolate blanco vegano");
   await expect(page.locator('[data-id="bombones"] .product-safety')).toContainText("Bombones de autor");
   await expect(page.locator('[data-id="bombones"] .product-safety')).not.toContainText("trufa");
-  await expect(page.locator('[data-id="fonkie"] .product-safety')).toContainText("Chips Ahoy Fit");
+  await expect(page.locator('[data-id="fonkie-box"]')).toContainText("Chips Ahoy Fit");
+  await expect(page.locator("#fonkieIngredients")).toContainText("crema de dátiles");
   await expect(page.locator('[data-id="pistacho"] .price')).toHaveText("$60");
   await expect(page.locator('[data-id="chocolate"] .price')).toHaveText("$47");
   await expect(page.locator('[data-id="vainilla"] .price')).toHaveText("$47");
@@ -90,12 +91,13 @@ test("el catálogo usa el diseño solicitado y conserva el pedido", async ({ pag
   await expect(page.locator('[data-id="pistacho"] img')).toHaveAttribute("src", "assets/pistachio-raspberry-fontana-v2.jpg");
   await expect(page.locator('[data-id="chocolate"] img')).toHaveAttribute("src", "assets/chocolate-fontana-v2.jpg");
   await expect(page.locator('[data-id="vainilla"] img')).toHaveAttribute("src", "assets/vanilla-chips-fontana-v2.jpg");
-  await expect(page.locator('[data-id="fonkie"] img')).toHaveAttribute("src", "assets/fonkie-fontana-v2.jpg");
+  await expect(page.locator('[data-id="fonkie-box"] img')).toHaveAttribute("src", "assets/fonkie-fontana-v2.jpg");
   await expect(page.locator('[data-id="lemon"] img')).toHaveAttribute("src", "assets/lemon-fontana-v2.jpg");
   await expect(page.locator('[data-id="bombones"] .price')).toHaveText("$15");
   await expect(page.locator('[data-id="bombones-12"] .price')).toHaveText("$30");
-  await expect(page.locator('[data-id="fonkie"] .price')).toHaveText("$15");
-  await expect(page.locator('[data-id="fonkie-mix"] .price')).toHaveText("$17");
+  await expect(page.locator('[data-id="fonkie"]')).toHaveCount(0);
+  await expect(page.locator('[data-id="fonkie-mix"]')).toHaveCount(0);
+  await expect(page.locator(".fonkie-flavor")).toHaveCount(8);
   await expect(page.locator('[data-id="pasta-ricotta"] .price')).toHaveText("$20");
   await expect(page.locator('[data-id="pasta-carne"] .price')).toHaveText("$20");
   await expect(page.locator('[data-id="pasta-ricotta"] .product-safety')).toContainText("harina de maíz");
@@ -121,25 +123,41 @@ test("el catálogo usa el diseño solicitado y conserva el pedido", async ({ pag
   expect(runtimeConfig.leadTimesByProduct["pistacho-clasico"].minimumBusinessDays).toBe(1);
 });
 
-test("los paquetes personalizados incluyen sabores en WhatsApp", async ({ page }) => {
+test("el configurador de Fonkies calcula precios e incluye sabores en WhatsApp", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-08-21T12:00:00"));
   await page.goto("/");
-  await page.locator('[data-id="fonkie-mix"] .add').click();
+  const chocoPlus = page.getByRole("button", { name: "Sumar Chips de Chocolate Oscuro" });
+  const chocoMinus = page.getByRole("button", { name: "Restar Chips de Chocolate Oscuro" });
+  const pistachoPlus = page.getByRole("button", { name: "Sumar Pistacho con Chocolate Blanco" });
+  for (let index = 0; index < 4; index += 1) await chocoPlus.click();
+  await expect(page.locator("#fonkieCount")).toHaveText("Has seleccionado 4 Fonkies");
+  await expect(page.locator("#fonkieTotal")).toContainText("15,00");
+  await expect(page.locator("#addFonkieBox")).toBeEnabled();
+
+  await chocoPlus.click();
+  await expect(page.locator("#fonkieTotal")).toContainText("18,50");
+  await chocoMinus.click();
+  await chocoMinus.click();
+  await pistachoPlus.click();
+  await expect(page.locator("#fonkieCount")).toHaveText("Has seleccionado 4 Fonkies");
+  await expect(page.locator("#fonkieTotal")).toContainText("17,00");
+  await pistachoPlus.click();
+  await expect(page.locator("#fonkieTotal")).toContainText("20,50");
+  await page.locator("#addFonkieBox").click();
   await page.locator("#cartButton").click();
-  await expect(page.locator("#cartTotal")).toContainText("17");
+  await expect(page.locator("#cartTotal")).toContainText("20,50");
+  await expect(page.locator(".cart-choices")).toContainText("3 Chips de Chocolate Oscuro, 2 Pistacho con Chocolate Blanco");
   await page.locator("#continueCheckout").click();
-  await expect(page.locator("#productChoicesGroup")).toBeVisible();
-  await expect(page.locator("#productChoices")).toHaveAttribute("required", "");
+  await expect(page.locator("#productChoicesGroup")).toBeHidden();
   await page.locator("#customerName").fill("Andrea Pérez");
   await page.locator("#customerPhone").fill("0412 000 0000");
   await page.locator("#requestedDate").fill("2026-08-21");
   await page.locator("#requestedTime").fill("4:00 pm - 6:00 pm");
-  await page.locator("#productChoices").fill("2 Pistacho, 1 Kinder Bueno y 1 Cinnamon Roll");
   await page.locator('input[name="hasAllergies"][value="no"]').check();
   const message = await submitToWhatsApp(page);
-  expect(message).toContain("1× Fonkies · Mix de 4");
-  expect(message).toContain("Sabores elegidos: 2 Pistacho, 1 Kinder Bueno y 1 Cinnamon Roll");
-  expect(message.replace(/\u00a0/g, " ")).toContain("USD 17,00");
+  expect(message).toContain("1× Caja de 5 Fonkies · Mixta");
+  expect(message).toContain("Sabores: 3 Chips de Chocolate Oscuro, 2 Pistacho con Chocolate Blanco");
+  expect(message.replace(/\u00a0/g, " ")).toContain("USD 20,50");
 });
 
 test("el menú permanece visible y la ubicación conserva Mañongo", async ({ page }) => {

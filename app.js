@@ -43,7 +43,7 @@
   }
 
   function productIngredients(id) {
-    return $(`.product[data-id="${id}"]`)?.dataset.ingredients || "Ingredientes completos pendientes de confirmar con Fontana";
+    return $(`[data-id="${id}"]`)?.dataset.ingredients || "Ingredientes completos pendientes de confirmar con Fontana";
   }
 
   function enhanceProductSafety() {
@@ -110,6 +110,84 @@
     say("Añadido a tu pedido 💜");
   }
 
+  function fonkiePrice(total, flavorCount) {
+    if (total < 4) return 0;
+    const base = flavorCount === 1 ? 15 : 17;
+    return base + Math.max(0, total - 4) * 3.5;
+  }
+
+  function setupFonkieBuilder() {
+    const builder = $(".fonkie-builder");
+    if (!builder) return;
+    const rows = $$(".fonkie-flavor", builder);
+    const addButton = $("#addFonkieBox");
+    $("#fonkieIngredients div").textContent = builder.dataset.ingredients;
+
+    function selectedFlavors() {
+      return rows.map(row => ({
+        name: row.dataset.flavor,
+        qty: Number($("output", row).value || $("output", row).textContent || 0)
+      })).filter(item => item.qty > 0);
+    }
+
+    function updateBuilder() {
+      const selected = selectedFlavors();
+      const total = selected.reduce((sum, item) => sum + item.qty, 0);
+      const price = fonkiePrice(total, selected.length);
+      $("#fonkieCount").textContent = `Has seleccionado ${total} ${total === 1 ? "Fonkie" : "Fonkies"}`;
+      $("#fonkieTotal").textContent = money(price);
+      addButton.disabled = total < 4;
+      if (total < 4) {
+        $("#fonkiePriceRule").textContent = "Selecciona al menos 4 para armar tu caja.";
+        $("#fonkieValidation").textContent = "Mínimo 4 galletas para armar tu caja.";
+      } else {
+        const type = selected.length === 1 ? "Caja de un solo sabor" : "Caja mixta";
+        const extras = total - 4;
+        $("#fonkiePriceRule").textContent = `${type}${extras ? ` + ${extras} extra${extras === 1 ? "" : "s"} a $3,50` : ""}.`;
+        $("#fonkieValidation").textContent = "Tu caja está lista para agregar al carrito.";
+      }
+    }
+
+    $$(".fonkie-stepper button", builder).forEach(button => button.addEventListener("click", () => {
+      const output = $("output", button.closest(".fonkie-flavor"));
+      const next = Math.max(0, Number(output.value || output.textContent || 0) + Number(button.dataset.delta));
+      output.value = String(next);
+      output.textContent = String(next);
+      updateBuilder();
+    }));
+
+    addButton.addEventListener("click", () => {
+      const selected = selectedFlavors();
+      const total = selected.reduce((sum, item) => sum + item.qty, 0);
+      if (total < 4) {
+        say("Mínimo 4 galletas para armar tu caja");
+        return;
+      }
+      const price = fonkiePrice(total, selected.length);
+      const choices = selected.map(item => `${item.qty} ${item.name}`).join(", ");
+      const id = `fonkie-box-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
+      const found = cart.find(item => item.id === id);
+      if (found) {
+        found.qty += 1;
+      } else {
+        cart.push({
+          id,
+          productId: "fonkie-box",
+          name: `Caja de ${total} Fonkies · ${selected.length === 1 ? "Un sabor" : "Mixta"}`,
+          price,
+          image: builder.dataset.image,
+          ingredients: productIngredients("fonkie-box"),
+          choices,
+          qty: 1
+        });
+      }
+      save();
+      say("Caja de Fonkies añadida a tu pedido 💜");
+    });
+
+    updateBuilder();
+  }
+
   window.changeQty = (id, delta) => {
     const item = cart.find(entry => entry.id === id);
     if (!item) return;
@@ -128,8 +206,9 @@
         <div class="cart-item">
           <img src="${item.image}" alt="">
           <div>
-            <h4>${item.name}</h4>
+            <h4>${escapeHtml(item.name)}</h4>
             <small>${money(item.price)}</small>
+            ${item.choices ? `<small class="cart-choices">${escapeHtml(item.choices)}</small>` : ""}
             <div class="qty">
               <button type="button" onclick="changeQty('${item.id}',-1)" aria-label="Restar">−</button>
               <b>${item.qty}</b>
@@ -207,7 +286,7 @@
 
   function setupRequestedDate() {
     const leadTimes = cart
-      .map(item => config.leadTimesByProduct?.[item.id])
+      .map(item => config.leadTimesByProduct?.[item.productId || item.id])
       .filter(Boolean);
     const minimumBusinessDays = leadTimes.length
       ? Math.max(...leadTimes.map(item => Number(item.minimumBusinessDays) || 0))
@@ -261,7 +340,7 @@
     const fulfillment = data.get("fulfillment") === "delivery"
       ? (config.deliveryLabel || "Delivery")
       : (config.pickupLabel || "Pickup");
-    const lines = cart.map(item => `• ${item.qty}× ${item.name} — ${money(item.price * item.qty)}`);
+    const lines = cart.map(item => `• ${item.qty}× ${item.name} — ${money(item.price * item.qty)}${item.choices ? `\n  Sabores: ${item.choices}` : ""}`);
     const orderId = createOrderId();
     const message = [
       `Hola ${config.businessName || "Fontana"} 💜 Quiero hacer este pedido:`,
@@ -319,7 +398,7 @@
   $$(".filter").forEach(button => button.addEventListener("click", () => {
     $$(".filter").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
-    $$(".product").forEach(product => {
+    $$(".product, .fonkie-builder").forEach(product => {
       const filter = button.dataset.filter;
       const category = product.dataset.category;
       const matches = filter === "all" || category === filter || (filter === "dulce" && ["cakes", "snacks"].includes(category));
@@ -365,6 +444,7 @@
   window.setInterval(refreshIfStoreChanged, 5 * 60 * 1000);
 
   enhanceProductSafety();
+  setupFonkieBuilder();
   populateOptions();
   toggleAddress();
   renderCart();
