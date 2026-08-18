@@ -29,7 +29,7 @@ Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a G
 
 El WhatsApp comercial, las modalidades, el horario, la cobertura de delivery, las formas de pago y los tiempos generales de preparación están configurados en `config.js`. Los pedidos reales están activos y continúan sujetos a confirmación de Fontana.
 
-Todavía deben confirmarse el catálogo final, los precios, las reseñas, los detalles de inventario y los textos legales. El sitio conserva `noindex` hasta esa aprobación final.
+Los productos y precios que ya aparecen en el menú están confirmados. Todavía faltan los datos de productos adicionales, reseñas verificadas, detalles de inventario y textos legales. El sitio conserva `noindex` hasta esa aprobación final.
 
 ## Despliegue
 

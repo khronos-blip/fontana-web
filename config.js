@@ -10,20 +10,20 @@ window.FONTANA_CONFIG = {
   currency: "USD",
   locale: "es-VE",
   previewMode: false,
-  pickupLabel: "Pickup en Mañongo",
-  deliveryLabel: "Delivery en todo Carabobo (costo adicional)",
+  pickupLabel: "Pickup en Mañongo (detalles por WhatsApp)",
+  deliveryLabel: "Delivery en todo Carabobo (costo confirmado por WhatsApp)",
   leadTimesByProduct: {
     pistacho: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
     chocolate: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
     lemon: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
-    fonkie: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales: 2–3 días hábiles" },
-    trufa: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales: 2–3 días hábiles" },
-    tortellone: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales: 2–3 días hábiles" }
+    fonkie: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
+    trufa: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
+    tortellone: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" }
   },
   paymentMethods: [
     "Pago Móvil",
     "Zelle",
     "Binance",
-    "Efectivo al retirar"
+    "Efectivo en dólares"
   ]
 };

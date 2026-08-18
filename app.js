@@ -190,7 +190,7 @@
     let added = 0;
     while (added < days) {
       result.setDate(result.getDate() + 1);
-      if (![0, 6].includes(result.getDay())) added += 1;
+      if (result.getDay() !== 0) added += 1;
     }
     return result;
   }
@@ -267,6 +267,7 @@
       `Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
       `Franja horaria solicitada: ${data.get("requestedTime")}`,
       `Forma de pago: ${data.get("payment")}`,
+      "Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
       `Alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
       hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : "",
       ...itemAllergyLines,

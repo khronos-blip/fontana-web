@@ -25,11 +25,12 @@ test("el build integra la configuración para evitar datos obsoletos", async () 
 });
 
 test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-08-21T12:00:00"));
   await page.goto("/");
 
   await page.locator('[data-id="pistacho"] .add').click();
   await page.locator("#cartButton").click();
-  await expect(page.locator("#cartTotal")).toContainText("34");
+  await expect(page.locator("#cartTotal")).toContainText("60");
   await page.locator("#continueCheckout").click();
 
   await page.locator("#customerName").fill("Andrea Pérez");
@@ -37,22 +38,25 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   await page.locator("#fulfillment").selectOption("delivery");
   await expect(page.locator("#addressGroup")).toBeVisible();
   await page.locator("#customerAddress").fill("Mañongo, edificio Fontana");
-  await page.locator("#requestedDate").fill("2026-08-20");
+  await page.locator("#requestedDate").fill("2026-08-24");
   await page.locator("#requestedTime").fill("Después de las 4 pm");
   const paymentOptions = await page.locator("#paymentMethod option").allTextContents();
   expect(paymentOptions).toContain("Binance");
+  expect(paymentOptions).toContain("Efectivo en dólares");
   expect(paymentOptions).not.toContain("Transferencia bancaria");
   await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
   await page.locator('input[name="hasAllergies"][value="no"]').check();
   await page.locator("#customerNotes").fill("Entregar después de las 4 pm");
   await expect(page.locator("#scheduleNotice")).toContainText("Tortas: 1–2 días hábiles");
-  await expect(page.locator("#requestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
+  await expect(page.locator("#requestedDate")).toHaveAttribute("min", "2026-08-22");
+  await expect(page.locator("#paymentNotice")).toContainText("100% del pago por adelantado");
   const message = await submitToWhatsApp(page);
   expect(message).toContain("Pedido FNT-");
   expect(message).toContain("1× Foncake Pistacho & Frambuesa");
   expect(message).toContain("Andrea Pérez");
   expect(message).toContain("Pago Móvil");
-  expect(message).toContain("Fecha deseada para Delivery en todo Carabobo (costo adicional)");
+  expect(message).toContain("Fecha deseada para Delivery en todo Carabobo (costo confirmado por WhatsApp)");
+  expect(message).toContain("Condición de pago: 100% por adelantado");
   expect(message).toContain("Enviaré el comprobante");
 });
 
@@ -68,6 +72,13 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator('[data-id="lemon"] .product-safety')).toContainText("chocolate blanco vegano");
   await expect(page.locator('[data-id="trufa"] .product-safety')).toContainText("Sin huevo");
   await expect(page.locator('[data-id="trufa"] .product-safety')).toContainText("Bombones / trufas de autor");
+  await expect(page.locator('[data-id="pistacho"] .price')).toHaveText("$60");
+  await expect(page.locator('[data-id="chocolate"] .price')).toHaveText("$47");
+  await expect(page.locator('[data-id="lemon"] .price')).toHaveText("$47");
+  await expect(page.locator('[data-id="trufa"] .price')).toHaveText("$3,75");
+  await expect(page.locator('[data-id="tortellone"] .price')).toHaveText("$20");
+  await expect(page.locator("#menu .demo-note")).not.toContainText("ilustrativos");
+  await expect(page.locator(".pillar").first()).toContainText("Cocina estrictamente libre de gluten");
   const productNumbers = await page.locator(".product").evaluateAll(products => products.slice(0, 3).map(product => getComputedStyle(product, "::after").content));
   expect(productNumbers.every(content => content === "none" || content === "normal")).toBe(true);
   const runtimeConfig = await page.evaluate(() => window.FONTANA_CONFIG);
@@ -92,7 +103,8 @@ test("el menú permanece visible y la ubicación conserva Mañongo", async ({ pa
   await expect(nav.getByText("Más pedida")).toHaveCount(0);
   await expect(page.locator("#mas-pedida")).toHaveCount(0);
   await expect(page.locator("#ubicacion h2")).toHaveText("Mañongo.");
-  await expect(page.locator("#ubicacion")).toContainText("delivery en todo Carabobo con costo adicional");
+  await expect(page.locator("#ubicacion")).toContainText("delivery en todo Carabobo");
+  await expect(page.locator("#ubicacion")).toContainText("se confirman por WhatsApp");
   await expect(page.locator("#ubicacion")).toContainText("9:30 am — 6:00 pm");
   await expect(page.getByText("TerraNostra")).toHaveCount(0);
   await expect(nav).toHaveCSS("background-color", "rgba(234, 213, 237, 0.96)");
@@ -125,13 +137,14 @@ test("el menú permanece visible y la ubicación conserva Mañongo", async ({ pa
 });
 
 test("un pedido con alergias queda marcado para revisión", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-08-21T12:00:00"));
   await page.goto("/");
   await page.locator('[data-id="pistacho"] .add').click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await page.locator("#customerName").fill("Andrea Pérez");
   await page.locator("#customerPhone").fill("0412 000 0000");
-  await page.locator("#requestedDate").fill("2026-08-20");
+  await page.locator("#requestedDate").fill("2026-08-24");
   await page.locator("#requestedTime").fill("4:00 pm - 6:00 pm");
   await page.locator('input[name="hasAllergies"][value="yes"]').check();
   await page.locator('input[name="allergens"][value="Frutos secos"]').check();
