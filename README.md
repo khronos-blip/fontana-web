@@ -31,6 +31,11 @@ El WhatsApp comercial, las modalidades, el horario, la cobertura de delivery, la
 
 Los productos y precios que ya aparecen en el menú están confirmados. Todavía faltan los datos de productos adicionales, reseñas verificadas, detalles de inventario y textos legales. El sitio conserva `noindex` hasta esa aprobación final.
 
+Productos confirmados pendientes de fotografía individual para publicarse:
+
+- Crumbl de Blueberry ($47, aproximadamente 1 kg): harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, blueberry, alulosa y glaseado vegano.
+- Tentación de Coco ($47, aproximadamente 1 kg): harina de almendra, monkfruit, aceite de coco, huevo, crema de coco, coco rallado y glaseado vegano sin azúcar.
+
 ## Despliegue
 
 Cloudflare Pages usa la rama `main`, el comando `npm run build` y el directorio de salida `dist`. El dominio de producción es `fontanasingluten.com`; no se debe usar Cloudflare Tunnel para esta web.

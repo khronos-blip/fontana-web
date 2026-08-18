@@ -68,6 +68,8 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator(".product-safety")).toHaveCount(9);
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("Sin gluten · Sin lactosa · Sin azúcar");
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("semillas de amapola");
+  await expect(page.locator('[data-id="naranja"] .product-safety')).toContainText("harina de yuca (10 %)");
+  await expect(page.locator('[data-id="naranja"] .product-safety')).toContainText("semillas de amapola");
   await expect(page.locator('[data-id="chocolate"] .product-safety')).toContainText("chispas de chocolate vegano");
   await expect(page.locator('[data-id="lemon"] .product-safety')).toContainText("chocolate blanco vegano");
   await expect(page.locator('[data-id="bombones"] .product-safety')).toContainText("Sin huevo");
