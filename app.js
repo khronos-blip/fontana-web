@@ -64,6 +64,26 @@
     });
   }
 
+  function renderDynamicCatalog() {
+    const products = Array.isArray(config.dynamicCatalog) ? config.dynamicCatalog : [];
+    const container = $("#products");
+    const emptyState = $("#emptyFilterState");
+    if (!container || !emptyState || !products.length) return;
+    const allowedCategories = new Set(["cakes", "snacks", "salado", "beverages"]);
+    const cards = products.map((product, index) => {
+      const category = allowedCategories.has(product.category) ? product.category : "snacks";
+      const id = `daily-${String(product.id || index + 1).replace(/[^a-z0-9_-]/gi, "-")}`;
+      const name = String(product.name || "Producto Fontana");
+      const price = Number(product.price);
+      if (!Number.isFinite(price) || price < 0 || !product.image) return "";
+      const description = String(product.description || "Disponibilidad sujeta a confirmación por WhatsApp.");
+      const ingredients = String(product.ingredients || "Ingredientes pendientes de confirmar con Fontana");
+      const badge = product.promo ? "PROMO DEL DÍA" : product.immediate ? "ENTREGA INMEDIATA" : category === "beverages" ? "BEBIDA" : "DISPONIBLE";
+      return `<article class="product" data-category="${category}" data-id="${escapeHtml(id)}" data-name="${escapeHtml(name)}" data-price="${price}" data-image="${escapeHtml(product.image)}" data-ingredients="${escapeHtml(ingredients)}" data-promo="${Boolean(product.promo)}" data-immediate="${Boolean(product.immediate)}"><div class="product-media"><img src="${escapeHtml(product.image)}" alt="${escapeHtml(name)}"><span class="product-tag">${badge}</span></div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${money(price)}</span></div><p>${escapeHtml(description)}</p><div class="product-footer"><span class="diet">${badge}</span><button class="add" aria-label="Agregar ${escapeHtml(name)}">+</button></div></div></article>`;
+    }).filter(Boolean).join("");
+    emptyState.insertAdjacentHTML("beforebegin", cards);
+  }
+
   function say(message) {
     toast.textContent = message;
     toast.classList.add("show");
@@ -394,16 +414,39 @@
     window.location.href = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
   }
 
+  function filterProducts(filter) {
+    const catalogItems = $$(".product, .fonkie-builder");
+    catalogItems.forEach(product => {
+      const category = product.dataset.category;
+      const matches = filter === "all"
+        || (filter === "dulce" && ["cakes", "snacks"].includes(category))
+        || (filter === "salado" && category === "salado")
+        || (filter === "beverages" && category === "beverages")
+        || (filter === "promo" && product.dataset.promo === "true")
+        || (filter === "immediate" && product.dataset.immediate === "true");
+      product.classList.toggle("hidden", !matches);
+    });
+    const visibleCount = catalogItems.filter(product => !product.classList.contains("hidden")).length;
+    const emptyState = $("#emptyFilterState");
+    const emptyCopy = {
+      promo: ["Promo del día", "Las promociones activas aparecerán aquí cuando Fontana las publique."],
+      beverages: ["Bebidas", "Las bebidas confirmadas aparecerán aquí cuando se incorporen al menú."],
+      immediate: ["Entrega inmediata", "Los productos disponibles para entrega inmediata aparecerán aquí cada día."]
+    };
+    emptyState.hidden = visibleCount > 0;
+    if (!visibleCount && emptyCopy[filter]) {
+      $("#emptyFilterTitle").textContent = emptyCopy[filter][0];
+      $("#emptyFilterMessage").textContent = emptyCopy[filter][1];
+    }
+  }
+
+  renderDynamicCatalog();
   $$(".add").forEach(button => button.addEventListener("click", () => addProduct(button.closest(".product"))));
   $$(".filter").forEach(button => button.addEventListener("click", () => {
     $$(".filter").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
-    $$(".product, .fonkie-builder").forEach(product => {
-      const filter = button.dataset.filter;
-      const category = product.dataset.category;
-      const matches = filter === "all" || category === filter || (filter === "dulce" && ["cakes", "snacks"].includes(category));
-      product.classList.toggle("hidden", !matches);
-    });
+    button.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    filterProducts(button.dataset.filter);
   }));
 
   function toggleAllergyDetails() {

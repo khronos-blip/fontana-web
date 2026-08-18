@@ -99,6 +99,7 @@
     .filters{display:flex;gap:8px;flex-wrap:wrap}
     .filter{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:999px;padding:9px 15px;font-size:.76rem;font-weight:800}
     .filter:hover,.filter.active{background:var(--plum);color:#fff;border-color:var(--plum)}
+    .filter.dynamic-filter{border-color:rgba(120,147,62,.48)}
     .menu-section{background:#fff}
     .products{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
     .product{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--cream);transition:.25s ease;position:relative}
@@ -124,6 +125,11 @@
     .add{border:0;background:var(--plum);color:#fff;width:42px;height:42px;border-radius:50%;font-size:1.35rem;display:grid;place-items:center}
     .add:hover{background:var(--plum-dark);transform:rotate(90deg)}
     .demo-note{font-size:.72rem;color:var(--muted);text-align:center;margin:24px 0 0}
+    .empty-filter-state{grid-column:1/-1;min-height:300px;padding:54px 28px;border:1px dashed rgba(217,174,220,.36);border-radius:22px;display:grid;place-items:center;text-align:center;background:rgba(234,213,237,.08)}
+    .empty-filter-state[hidden]{display:none}
+    .empty-filter-state>div{max-width:540px}.empty-filter-state span{color:var(--acid);font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+    .empty-filter-state h3{margin:12px 0 10px;color:var(--cream);font-size:clamp(2rem,5vw,3.4rem)}
+    .empty-filter-state p{margin:0;color:rgba(248,241,245,.58);font-size:.86rem}
 
     .fonkie-builder{grid-column:1/-1;padding:0;background:var(--lilac);border:1px solid rgba(110,35,111,.18);border-radius:22px;overflow:hidden;color:var(--plum-dark)}
     .fonkie-builder.hidden{display:none}
@@ -309,6 +315,8 @@
     .hero-scroll{position:absolute;left:50%;bottom:18px;z-index:5;transform:translateX(-50%);width:34px;height:34px;border:1px solid rgba(255,250,242,.42);border-radius:50%;display:grid;place-items:center;color:var(--cream);font-size:1rem}
     .hero-scroll:hover{border-color:var(--green);color:var(--green)}
     .menu-section{padding-top:82px}
+    .menu-section .section-head{display:block}
+    .menu-section .filters{margin-top:30px}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
 
     .allergy-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
@@ -374,6 +382,9 @@
       .diet{font-size:.58rem}
       .add{width:36px;height:36px;border-radius:11px;font-size:1.15rem}
       .story{padding:78px 0}
+      .filters{display:flex;flex-wrap:nowrap;overflow-x:auto;margin-right:-13px;padding:0 13px 8px 0;scrollbar-width:none;scroll-snap-type:x proximity}
+      .filters::-webkit-scrollbar{display:none}.filter{flex:0 0 auto;scroll-snap-align:start}
+      .empty-filter-state{min-height:240px;padding:38px 18px}
       .fonkie-builder-grid{grid-template-columns:1fr}
       .fonkie-gallery{padding:13px}
       .fonkie-gallery-card{aspect-ratio:1.35}
@@ -414,7 +425,7 @@
 
     <section class="menu-section" id="menu">
       <div class="container">
-        <div class="section-head"><div><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="dulce">Dulce</button><button class="filter" data-filter="salado">Salado</button></div></div>
+        <div class="section-head"><div><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="dulce">Dulce</button><button class="filter" data-filter="salado">Salado</button><button class="filter dynamic-filter" data-filter="promo">Promo del día</button><button class="filter dynamic-filter" data-filter="beverages">Bebidas</button><button class="filter dynamic-filter" data-filter="immediate">Entrega inmediata</button></div></div>
         <div class="products" id="products">
           <article class="product" data-category="cakes" data-id="pistacho" data-name="Torta de Pistacho y Frambuesa" data-price="60" data-image="assets/pistachio-raspberry-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho, frambuesa, semillas de amapola, alulosa y chocolate blanco vegano sin azúcar"><div class="product-media"><img src="assets/pistachio-raspberry-fontana-v2.jpg" alt="Torta de pistacho y frambuesa"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho &amp; Frambuesa</h3><span class="price">$60</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho y Frambuesa">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="naranja" data-name="Torta de Manjar de Naranja" data-price="47" data-image="assets/manjar-naranja.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de yuca (10 %), monkfruit, aceite de coco, huevo, naranja, semillas de amapola y alulosa"><div class="product-media"><img src="assets/manjar-naranja.jpg" alt="Torta de manjar de naranja"></div><div class="product-body"><div class="product-top"><h3>Torta de Manjar de Naranja</h3><span class="price">$47</span></div><p>Naranja, harina de almendra, semillas de amapola y alulosa.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Manjar de Naranja">+</button></div></div></article>
@@ -447,6 +458,7 @@
           <article class="product" data-category="cakes" data-id="lemon" data-name="Torta de Limón" data-price="47" data-image="assets/lemon-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, limón y chocolate blanco vegano"><div class="product-media"><img src="assets/lemon-fontana-v2.jpg" alt="Torta de limón"></div><div class="product-body"><div class="product-top"><h3>Torta de Limón</h3><span class="price">$47</span></div><p>Limón, harina de almendra, monk fruit y glaseado vegano blanco.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Limón">+</button></div></div></article>
           <article class="product" data-category="salado" data-id="pasta-ricotta" data-name="Raviolis/Tortelloni de Ricotta y Espinaca" data-price="20" data-image="assets/pasta.png" data-product-type="Pasta congelada · un sabor por empaque" data-safety="Sin gluten · Alérgeno confirmado: huevo" data-ingredients="Masa: harina de arroz, harina de yuca, harina de maíz, aceite de oliva, huevo y sal. Relleno: ricotta de cabra, espinaca y aceite de oliva"><div class="product-media"><img src="assets/pasta.png" alt="Raviolis y tortelloni de ricotta de cabra y espinaca"><span class="product-tag">Congelado</span></div><div class="product-body"><div class="product-top"><h3>Ricotta &amp; Espinaca</h3><span class="price">$20</span></div><p>Raviolis o tortelloni con ricotta de cabra y espinaca.</p><div class="product-footer"><span class="diet">300 G · 1 SABOR</span><button class="add" aria-label="Agregar pasta de Ricotta y Espinaca">+</button></div></div></article>
           <article class="product" data-category="salado" data-id="pasta-carne" data-name="Raviolis/Tortelloni de Carne" data-price="20" data-image="assets/pasta.png" data-product-type="Pasta congelada · un sabor por empaque" data-safety="Sin gluten · Alérgeno confirmado: huevo" data-ingredients="Masa: harina de arroz, harina de yuca, harina de maíz, aceite de oliva, huevo y sal. Relleno: carne sazonada y aceite de oliva"><div class="product-media"><img src="assets/pasta.png" alt="Raviolis y tortelloni de carne"><span class="product-tag">Congelado</span></div><div class="product-body"><div class="product-top"><h3>Carne</h3><span class="price">$20</span></div><p>Raviolis o tortelloni rellenos de carne sazonada.</p><div class="product-footer"><span class="diet">300 G · 1 SABOR</span><button class="add" aria-label="Agregar pasta de Carne">+</button></div></div></article>
+          <div class="empty-filter-state" id="emptyFilterState" hidden><div><span id="emptyFilterEyebrow">Actualización diaria</span><h3 id="emptyFilterTitle">Muy pronto</h3><p id="emptyFilterMessage"></p></div></div>
         </div>
         <p class="demo-note">Precios expresados en USD. Disponibilidad y pedidos especiales sujetos a confirmación por WhatsApp.</p>
       </div>

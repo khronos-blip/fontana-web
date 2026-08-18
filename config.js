@@ -12,6 +12,8 @@ window.FONTANA_CONFIG = {
   previewMode: false,
   pickupLabel: "Pickup en Mañongo (detalles por WhatsApp)",
   deliveryLabel: "Delivery en todo Carabobo (costo confirmado por WhatsApp)",
+  // El futuro panel privado publicará aquí promociones, bebidas y disponibilidad inmediata.
+  dynamicCatalog: [],
   leadTimesByProduct: {
     pistacho: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
     naranja: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },

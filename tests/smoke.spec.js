@@ -98,6 +98,9 @@ test("el catálogo usa el diseño solicitado y conserva el pedido", async ({ pag
   await expect(page.locator('[data-id="fonkie"]')).toHaveCount(0);
   await expect(page.locator('[data-id="fonkie-mix"]')).toHaveCount(0);
   await expect(page.locator(".fonkie-flavor")).toHaveCount(8);
+  await expect(page.getByRole("button", { name: "Promo del día" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bebidas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Entrega inmediata" })).toBeVisible();
   await expect(page.locator('[data-id="pasta-ricotta"] .price')).toHaveText("$20");
   await expect(page.locator('[data-id="pasta-carne"] .price')).toHaveText("$20");
   await expect(page.locator('[data-id="pasta-ricotta"] .product-safety')).toContainText("harina de maíz");
@@ -121,6 +124,30 @@ test("el catálogo usa el diseño solicitado y conserva el pedido", async ({ pag
   expect(runtimeConfig.previewMode).toBe(false);
   expect(runtimeConfig.leadTimesByProduct.pistacho.minimumBusinessDays).toBe(1);
   expect(runtimeConfig.leadTimesByProduct["pistacho-clasico"].minimumBusinessDays).toBe(1);
+  expect(runtimeConfig.dynamicCatalog).toEqual([]);
+});
+
+test("las nuevas secciones quedan listas sin inventar productos", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Promo del día" }).click();
+  await expect(page.locator("#emptyFilterState")).toBeVisible();
+  await expect(page.locator("#emptyFilterTitle")).toHaveText("Promo del día");
+  await expect(page.locator("#emptyFilterMessage")).toContainText("promociones activas");
+  await expect(page.locator(".product:visible, .fonkie-builder:visible")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Bebidas" }).click();
+  await expect(page.locator("#emptyFilterTitle")).toHaveText("Bebidas");
+  await expect(page.locator("#emptyFilterMessage")).toContainText("bebidas confirmadas");
+
+  await page.getByRole("button", { name: "Entrega inmediata" }).click();
+  await expect(page.locator("#emptyFilterTitle")).toHaveText("Entrega inmediata");
+  await expect(page.locator("#emptyFilterMessage")).toContainText("disponibles para entrega inmediata");
+
+  await page.getByRole("button", { name: "Todos" }).click();
+  await expect(page.locator("#emptyFilterState")).toBeHidden();
+  await expect(page.locator('.product[data-id="pistacho"]')).toBeVisible();
+  await expect(page.locator(".fonkie-builder")).toBeVisible();
 });
 
 test("el configurador de Fonkies calcula precios e incluye sabores en WhatsApp", async ({ page }) => {

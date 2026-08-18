@@ -33,6 +33,8 @@ Los productos y precios que ya aparecen en el menú están confirmados. Todavía
 
 La sección de Fonkies funciona como un configurador único: permite combinar los ocho sabores confirmados, exige un mínimo de cuatro unidades y calcula automáticamente $15 para cuatro del mismo sabor, $17 para cuatro mixtas y $3,50 por cada unidad adicional. Los sabores y cantidades seleccionados se incorporan al carrito y al mensaje de WhatsApp sin que el cliente tenga que volver a escribirlos. La galería muestra la fotografía original disponible y queda preparada para sumar las fotos individuales pendientes.
 
+El catálogo público incluye las secciones `Promo del día`, `Bebidas` y `Entrega inmediata`. Mientras no haya publicaciones confirmadas, cada una muestra un estado vacío y no inventa productos. `dynamicCatalog` en `config.js` define el contrato provisional que posteriormente consumirá el panel privado: cada entrada puede incluir `id`, `name`, `price`, `image`, `description`, `ingredients`, `category`, `promo` e `immediate`. Un producto puede aparecer simultáneamente como promoción y entrega inmediata.
+
 La tipografía de los títulos de producto prioriza `Berlin Sans FB`; para verla exactamente igual en todos los dispositivos falta recibir el archivo de fuente con licencia web (`.woff2` o `.woff`). Mientras tanto se usa la alternativa visual disponible.
 
 Productos confirmados pendientes de fotografía individual o confirmación final para publicarse:
