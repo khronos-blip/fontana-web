@@ -31,6 +31,8 @@ El WhatsApp comercial, las modalidades, el horario, la cobertura de delivery, la
 
 Los productos y precios que ya aparecen en el menú están confirmados. Todavía faltan los datos de productos adicionales, reseñas verificadas, detalles de inventario y textos legales. El sitio conserva `noindex` hasta esa aprobación final.
 
+La tipografía de los títulos de producto prioriza `Berlin Sans FB`; para verla exactamente igual en todos los dispositivos falta recibir el archivo de fuente con licencia web (`.woff2` o `.woff`). Mientras tanto se usa la alternativa visual disponible.
+
 Productos confirmados pendientes de fotografía individual o confirmación final para publicarse:
 
 - Pastel individual de pistacho fotografiado: imagen de producto lista; falta confirmar el nombre comercial, precio, presentación e ingredientes antes de publicarlo.

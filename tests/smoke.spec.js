@@ -52,7 +52,7 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   await expect(page.locator("#paymentNotice")).toContainText("100% del pago por adelantado");
   const message = await submitToWhatsApp(page);
   expect(message).toContain("Pedido FNT-");
-  expect(message).toContain("1× Foncake Pistacho & Frambuesa");
+  expect(message).toContain("1× Torta de Pistacho y Frambuesa");
   expect(message).toContain("Andrea Pérez");
   expect(message).toContain("Pago Móvil");
   expect(message).toContain("Fecha deseada para Delivery en todo Carabobo (costo confirmado por WhatsApp)");
@@ -60,23 +60,24 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   expect(message).toContain("Enviaré el comprobante");
 });
 
-test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ page }) => {
+test("el catálogo usa el diseño solicitado y conserva el pedido", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.locator(".hero-logo")).toBeVisible();
   await expect(page.locator(".hero-copy .hero-lead")).toHaveCount(0);
-  await expect(page.locator("#cartButton .bag-icon")).toBeVisible();
+  await expect(page.locator("#cartButton .hamburger-icon")).toBeVisible();
   await expect(page.locator(".product-safety")).toHaveCount(13);
-  await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("Sin gluten · Sin lactosa · Sin azúcar");
+  await expect(page.locator('[data-id="pistacho"] .product-safety summary')).toHaveText("Ingredientes");
+  await expect(page.locator('[data-id="pistacho"] .product-safety summary')).not.toContainText("alergias");
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("semillas de amapola");
   await expect(page.locator('[data-id="naranja"] .product-safety')).toContainText("harina de yuca (10 %)");
   await expect(page.locator('[data-id="naranja"] .product-safety')).toContainText("semillas de amapola");
   await expect(page.locator('[data-id="chocolate"] .product-safety')).toContainText("chispas de chocolate vegano");
   await expect(page.locator('[data-id="vainilla"] .product-safety')).toContainText("chispas de chocolate vegano");
   await expect(page.locator('[data-id="lemon"] .product-safety')).toContainText("chocolate blanco vegano");
-  await expect(page.locator('[data-id="bombones"] .product-safety')).toContainText("Sin huevo");
   await expect(page.locator('[data-id="bombones"] .product-safety')).toContainText("Bombones de autor");
   await expect(page.locator('[data-id="bombones"] .product-safety')).not.toContainText("trufa");
-  await expect(page.locator('[data-id="fonkie"] .product-safety')).toContainText("Chips Ahoy Fit contiene huevo y lácteos (ghee)");
+  await expect(page.locator('[data-id="fonkie"] .product-safety')).toContainText("Chips Ahoy Fit");
   await expect(page.locator('[data-id="pistacho"] .price')).toHaveText("$60");
   await expect(page.locator('[data-id="chocolate"] .price')).toHaveText("$47");
   await expect(page.locator('[data-id="vainilla"] .price')).toHaveText("$47");
@@ -85,7 +86,7 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator('[data-id="zanahoria"] .price')).toHaveText("$47");
   await expect(page.locator('[data-id="pistacho-clasico"] .price')).toHaveText("$55");
   await expect(page.locator('[data-id="zanahoria"] img')).toHaveAttribute("src", "assets/zanahoria-fontana-v2.jpg");
-  await expect(page.locator('[data-id="pistacho-clasico"] img')).toHaveAttribute("src", "assets/pistacho-fontana-v2.jpg");
+  await expect(page.locator('[data-id="pistacho-clasico"] img')).toHaveAttribute("src", "assets/pistacho-fontana-v3.jpg");
   await expect(page.locator('[data-id="pistacho"] img')).toHaveAttribute("src", "assets/pistachio-raspberry-fontana-v2.jpg");
   await expect(page.locator('[data-id="chocolate"] img')).toHaveAttribute("src", "assets/chocolate-fontana-v2.jpg");
   await expect(page.locator('[data-id="vainilla"] img')).toHaveAttribute("src", "assets/vanilla-chips-fontana-v2.jpg");
@@ -100,7 +101,17 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator('[data-id="pasta-ricotta"] .product-safety')).toContainText("harina de maíz");
   await expect(page.locator('[data-id="pasta-carne"] .product-safety')).toContainText("carne sazonada");
   await expect(page.locator("#menu .demo-note")).not.toContainText("ilustrativos");
+  await expect(page.locator("#menu .section-head p")).toHaveCount(0);
+  await expect(page.locator(".product-tag:visible")).toHaveCount(0);
+  await expect(page.locator(".pillar-icon")).toHaveCount(0);
+  await expect(page.locator(".story-visual")).toHaveCount(0);
+  await expect(page.locator(".footer-logo")).toHaveAttribute("src", "assets/fontana-logo-official-reverse.png");
   await expect(page.locator(".pillar").first()).toContainText("Cocina estrictamente libre de gluten");
+  const cakeTitles = await page.locator('.product[data-category="cakes"] h3').allTextContents();
+  expect(cakeTitles.every(title => title.startsWith("Torta de "))).toBe(true);
+  const productColumns = await page.locator(".products").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
+  expect(productColumns).toBe(2);
+  await expect(page.locator('[data-id="pistacho"] .product-body')).toHaveCSS("background-color", "rgb(234, 213, 237)");
   const productNumbers = await page.locator(".product").evaluateAll(products => products.slice(0, 3).map(product => getComputedStyle(product, "::after").content));
   expect(productNumbers.every(content => content === "none" || content === "normal")).toBe(true);
   const runtimeConfig = await page.evaluate(() => window.FONTANA_CONFIG);
@@ -198,6 +209,6 @@ test("un pedido con alergias queda marcado para revisión", async ({ page }) => 
   await page.locator("#crossContamination").check();
   const message = await submitToWhatsApp(page);
   expect(message).toContain("Frutos secos");
-  expect(message).toContain("Foncake Pistacho & Frambuesa: No agregar pistacho");
+  expect(message).toContain("Torta de Pistacho y Frambuesa: No agregar pistacho");
   expect(message).toContain("PENDIENTE DE REVISIÓN POR FONTANA");
 });

@@ -53,13 +53,12 @@
       const details = document.createElement("details");
       details.className = "product-safety";
       const summary = document.createElement("summary");
-      summary.textContent = "Ingredientes y alergias";
+      summary.textContent = "Ingredientes";
       const note = document.createElement("div");
       const ingredients = productIngredients(product.dataset.id);
       const productType = product.dataset.productType ? `Categoría: ${product.dataset.productType}. ` : "";
-      const confirmedSafety = product.dataset.safety ? `Características confirmadas: ${product.dataset.safety}. ` : "";
       const leadTime = config.leadTimesByProduct?.[product.dataset.id]?.label;
-      note.textContent = `${productType}Ingredientes: ${ingredients}. ${confirmedSafety}${leadTime ? `Preparación: ${leadTime}. ` : ""}Si tienes una alergia o intolerancia, indícala por producto al finalizar; Fontana debe confirmar ingredientes y preparación antes de aceptar el pedido.`;
+      note.textContent = `${productType}Ingredientes: ${ingredients}.${leadTime ? ` Preparación: ${leadTime}.` : ""}`;
       details.append(summary, note);
       body.insertBefore(details, footer);
     });
@@ -346,7 +345,6 @@
     setupRequestedDate();
   });
   $$('input[name="hasAllergies"]').forEach(input => input.addEventListener("change", toggleAllergyDetails));
-  $("#menuButton").addEventListener("click", () => { window.location.hash = "menu"; });
   document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
 
   const deployedConfigVersion = document.querySelector("script[data-store-config]")?.dataset.storeConfig;
