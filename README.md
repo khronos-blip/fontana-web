@@ -31,10 +31,14 @@ El WhatsApp comercial, las modalidades, el horario, la cobertura de delivery, la
 
 Los productos y precios que ya aparecen en el menú están confirmados. Todavía faltan los datos de productos adicionales, reseñas verificadas, detalles de inventario y textos legales. El sitio conserva `noindex` hasta esa aprobación final.
 
-Productos confirmados pendientes de fotografía individual para publicarse:
+Productos confirmados pendientes de fotografía individual o confirmación final para publicarse:
 
-- Crumbl de Blueberry ($47, aproximadamente 1 kg): harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, blueberry, alulosa y glaseado vegano.
-- Tentación de Coco ($47, aproximadamente 1 kg): harina de almendra, monkfruit, aceite de coco, huevo, crema de coco, coco rallado y glaseado vegano sin azúcar.
+- Torta de Vainilla con Chispas ($47, bajo encargo): falta fotografía individual.
+- Ballerine ($12, bajo encargo o stock): faltan fotografía, presentación e ingredientes completos.
+- Mini Cake ($20, bajo encargo): faltan fotografía, tamaño/sabores e ingredientes completos.
+- Crumbl de Blueberry (precio sujeto a disponibilidad): harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, blueberry, alulosa y glaseado vegano; falta fotografía individual.
+- Tentación de Coco (precio sujeto a disponibilidad): harina de almendra, monkfruit, aceite de coco, huevo, crema de coco, coco rallado y glaseado vegano sin azúcar; falta fotografía individual.
+- Línea Salada Fit, Brownie Fit, tequeños, nuggets y panzerottis: activos para publicación, pero faltan fotografías y datos completos por preparación.
 
 ## Despliegue
 

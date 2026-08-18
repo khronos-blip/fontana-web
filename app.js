@@ -12,6 +12,7 @@
   const checkoutForm = $("#checkoutForm");
   const drawerTitle = $("#drawerTitle");
   const backToCart = $("#backToCart");
+  const productChoiceIds = new Set(["fonkie", "fonkie-mix", "bombones", "bombones-12"]);
   const storageKey = "fontana-cart-v1";
   let cart = readCart();
 
@@ -151,6 +152,7 @@
     checkoutForm.hidden = false;
     backToCart.hidden = false;
     drawerTitle.textContent = "Datos del pedido";
+    toggleProductChoices();
     renderAllergyItemNotes();
     setupRequestedDate();
     toggleAllergyDetails();
@@ -179,6 +181,15 @@
     $("#addressGroup").hidden = !delivery;
     $("#customerAddress").required = delivery;
     $("#requestedDateLabel").textContent = delivery ? "Fecha deseada para delivery" : "Fecha deseada para pickup";
+  }
+
+  function toggleProductChoices() {
+    const needsChoices = cart.some(item => productChoiceIds.has(item.id));
+    const group = $("#productChoicesGroup");
+    const input = $("#productChoices");
+    group.hidden = !needsChoices;
+    input.required = needsChoices;
+    if (!needsChoices) input.value = "";
   }
 
   function localDateValue(date) {
@@ -268,6 +279,7 @@
       `Franja horaria solicitada: ${data.get("requestedTime")}`,
       `Forma de pago: ${data.get("payment")}`,
       "Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
+      data.get("productChoices") ? `Sabores elegidos: ${data.get("productChoices")}` : "",
       `Alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
       hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : "",
       ...itemAllergyLines,

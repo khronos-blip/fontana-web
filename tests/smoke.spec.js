@@ -65,7 +65,7 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator(".hero-logo")).toBeVisible();
   await expect(page.locator(".hero-copy .hero-lead")).toHaveCount(0);
   await expect(page.locator("#cartButton .bag-icon")).toBeVisible();
-  await expect(page.locator(".product-safety")).toHaveCount(9);
+  await expect(page.locator(".product-safety")).toHaveCount(12);
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("Sin gluten · Sin lactosa · Sin azúcar");
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("semillas de amapola");
   await expect(page.locator('[data-id="naranja"] .product-safety')).toContainText("harina de yuca (10 %)");
@@ -75,6 +75,7 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator('[data-id="bombones"] .product-safety')).toContainText("Sin huevo");
   await expect(page.locator('[data-id="bombones"] .product-safety')).toContainText("Bombones de autor");
   await expect(page.locator('[data-id="bombones"] .product-safety')).not.toContainText("trufa");
+  await expect(page.locator('[data-id="fonkie"] .product-safety')).toContainText("Chips Ahoy Fit contiene huevo y lácteos (ghee)");
   await expect(page.locator('[data-id="pistacho"] .price')).toHaveText("$60");
   await expect(page.locator('[data-id="chocolate"] .price')).toHaveText("$47");
   await expect(page.locator('[data-id="lemon"] .price')).toHaveText("$47");
@@ -84,7 +85,13 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator('[data-id="zanahoria"] img')).toHaveAttribute("src", "assets/zanahoria-fontana-v2.jpg");
   await expect(page.locator('[data-id="pistacho-clasico"] img')).toHaveAttribute("src", "assets/pistacho-fontana-v2.jpg");
   await expect(page.locator('[data-id="bombones"] .price')).toHaveText("$15");
-  await expect(page.locator('[data-id="tortellone"] .price')).toHaveText("$20");
+  await expect(page.locator('[data-id="bombones-12"] .price')).toHaveText("$30");
+  await expect(page.locator('[data-id="fonkie"] .price')).toHaveText("$15");
+  await expect(page.locator('[data-id="fonkie-mix"] .price')).toHaveText("$17");
+  await expect(page.locator('[data-id="pasta-ricotta"] .price')).toHaveText("$20");
+  await expect(page.locator('[data-id="pasta-carne"] .price')).toHaveText("$20");
+  await expect(page.locator('[data-id="pasta-ricotta"] .product-safety')).toContainText("harina de maíz");
+  await expect(page.locator('[data-id="pasta-carne"] .product-safety')).toContainText("carne sazonada");
   await expect(page.locator("#menu .demo-note")).not.toContainText("ilustrativos");
   await expect(page.locator(".pillar").first()).toContainText("Cocina estrictamente libre de gluten");
   const productNumbers = await page.locator(".product").evaluateAll(products => products.slice(0, 3).map(product => getComputedStyle(product, "::after").content));
@@ -94,6 +101,27 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   expect(runtimeConfig.previewMode).toBe(false);
   expect(runtimeConfig.leadTimesByProduct.pistacho.minimumBusinessDays).toBe(1);
   expect(runtimeConfig.leadTimesByProduct["pistacho-clasico"].minimumBusinessDays).toBe(1);
+});
+
+test("los paquetes personalizados incluyen sabores en WhatsApp", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-08-21T12:00:00"));
+  await page.goto("/");
+  await page.locator('[data-id="fonkie-mix"] .add').click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator("#cartTotal")).toContainText("17");
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator("#productChoicesGroup")).toBeVisible();
+  await expect(page.locator("#productChoices")).toHaveAttribute("required", "");
+  await page.locator("#customerName").fill("Andrea Pérez");
+  await page.locator("#customerPhone").fill("0412 000 0000");
+  await page.locator("#requestedDate").fill("2026-08-21");
+  await page.locator("#requestedTime").fill("4:00 pm - 6:00 pm");
+  await page.locator("#productChoices").fill("2 Pistacho, 1 Kinder Bueno y 1 Cinnamon Roll");
+  await page.locator('input[name="hasAllergies"][value="no"]').check();
+  const message = await submitToWhatsApp(page);
+  expect(message).toContain("1× Fonkies · Mix de 4");
+  expect(message).toContain("Sabores elegidos: 2 Pistacho, 1 Kinder Bueno y 1 Cinnamon Roll");
+  expect(message.replace(/\u00a0/g, " ")).toContain("USD 17,00");
 });
 
 test("el menú permanece visible y la ubicación conserva Mañongo", async ({ page }) => {
