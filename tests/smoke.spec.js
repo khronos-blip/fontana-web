@@ -65,17 +65,21 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   await expect(page.locator(".hero-logo")).toBeVisible();
   await expect(page.locator(".hero-copy .hero-lead")).toHaveCount(0);
   await expect(page.locator("#cartButton .bag-icon")).toBeVisible();
-  await expect(page.locator(".product-safety")).toHaveCount(6);
+  await expect(page.locator(".product-safety")).toHaveCount(9);
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("Sin gluten · Sin lactosa · Sin azúcar");
   await expect(page.locator('[data-id="pistacho"] .product-safety')).toContainText("semillas de amapola");
   await expect(page.locator('[data-id="chocolate"] .product-safety')).toContainText("chispas de chocolate vegano");
   await expect(page.locator('[data-id="lemon"] .product-safety')).toContainText("chocolate blanco vegano");
-  await expect(page.locator('[data-id="trufa"] .product-safety')).toContainText("Sin huevo");
-  await expect(page.locator('[data-id="trufa"] .product-safety')).toContainText("Bombones / trufas de autor");
+  await expect(page.locator('[data-id="bombones"] .product-safety')).toContainText("Sin huevo");
+  await expect(page.locator('[data-id="bombones"] .product-safety')).toContainText("Bombones de autor");
+  await expect(page.locator('[data-id="bombones"] .product-safety')).not.toContainText("trufa");
   await expect(page.locator('[data-id="pistacho"] .price')).toHaveText("$60");
   await expect(page.locator('[data-id="chocolate"] .price')).toHaveText("$47");
   await expect(page.locator('[data-id="lemon"] .price')).toHaveText("$47");
-  await expect(page.locator('[data-id="trufa"] .price')).toHaveText("$3,75");
+  await expect(page.locator('[data-id="naranja"] .price')).toHaveText("$47");
+  await expect(page.locator('[data-id="zanahoria"] .price')).toHaveText("$47");
+  await expect(page.locator('[data-id="pistacho-clasico"] .price')).toHaveText("$55");
+  await expect(page.locator('[data-id="bombones"] .price')).toHaveText("$15");
   await expect(page.locator('[data-id="tortellone"] .price')).toHaveText("$20");
   await expect(page.locator("#menu .demo-note")).not.toContainText("ilustrativos");
   await expect(page.locator(".pillar").first()).toContainText("Cocina estrictamente libre de gluten");
@@ -85,6 +89,7 @@ test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ pag
   expect(runtimeConfig.whatsappNumber).toBe("584244350800");
   expect(runtimeConfig.previewMode).toBe(false);
   expect(runtimeConfig.leadTimesByProduct.pistacho.minimumBusinessDays).toBe(1);
+  expect(runtimeConfig.leadTimesByProduct["pistacho-clasico"].minimumBusinessDays).toBe(1);
 });
 
 test("el menú permanece visible y la ubicación conserva Mañongo", async ({ page }) => {

@@ -14,10 +14,13 @@ window.FONTANA_CONFIG = {
   deliveryLabel: "Delivery en todo Carabobo (costo confirmado por WhatsApp)",
   leadTimesByProduct: {
     pistacho: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
+    naranja: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
+    zanahoria: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
+    "pistacho-clasico": { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
     chocolate: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
     lemon: { minimumBusinessDays: 1, label: "Tortas: 1–2 días hábiles" },
     fonkie: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
-    trufa: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
+    bombones: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
     tortellone: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" }
   },
   paymentMethods: [
