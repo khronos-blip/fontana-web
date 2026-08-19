@@ -120,6 +120,8 @@ test("el bloque negro fue eliminado y el footer centra la marca", async ({ page 
   await expect(page.locator(".pillars")).toHaveCount(0);
   await expect(page.locator("footer .footer-brand")).toHaveCSS("text-align", "center");
   await expect(page.locator(".hero-logo")).toBeVisible();
+  await expect(page.locator(".nav .brand-seal")).toHaveCount(1);
+  await expect(page.locator(".nav .brand-symbol, .nav .brand-wordmark")).toHaveCount(0);
   await expect(page.locator("#cartButton .hamburger-icon")).toBeVisible();
   const brokenImages = await page.locator("img").evaluateAll(images => images.filter(image => !image.naturalWidth).map(image => image.getAttribute("src")));
   expect(brokenImages).toEqual([]);
