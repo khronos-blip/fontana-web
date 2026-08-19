@@ -1,2 +1,6 @@
+/admin/*
+  X-Robots-Tag: noindex, nofollow, noarchive
+  Cache-Control: no-store
+
 /*
   Cache-Control: public, max-age=0, must-revalidate

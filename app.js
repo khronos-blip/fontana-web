@@ -4,6 +4,8 @@
   const config = window.FONTANA_CONFIG || {};
   const $ = (selector, context = document) => context.querySelector(selector);
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
+  const adminStorageKey = "fontana-admin-catalog-v1";
+  const adminState = readAdminState();
   const drawer = $("#drawer");
   const backdrop = $("#backdrop");
   const toast = $("#toast");
@@ -14,6 +16,29 @@
   const backToCart = $("#backToCart");
   const storageKey = "fontana-cart-v1";
   let cart = readCart();
+
+  function readAdminState() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(adminStorageKey) || "null");
+      return stored && stored.version === 1 ? stored : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function applyAdminCatalog() {
+    if (!adminState || !Array.isArray(adminState.products)) return;
+    $$("#products > .product").forEach(product => product.remove());
+    config.dynamicCatalog = adminState.products.filter(product => !product.deleted);
+    config.dynamicCatalog.forEach(product => {
+      if (!product.id || !Number.isFinite(Number(product.minimumBusinessDays))) return;
+      config.leadTimesByProduct ||= {};
+      config.leadTimesByProduct[product.id] = {
+        minimumBusinessDays: Math.max(0, Number(product.minimumBusinessDays)),
+        label: product.leadTimeLabel || `${product.name}: sujeto a confirmación por WhatsApp`
+      };
+    });
+  }
 
   function readCart() {
     try {
@@ -39,6 +64,47 @@
       "'": "&#39;",
       '"': "&quot;"
     })[character]);
+  }
+
+  function applyAdminBuilders() {
+    if (!adminState?.builders) return;
+    const fonkies = adminState.builders.fonkies;
+    const fonkieBuilder = $(".fonkie-builder");
+    if (fonkies && fonkieBuilder) {
+      fonkieBuilder.dataset.promo = String(Boolean(fonkies.promo));
+      fonkieBuilder.dataset.immediate = String(Boolean(fonkies.immediate));
+      fonkieBuilder.hidden = fonkies.status === "sold-out";
+      const flavors = Array.isArray(fonkies.flavors) ? fonkies.flavors : [];
+      const gallery = $(".fonkie-gallery-track", fonkieBuilder);
+      const chooser = $(".fonkie-flavors", fonkieBuilder);
+      const count = $(".gallery-label-meta span", fonkieBuilder);
+      if (count) count.textContent = `${flavors.length} sabores`;
+      if (gallery) gallery.innerHTML = flavors.map(flavor => `<figure class="fonkie-gallery-card${flavor.status === "sold-out" ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span></figure>`).join("");
+      if (chooser) chooser.innerHTML = flavors.map(flavor => `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${flavor.status === "sold-out"}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}" ${flavor.status === "sold-out" ? "disabled" : ""}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${flavor.status === "sold-out" ? "disabled" : ""}>+</button></div></div>`).join("");
+      const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
+      fonkieBuilder.dataset.ingredients = availableIngredients;
+      if (fonkies.image) fonkieBuilder.dataset.image = fonkies.image;
+    }
+
+    const fomb = adminState.builders.fomb;
+    const fombBuilder = $(".fomb-builder");
+    if (fomb && fombBuilder) {
+      fombBuilder.dataset.promo = String(Boolean(fomb.promo));
+      fombBuilder.dataset.immediate = String(Boolean(fomb.immediate));
+      fombBuilder.hidden = fomb.status === "sold-out";
+      const flavors = Array.isArray(fomb.flavors) ? fomb.flavors : [];
+      const gallery = $(".builder-gallery-track", fombBuilder);
+      const count = $(".gallery-label-meta span", fombBuilder);
+      if (count) count.textContent = `${flavors.length} sabores`;
+      if (gallery) gallery.innerHTML = flavors.map(flavor => `<figure class="builder-gallery-card${flavor.status === "sold-out" ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span></figure>`).join("");
+      const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
+      const sizeOptions = $(".fomb-size-options", fombBuilder);
+      if (sizeOptions) sizeOptions.innerHTML = sizes.map((size, index) => `<label class="fomb-size-option"><input type="radio" name="fombSize" value="${Number(size.quantity)}" data-price="${Number(size.price)}" ${index === 0 ? "checked" : ""}> Caja de ${Number(size.quantity)} · ${money(Number(size.price))}</label>`).join("");
+      const extraLabel = $(".fomb-extras span", fombBuilder);
+      if (extraLabel) extraLabel.textContent = `Bombones extra · ${money(Number(fomb.extraPrice ?? 3.5))} c/u`;
+      fombBuilder.dataset.ingredients = flavors.map(flavor => `${flavor.name} Fomb: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
+      if (fomb.image) fombBuilder.dataset.image = fomb.image;
+    }
   }
 
   function productIngredients(id) {
@@ -192,9 +258,11 @@
   }
 
   function fonkiePrice(total, flavorCount) {
-    if (total < 4) return 0;
-    const base = flavorCount === 1 ? 15 : 17;
-    return base + Math.max(0, total - 4) * 3.5;
+    const pricing = adminState?.builders?.fonkies || {};
+    const minimum = Math.max(1, Number(pricing.minimumQuantity || 4));
+    if (total < minimum) return 0;
+    const base = flavorCount === 1 ? Number(pricing.singlePrice ?? 15) : Number(pricing.mixedPrice ?? 17);
+    return base + Math.max(0, total - minimum) * Number(pricing.extraPrice ?? 3.5);
   }
 
   function setupFonkieBuilder() {
@@ -202,7 +270,10 @@
     if (!builder) return;
     const rows = $$(".fonkie-flavor", builder);
     const addButton = $("#addFonkieBox");
+    const minimum = Math.max(1, Number(adminState?.builders?.fonkies?.minimumQuantity || 4));
     $("#fonkieIngredients div").textContent = builder.dataset.ingredients;
+    const builderIntro = $(".fonkie-builder-head p", builder);
+    if (builderIntro) builderIntro.textContent = `Elige los sabores y las cantidades. Mínimo ${minimum} unidades.`;
 
     function selectedFlavors() {
       return rows.map(row => ({
@@ -217,10 +288,10 @@
       const price = fonkiePrice(total, selected.length);
       $("#fonkieCount").textContent = `Has seleccionado ${total} ${total === 1 ? "Fonkie" : "Fonkies"}`;
       $("#fonkieTotal").textContent = money(price);
-      addButton.disabled = total < 4;
-      if (total < 4) {
-        $("#fonkiePriceRule").textContent = "Selecciona al menos 4 para armar tu caja.";
-        $("#fonkieValidation").textContent = "Mínimo 4 galletas para armar tu caja.";
+      addButton.disabled = total < minimum;
+      if (total < minimum) {
+        $("#fonkiePriceRule").textContent = `Selecciona al menos ${minimum} para armar tu caja.`;
+        $("#fonkieValidation").textContent = `Mínimo ${minimum} galletas para armar tu caja.`;
       } else {
         const type = selected.length === 1 ? "Caja de un solo sabor" : "Caja mixta";
         const extras = total - 4;
@@ -240,8 +311,8 @@
     addButton.addEventListener("click", () => {
       const selected = selectedFlavors();
       const total = selected.reduce((sum, item) => sum + item.qty, 0);
-      if (total < 4) {
-        say("Mínimo 4 galletas para armar tu caja");
+      if (total < minimum) {
+        say(`Mínimo ${minimum} galletas para armar tu caja`);
         return;
       }
       const price = fonkiePrice(total, selected.length);
@@ -280,8 +351,10 @@
 
     function selection() {
       const size = Number(sizeInputs.find(input => input.checked)?.value || 4);
-      const basePrice = size === 12 ? 30 : 15;
-      return { size, total: size + extras, price: basePrice + extras * 3.5 };
+      const selectedInput = sizeInputs.find(input => input.checked);
+      const basePrice = Number(selectedInput?.dataset.price || (size === 12 ? 30 : 15));
+      const extraPrice = Number(adminState?.builders?.fomb?.extraPrice ?? 3.5);
+      return { size, total: size + extras, price: basePrice + extras * extraPrice };
     }
 
     function updateBuilder() {
@@ -547,6 +620,8 @@
     syncCatalogGroups();
   }
 
+  applyAdminCatalog();
+  applyAdminBuilders();
   renderDynamicCatalog();
   setupCatalogGroups();
   $$(".add").forEach(button => button.addEventListener("click", () => addProduct(button.closest(".product"))));

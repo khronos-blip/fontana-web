@@ -11,6 +11,8 @@ await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 await cp("assets", `${outputDirectory}/assets`, { recursive: true });
 await cp("_headers", `${outputDirectory}/_headers`);
+await cp("admin", `${outputDirectory}/admin`, { recursive: true });
+await cp("config.js", `${outputDirectory}/config.js`);
 
 const configContents = await readFile("config.js", "utf8");
 const appContents = await readFile("app.js", "utf8");

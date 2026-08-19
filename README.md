@@ -27,7 +27,11 @@ Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a G
 
 ## Gestión del catálogo
 
-La tienda continúa siendo estática y no dispone todavía de un panel privado con inicio de sesión. Hasta que se apruebe un CMS o backend, `config.js` es la fuente segura para gestionar los productos añadidos en esta revisión:
+La primera versión del panel administrativo vive en `/admin/`. Incluye acceso temporal abierto, CRUD de productos, promociones, stock inmediato, agotados, variantes, presentaciones, anticipación, carga optimizada de imágenes, constructores de Fonkies y Fomb, y exportación/importación de copias JSON.
+
+Mientras la tienda siga siendo estática, el panel guarda el borrador en el navegador y la tienda de ese mismo navegador lo usa como vista previa. La publicación para todos los visitantes requiere conectar en una fase posterior autenticación y almacenamiento privado; no deben colocarse credenciales ni tokens en el JavaScript público.
+
+`config.js` continúa siendo la fuente original y el respaldo seguro del catálogo publicado:
 
 1. Editar el producto dentro de `dynamicCatalog`.
 2. Para productos con varias presentaciones, añadir `sizes` con `name`, `price` y `status`; el carrito y WhatsApp tomarán automáticamente la presentación, el precio y el relleno elegidos.

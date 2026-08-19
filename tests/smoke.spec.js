@@ -277,6 +277,44 @@ test("los salados indican que son congelados y se preparan en air fryer u horno"
   }
 });
 
+test("el panel administrador permite entrar, editar y reflejar el catálogo en la tienda", async ({ page }) => {
+  await page.goto("/admin/");
+  await expect(page.getByRole("heading", { name: "Gestiona Fontana" })).toBeVisible();
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await expect(page.getByRole("heading", { name: /Buenos días, Fontana/i })).toBeVisible();
+  await page.getByRole("button", { name: "Productos", exact: true }).click();
+  await page.locator('[data-product-id="ballerine"] [data-edit="ballerine"]').click();
+  await page.locator('#productForm [name="description"]').fill("Disponible para celebrar hoy.");
+  await page.locator('#productForm [name="promo"]').check();
+  await page.getByRole("button", { name: "Guardar producto" }).click();
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Promo del día" }).click();
+  const ballerine = page.locator('[data-product-id="ballerine"]');
+  await expect(ballerine).toBeVisible();
+  await expect(ballerine).toContainText("Disponible para celebrar hoy.");
+  await expect(ballerine.locator(".product-tag")).toHaveText("PROMOCIÓN DEL DÍA");
+});
+
+test("el panel administra sabores especiales y conserva el checkout", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Fonkies", exact: true }).click();
+  await page.locator('#fonkiesEditor [data-builder-field="singlePrice"]').fill("16");
+  await page.locator('#fonkiesEditor [data-builder-field="promo"]').check();
+  await page.getByRole("button", { name: "Guardar Fonkies" }).click();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
+  for (let index = 0; index < 4; index += 1) await firstPlus.click();
+  await expect(page.locator("#fonkieTotal")).toContainText("16,00");
+  await page.locator("#addFonkieBox").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item")).toContainText("Caja de 4 Fonkies");
+});
+
 test("los filtros muestran los productos sin barras desplegables", async ({ page }, testInfo) => {
   const browserErrors = [];
   page.on("pageerror", error => browserErrors.push(error.message));
