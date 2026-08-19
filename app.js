@@ -424,6 +424,9 @@
     const minimumDate = addPreparationDays(today, minimumBusinessDays);
     const input = $("#requestedDate");
     input.min = localDateValue(minimumDate);
+    $("#requestedDateNotice").textContent = minimumBusinessDays >= 2
+      ? "Pedidos por encargo: mínimo 2 días de anticipación. Hoy y mañana no están disponibles."
+      : "La fecha final queda sujeta a confirmación por WhatsApp.";
     if (minimumBusinessDays > 0 && (!input.value || input.value < input.min)) input.value = input.min;
     else if (input.value && input.value < input.min) input.value = "";
 

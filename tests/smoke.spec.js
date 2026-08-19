@@ -226,19 +226,20 @@ test("un sabor desactivado aparece agotado y no puede seleccionarse", async ({ p
   await expect(page.locator('[data-product-id="panzerottis"] .product-tag')).toBeHidden();
 });
 
-test("los días de preparación incluyen los domingos", async ({ page }) => {
+test("las tortas bloquean hoy y mañana y exigen dos días de anticipación", async ({ page }) => {
   await openPreview(page);
   await page.locator('[data-id="pistacho"] .add').click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
-  const expectedTomorrow = await page.evaluate(() => {
+  const expectedMinimumDate = await page.evaluate(() => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
-    date.setDate(date.getDate() + 1);
+    date.setDate(date.getDate() + 2);
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
   });
-  await expect(page.locator("#requestedDate")).toHaveAttribute("min", expectedTomorrow);
-  await expect(page.locator("#requestedDate")).toHaveValue(expectedTomorrow);
+  await expect(page.locator("#requestedDate")).toHaveAttribute("min", expectedMinimumDate);
+  await expect(page.locator("#requestedDate")).toHaveValue(expectedMinimumDate);
+  await expect(page.locator("#requestedDateNotice")).toContainText("Hoy y mañana no están disponibles");
 });
 
 test("los salados indican que son congelados y se preparan en air fryer u horno", async ({ page }) => {
