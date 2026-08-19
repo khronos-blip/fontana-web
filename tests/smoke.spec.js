@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test");
 
 async function openPreview(page) {
   await page.route("**/config.js", async route => {
-    const response = await route.fetch();
+    const response = await route.fetch({ maxRetries: 2 });
     const body = (await response.text()).replace("previewMode: false", "previewMode: true");
     await route.fulfill({ response, body });
   });
@@ -98,20 +98,38 @@ test("el selector móvil de Fonkies distribuye los sabores en dos columnas", asy
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ page }) => {
+test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y extras", async ({ page }) => {
   await openPreview(page);
   await expect(page.locator(".fomb-builder")).toHaveCount(1);
   await expect(page.locator('img[src="assets/fomb-raffaello-fontana-pro.jpg"]')).toHaveCount(1);
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
-  await page.locator(".fomb-builder .choice-panel > summary").click();
+  await expect(page.locator(".fomb-flavors")).toBeVisible();
+  await expect(page.locator("#addFombBox")).toBeDisabled();
   await expect(page.locator("#fombTotal")).toContainText("15,00");
+  const pistachoPlus = page.locator('.fomb-flavor[data-flavor="Pistacho"] [data-delta="1"]');
+  const pistachoCount = page.locator('.fomb-flavor[data-flavor="Pistacho"] output');
+  for (let index = 0; index < 4; index += 1) {
+    await pistachoPlus.click();
+    await expect(pistachoCount).toHaveText(String(index + 1));
+  }
+  await expect(page.locator("#fombRule")).toContainText("Caja de un solo sabor");
+  await expect(page.locator("#addFombBox")).toBeEnabled();
+  await page.locator('.fomb-flavor[data-flavor="Pistacho"] [data-delta="-1"]').click();
+  await page.locator('.fomb-flavor[data-flavor="Dubai"] [data-delta="1"]').click();
+  await expect(page.locator("#fombRule")).toContainText("Caja mixta");
+  await page.locator("#addFombBox").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item h4")).toContainText("Caja de 4 Fomb · Mixta");
+  await expect(page.locator(".cart-choices")).toContainText("3 Pistacho, 1 Dubai");
+  await page.locator("#closeCart").click();
+
+  await page.locator(".fomb-builder .choice-panel").first().locator("summary").click();
   await page.locator("#fombExtraPlus").click();
   await expect(page.locator("#fombTotal")).toContainText("18,50");
   await page.locator('input[name="fombSize"][value="12"]').check();
   await expect(page.locator("#fombTotal")).toContainText("33,50");
-  await page.locator("#addFombBox").click();
-  await page.locator("#cartButton").click();
-  await expect(page.locator(".cart-item h4")).toContainText("Caja de 13 Fomb");
+  await expect(page.locator("#fombValidation")).toContainText("Faltan 9 bombones");
+  await expect(page.locator("#addFombBox")).toBeDisabled();
 });
 
 test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el producto centrado", async ({ page }, testInfo) => {
@@ -196,6 +214,8 @@ test("catálogo incluye productos confirmados y fotos profesionales", async ({ p
   await expect(page.locator('[data-product-id="san-pellegrino"]')).toContainText("5,00");
   await expect(page.locator('[data-product-id="san-pellegrino"] img')).toHaveAttribute("src", "assets/beverage-sanpellegrino-fontana-pro.jpg");
   await expect(page.locator('[data-product-id="agua-gasificada-minalba"] img')).toHaveAttribute("src", "assets/beverage-minalba-limon-fontana-pro.jpg");
+  await expect(page.locator('[data-product-id="tevia-durazno"]')).toContainText("USD 4,00");
+  await expect(page.locator('[data-product-id="tevia-durazno"]')).toContainText("360 ML");
   await page.getByRole("button", { name: "Stock de hoy" }).click();
   await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
   await page.getByRole("button", { name: "Salado" }).click();
@@ -239,7 +259,7 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
 
 test("un sabor desactivado aparece agotado y no puede seleccionarse", async ({ page }) => {
   await page.route("**/config.js", async route => {
-    const response = await route.fetch();
+    const response = await route.fetch({ maxRetries: 2 });
     const body = (await response.text())
       .replace("previewMode: false", "previewMode: true")
       .replace('{ name: "Carne", status: "available" }', '{ name: "Carne", status: "sold-out" }');
@@ -269,12 +289,29 @@ test("las tortas bloquean hoy y mañana y exigen dos días de anticipación", as
   await expect(page.locator("#requestedDateNotice")).toContainText("Hoy y mañana no están disponibles");
 });
 
-test("los salados indican que son congelados y se preparan en air fryer u horno", async ({ page }) => {
+test("los salados muestran sus instrucciones de preparación confirmadas", async ({ page }) => {
   await openPreview(page);
   await page.getByRole("button", { name: "Salado" }).click();
-  for (const id of ["panzerottis", "raviolis", "tequenos-fit", "nuggets-rora", "cachito-fit"]) {
+  for (const id of ["panzerottis", "tequenos-fit", "nuggets-rora", "cachito-fit"]) {
     await expect(page.locator(`[data-product-id="${id}"]`)).toContainText("air fryer u horno");
   }
+  await expect(page.locator('[data-product-id="raviolis"]')).toContainText("6 minutos en agua hirviendo");
+});
+
+test("el panel puede agotar un sabor Fomb y la tienda bloquea su selector", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Fomb", exact: true }).click();
+  await page.locator('#fombEditor [data-edit-flavor="fomb:0"]').click();
+  await page.locator('#flavorForm [name="status"]').selectOption("sold-out");
+  await page.getByRole("button", { name: "Guardar sabor" }).click();
+  await page.getByRole("button", { name: "Guardar Fomb" }).click();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  const soldOut = page.locator('.fomb-flavor[data-flavor="Pistacho"]');
+  await expect(soldOut).toContainText("Agotado");
+  await expect(soldOut.locator('[data-delta="1"]')).toBeDisabled();
 });
 
 test("el panel administrador permite entrar, editar y reflejar el catálogo en la tienda", async ({ page }) => {

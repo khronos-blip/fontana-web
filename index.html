@@ -148,14 +148,14 @@
     .fonkie-builder-head{display:flex;justify-content:space-between;gap:20px;align-items:start;margin-bottom:22px}
     .fonkie-builder h3{font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:2rem;color:var(--plum-dark)}
     .fonkie-builder-head p{margin:7px 0 0;color:#705e70;font-size:.8rem}
-    .fonkie-flavors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px}
-    .fonkie-flavor{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(110,35,111,.14)}
+    .fonkie-flavors,.fomb-flavors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px}
+    .fonkie-flavor,.fomb-flavor{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(110,35,111,.14)}
     .fonkie-flavor-name{font-size:.78rem;font-weight:700}
     .fonkie-stepper{display:grid;grid-template-columns:32px 30px 32px;align-items:center;text-align:center}
     .fonkie-stepper button{width:32px;height:32px;border:1px solid rgba(110,35,111,.18);background:rgba(255,255,255,.5);color:var(--plum);border-radius:9px;font-weight:800}
     .fonkie-stepper button:hover{background:#fff}
     .fonkie-stepper output{font-weight:800;font-size:.8rem}
-    .fonkie-flavor[data-sold-out="true"]{opacity:.48}.fonkie-flavor button:disabled{cursor:not-allowed;opacity:.45}
+    .fonkie-flavor[data-sold-out="true"],.fomb-flavor[data-sold-out="true"]{opacity:.48}.fonkie-flavor button:disabled,.fomb-flavor button:disabled{cursor:not-allowed;opacity:.45}
     .builder-flavor-sold-out{filter:grayscale(.4);opacity:.58}
     .fonkie-ingredients{margin-top:16px;border-top:1px solid rgba(110,35,111,.18);border-bottom:1px solid rgba(110,35,111,.18)}
     .fonkie-ingredients summary{padding:12px 0;cursor:pointer;color:var(--plum);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;list-style:none}
@@ -410,7 +410,7 @@
     .choice-panel{margin-top:14px;border-top:1px solid rgba(110,35,111,.18);border-bottom:1px solid rgba(110,35,111,.18)}.choice-panel summary,.choice-panel-title{padding:13px 0;color:var(--plum);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;list-style:none}.choice-panel summary{cursor:pointer}.choice-panel summary::-webkit-details-marker{display:none}.choice-panel summary:after{content:'+';float:right;font-size:1rem}.choice-panel[open] summary:after{content:'−'}.choice-panel-content{padding:0 0 14px}
     .fomb-size-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fomb-size-option{display:flex;gap:9px;align-items:center;padding:12px;border:1px solid rgba(110,35,111,.18);border-radius:12px;background:rgba(255,255,255,.44);font-size:.75rem;font-weight:800}.fomb-size-option input{accent-color:var(--plum)}
     .fomb-extras{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-top:14px}.fomb-extras span{font-size:.75rem;font-weight:700}.fomb-stepper{display:grid;grid-template-columns:34px 34px 34px;align-items:center;text-align:center}.fomb-stepper button{width:34px;height:34px;border:1px solid rgba(110,35,111,.18);border-radius:9px;background:rgba(255,255,255,.55);color:var(--plum);font-weight:800}
-    .builder-summary{display:grid;grid-template-columns:1fr auto;gap:10px 20px;align-items:center;margin-top:20px;padding:18px;border-radius:16px;background:rgba(255,255,255,.48)}.builder-summary p{min-height:0;margin:3px 0 0;color:#705e70;font-size:.74rem}.builder-summary strong{font-size:1.4rem;color:var(--plum)}.builder-summary button{grid-column:1/-1;width:100%;border:0;border-radius:13px;padding:13px 18px;background:var(--plum);color:#fff;font-weight:800}
+    .builder-summary{display:grid;grid-template-columns:1fr auto;gap:10px 20px;align-items:center;margin-top:20px;padding:18px;border-radius:16px;background:rgba(255,255,255,.48)}.builder-summary p{min-height:0;margin:3px 0 0;color:#705e70;font-size:.74rem}.builder-summary strong{font-size:1.4rem;color:var(--plum)}.builder-summary button{grid-column:1/-1;width:100%;border:0;border-radius:13px;padding:13px 18px;background:var(--plum);color:#fff;font-weight:800}.builder-summary button:disabled{cursor:not-allowed;opacity:.45}.fomb-validation{grid-column:1/-1;min-height:20px;color:var(--plum);font-size:.72rem;font-weight:700}
     .products.catalog-organized{display:grid;grid-template-columns:1fr;gap:14px}
     .catalog-group{display:block;padding:0}
     .catalog-group[hidden]{display:none}
@@ -439,10 +439,10 @@
       .fonkie-gallery{padding:13px 0 0}.fonkie-gallery-label{padding:0 13px}.gallery-swipe-cue{padding:0 13px 8px}
       .fonkie-gallery-card{aspect-ratio:1.12}
       .fonkie-builder-body{padding:16px 12px}
-      .fonkie-flavors{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px}
+      .fonkie-flavors,.fomb-flavors{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px}
       .fonkie-builder-head{display:block}
       .fonkie-builder h3{font-size:1.65rem}
-      .fonkie-flavor{grid-template-columns:1fr;align-content:space-between;gap:5px;padding:7px 0}
+      .fonkie-flavor,.fomb-flavor{grid-template-columns:1fr;align-content:space-between;gap:5px;padding:7px 0}
       .fonkie-flavor-name{display:flex;align-items:flex-start;min-height:32px;font-size:.66rem;line-height:1.2}
       .fonkie-stepper{grid-template-columns:28px 23px 28px;justify-content:start}
       .fonkie-stepper button{width:28px;height:28px;border-radius:8px}
@@ -529,13 +529,19 @@
                 <figure class="builder-gallery-card"><img src="assets/fomb-raffaello-fontana-pro.jpg" alt="Fomb Raffaello"><span>Raffaello</span></figure>
               </div></details>
               <div class="builder-body">
-                <div class="builder-head"><h3>Fomb · Arma tu caja</h3><p>Elige el tamaño y añade extras. Los sabores se confirman por WhatsApp.</p></div>
+                <div class="builder-head"><h3>Fomb · Arma tu caja</h3><p>Elige el tamaño, los sabores y las cantidades.</p></div>
                 <details class="choice-panel"><summary>Elegir tamaño y extras</summary><div class="choice-panel-content">
                   <div class="fomb-size-options"><label class="fomb-size-option"><input type="radio" name="fombSize" value="4" checked> Caja de 4 · $15</label><label class="fomb-size-option"><input type="radio" name="fombSize" value="12"> Caja de 12 · $30</label></div>
                   <div class="fomb-extras"><span>Bombones extra · $3,50 c/u</span><div class="fomb-stepper"><button id="fombExtraMinus" type="button" aria-label="Restar extra">−</button><output id="fombExtraCount">0</output><button id="fombExtraPlus" type="button" aria-label="Sumar extra">+</button></div></div>
                 </div></details>
+                <details class="choice-panel" open><summary>Elegir sabores</summary><div class="choice-panel-content fomb-flavors" aria-label="Seleccionar sabores de Fomb">
+                  <div class="fomb-flavor" data-flavor="Pistacho"><span class="fonkie-flavor-name">Pistacho</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Pistacho">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Pistacho">+</button></div></div>
+                  <div class="fomb-flavor" data-flavor="Dubai"><span class="fonkie-flavor-name">Dubai</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Dubai">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Dubai">+</button></div></div>
+                  <div class="fomb-flavor" data-flavor="Ferrero"><span class="fonkie-flavor-name">Ferrero</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Ferrero">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Ferrero">+</button></div></div>
+                  <div class="fomb-flavor" data-flavor="Raffaello"><span class="fonkie-flavor-name">Raffaello</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Raffaello">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Raffaello">+</button></div></div>
+                </div></details>
                 <details class="fonkie-ingredients" id="fombIngredients"><summary>Sabores e ingredientes</summary><div></div></details>
-                <div class="builder-summary" aria-live="polite"><div><b id="fombCount">Caja de 4 Fomb</b><p id="fombRule">Sabores a elección por WhatsApp.</p></div><strong id="fombTotal">$15,00</strong><button id="addFombBox" type="button">Agregar al carrito</button></div>
+                <div class="builder-summary" aria-live="polite"><div><b id="fombCount">Has seleccionado 0 de 4 Fomb</b><p id="fombRule">Selecciona los 4 sabores de tu caja.</p></div><strong id="fombTotal">$15,00</strong><div class="fomb-validation" id="fombValidation">Faltan 4 bombones por elegir.</div><button id="addFombBox" type="button" disabled>Agregar al carrito</button></div>
               </div>
             </div>
           </article>

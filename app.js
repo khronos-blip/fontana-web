@@ -94,9 +94,11 @@
       fombBuilder.hidden = fomb.status === "sold-out";
       const flavors = Array.isArray(fomb.flavors) ? fomb.flavors : [];
       const gallery = $(".builder-gallery-track", fombBuilder);
+      const chooser = $(".fomb-flavors", fombBuilder);
       const count = $(".gallery-label-meta span", fombBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
       if (gallery) gallery.innerHTML = flavors.map(flavor => `<figure class="builder-gallery-card${flavor.status === "sold-out" ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span></figure>`).join("");
+      if (chooser) chooser.innerHTML = flavors.map(flavor => `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${flavor.status === "sold-out"}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}" ${flavor.status === "sold-out" ? "disabled" : ""}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${flavor.status === "sold-out" ? "disabled" : ""}>+</button></div></div>`).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
       if (sizeOptions) sizeOptions.innerHTML = sizes.map((size, index) => `<label class="fomb-size-option"><input type="radio" name="fombSize" value="${Number(size.quantity)}" data-price="${Number(size.price)}" ${index === 0 ? "checked" : ""}> Caja de ${Number(size.quantity)} · ${money(Number(size.price))}</label>`).join("");
@@ -346,26 +348,46 @@
     const sizeInputs = $$('input[name="fombSize"]', builder);
     const extrasOutput = $("#fombExtraCount");
     const addButton = $("#addFombBox");
+    const rows = $$(".fomb-flavor", builder);
     let extras = 0;
     $("#fombIngredients div").textContent = builder.dataset.ingredients;
+
+    function selectedFlavors() {
+      return rows.map(row => ({
+        name: row.dataset.flavor,
+        qty: Number($("output", row).value || $("output", row).textContent || 0)
+      })).filter(item => item.qty > 0);
+    }
 
     function selection() {
       const size = Number(sizeInputs.find(input => input.checked)?.value || 4);
       const selectedInput = sizeInputs.find(input => input.checked);
       const basePrice = Number(selectedInput?.dataset.price || (size === 12 ? 30 : 15));
       const extraPrice = Number(adminState?.builders?.fomb?.extraPrice ?? 3.5);
-      return { size, total: size + extras, price: basePrice + extras * extraPrice };
+      const flavors = selectedFlavors();
+      const selectedTotal = flavors.reduce((sum, item) => sum + item.qty, 0);
+      return { size, total: size + extras, price: basePrice + extras * extraPrice, flavors, selectedTotal };
     }
 
     function updateBuilder() {
       const current = selection();
       extrasOutput.value = String(extras);
       extrasOutput.textContent = String(extras);
-      $("#fombCount").textContent = `Caja de ${current.total} Fomb`;
-      $("#fombRule").textContent = extras
-        ? `Caja de ${current.size} + ${extras} extra${extras === 1 ? "" : "s"}. Sabores por WhatsApp.`
-        : "Sabores a elección por WhatsApp.";
+      $("#fombCount").textContent = `Has seleccionado ${current.selectedTotal} de ${current.total} Fomb`;
+      const remaining = current.total - current.selectedTotal;
+      if (remaining > 0) {
+        $("#fombRule").textContent = `Selecciona los ${current.total} sabores de tu caja.`;
+        $("#fombValidation").textContent = `Faltan ${remaining} ${remaining === 1 ? "bombón" : "bombones"} por elegir.`;
+      } else if (remaining < 0) {
+        $("#fombRule").textContent = "Reduce la selección para que coincida con el tamaño de la caja.";
+        $("#fombValidation").textContent = `Hay ${Math.abs(remaining)} ${Math.abs(remaining) === 1 ? "bombón" : "bombones"} de más.`;
+      } else {
+        const type = current.flavors.length === 1 ? "Caja de un solo sabor" : "Caja mixta";
+        $("#fombRule").textContent = `${type}${extras ? ` · ${current.size} + ${extras} extra${extras === 1 ? "" : "s"}` : ""}.`;
+        $("#fombValidation").textContent = "Tu caja está lista para agregar al carrito.";
+      }
       $("#fombTotal").textContent = money(current.price);
+      addButton.disabled = remaining !== 0;
     }
 
     $("#fombExtraMinus").addEventListener("click", () => {
@@ -378,9 +400,25 @@
     });
     sizeInputs.forEach(input => input.addEventListener("change", updateBuilder));
 
+    $$(".fomb-flavor .fonkie-stepper button", builder).forEach(button => button.addEventListener("click", () => {
+      const current = selection();
+      const output = $("output", button.closest(".fomb-flavor"));
+      const delta = Number(button.dataset.delta);
+      if (delta > 0 && current.selectedTotal >= current.total) return;
+      const next = Math.max(0, Number(output.value || output.textContent || 0) + delta);
+      output.value = String(next);
+      output.textContent = String(next);
+      updateBuilder();
+    }));
+
     addButton.addEventListener("click", () => {
       const current = selection();
-      const id = `fomb-box-${current.size}-${extras}`;
+      if (current.selectedTotal !== current.total) {
+        say(`Selecciona exactamente ${current.total} bombones para armar tu caja`);
+        return;
+      }
+      const choices = current.flavors.map(item => `${item.qty} ${item.name}`).join(", ");
+      const id = `fomb-box-${current.size}-${extras}-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
       const found = cart.find(item => item.id === id);
       if (found) {
         found.qty += 1;
@@ -388,11 +426,11 @@
         cart.push({
           id,
           productId: "fomb-box",
-          name: `Caja de ${current.total} Fomb`,
+          name: `Caja de ${current.total} Fomb · ${current.flavors.length === 1 ? "Un sabor" : "Mixta"}`,
           price: current.price,
           image: builder.dataset.image,
           ingredients: builder.dataset.ingredients,
-          choices: `Caja base de ${current.size}${extras ? ` + ${extras} extra${extras === 1 ? "" : "s"}` : ""}; sabores por confirmar`,
+          choices,
           qty: 1
         });
       }
