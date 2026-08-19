@@ -392,6 +392,18 @@
     .fomb-size-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fomb-size-option{display:flex;gap:9px;align-items:center;padding:12px;border:1px solid rgba(110,35,111,.18);border-radius:12px;background:rgba(255,255,255,.44);font-size:.75rem;font-weight:800}.fomb-size-option input{accent-color:var(--plum)}
     .fomb-extras{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-top:14px}.fomb-extras span{font-size:.75rem;font-weight:700}.fomb-stepper{display:grid;grid-template-columns:34px 34px 34px;align-items:center;text-align:center}.fomb-stepper button{width:34px;height:34px;border:1px solid rgba(110,35,111,.18);border-radius:9px;background:rgba(255,255,255,.55);color:var(--plum);font-weight:800}
     .builder-summary{display:grid;grid-template-columns:1fr auto;gap:10px 20px;align-items:center;margin-top:20px;padding:18px;border-radius:16px;background:rgba(255,255,255,.48)}.builder-summary p{min-height:0;margin:3px 0 0;color:#705e70;font-size:.74rem}.builder-summary strong{font-size:1.4rem;color:var(--plum)}.builder-summary button{grid-column:1/-1;width:100%;border:0;border-radius:13px;padding:13px 18px;background:var(--plum);color:#fff;font-weight:800}
+    .products.catalog-organized{display:grid;grid-template-columns:1fr;gap:14px}
+    .catalog-group{overflow:hidden;border:1px solid rgba(217,174,220,.23);border-radius:20px;background:rgba(255,255,255,.025)}
+    .catalog-group[hidden]{display:none}
+    .catalog-group>summary{display:flex;align-items:center;gap:14px;padding:19px 22px;cursor:pointer;list-style:none;background:linear-gradient(120deg,rgba(217,174,220,.16),rgba(111,171,67,.06));color:var(--cream);user-select:none}
+    .catalog-group>summary::-webkit-details-marker{display:none}
+    .catalog-group>summary:focus-visible{outline:2px solid var(--lime);outline-offset:-4px}
+    .catalog-group-title{font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:1.55rem;letter-spacing:.02em}
+    .catalog-group-count{margin-left:auto;padding:6px 10px;border:1px solid rgba(217,174,220,.28);border-radius:999px;color:var(--lilac);font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+    .catalog-group-toggle{display:grid;place-items:center;width:31px;height:31px;border-radius:50%;background:var(--lilac);color:var(--plum);font-size:1.15rem;font-weight:800;transition:transform .2s ease}
+    .catalog-group[open] .catalog-group-toggle{transform:rotate(45deg)}
+    .catalog-group-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:18px}
+    .catalog-group-grid>.fonkie-builder,.catalog-group-grid>.builder-panel{grid-column:1/-1}
     @media(max-width:640px){
       .products{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
       .product{border-radius:15px}
@@ -422,6 +434,7 @@
       .fonkie-stepper button{width:30px;height:30px}
       .fonkie-builder-summary{padding:14px}
       .builder-grid{grid-template-columns:1fr}.builder-gallery{padding:13px}.builder-gallery-card{aspect-ratio:1.35}.builder-body{padding:18px 14px}.builder-head h3{font-size:1.65rem}.fomb-size-options{grid-template-columns:1fr}
+      .catalog-group{border-radius:16px}.catalog-group>summary{padding:15px 13px;gap:9px}.catalog-group-title{font-size:1.22rem}.catalog-group-count{padding:5px 8px;font-size:.56rem}.catalog-group-toggle{width:28px;height:28px}.catalog-group-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;padding:11px}
     }
   </style>
 </head>
@@ -459,20 +472,20 @@
           <article class="product" data-category="cakes" data-id="pistacho-clasico" data-name="Torta de Pistacho" data-price="55" data-image="assets/pistacho-fontana-v3.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho y glaseado vegano"><div class="product-media"><img src="assets/pistacho-fontana-v3.jpg" alt="Torta de pistacho"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho</h3><span class="price">$55</span></div><p>Pistacho, harina de almendra y glaseado vegano.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="chocolate" data-name="Torta de Triple Chocolate" data-price="47" data-image="assets/chocolate-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, cacao, chocolate vegano endulzado con monkfruit y chispas de chocolate vegano endulzadas con monkfruit"><div class="product-media"><img src="assets/chocolate-fontana-v2.jpg" alt="Torta de triple chocolate"></div><div class="product-body"><div class="product-top"><h3>Torta de Triple Chocolate</h3><span class="price">$47</span></div><p>Chocolate vegano 70% cacao, harina de almendra y monk fruit.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Triple Chocolate">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="vainilla" data-name="Torta de Vainilla con Chispas de Chocolate" data-price="47" data-image="assets/vanilla-chips-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa y chispas de chocolate vegano endulzadas con monkfruit"><div class="product-media"><img src="assets/vanilla-chips-fontana-v2.jpg" alt="Torta de vainilla con chispas de chocolate"></div><div class="product-body"><div class="product-top"><h3>Torta de Vainilla con Chispas</h3><span class="price">$47</span></div><p>Vainilla, harina de almendra y chispas de chocolate vegano.</p><div class="product-footer"><span class="diet">BAJO ENCARGO</span><button class="add" aria-label="Agregar Torta de Vainilla con Chispas">+</button></div></div></article>
-          <article class="fonkie-builder" data-category="fonkies" data-id="fonkie-box" data-image="assets/fonkie-dark-chocolate-chips-1.jpg" data-ingredients="Chips de Chocolate Oscuro: harina de almendra, huevo, aceite de coco, chocolate vegano oscuro y monkfruit. Pistacho con Chocolate Blanco: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, pistacho y monkfruit. Triple Chocolate Fudge: harina de almendra, huevo, aceite de coco, chocolate vegano oscuro, cacao y monkfruit. Nutella Fit: harina de almendra, huevo, aceite de coco, nutella artesanal de cacao y avellana, aceite de oliva, alulosa y monkfruit. Almond Caramel: harina de almendra, huevo, aceite de coco, cacao, caramelo de almendra y monkfruit. Cinnamon Roll: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit y canela. Kinder Bueno: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit, avellana y cacao">
+          <article class="fonkie-builder" data-category="fonkies" data-id="fonkie-box" data-image="assets/fonkie-dark-chocolate-chips-fontana-pro.jpg" data-ingredients="Chips de Chocolate Oscuro: harina de almendra, huevo, aceite de coco, chocolate vegano oscuro y monkfruit. Pistacho con Chocolate Blanco: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, pistacho y monkfruit. Triple Chocolate Fudge: harina de almendra, huevo, aceite de coco, chocolate vegano oscuro, cacao y monkfruit. Nutella Fit: harina de almendra, huevo, aceite de coco, nutella artesanal de cacao y avellana, aceite de oliva, alulosa y monkfruit. Almond Caramel: harina de almendra, huevo, aceite de coco, cacao, caramelo de almendra y monkfruit. Cinnamon Roll: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit y canela. Kinder Bueno: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit, avellana y cacao">
             <div class="fonkie-builder-grid">
               <div class="fonkie-gallery"><div class="fonkie-gallery-label"><span>Galería de sabores</span><span>7 sabores</span></div><div class="fonkie-gallery-track" aria-label="Galería de Fonkies">
-                <figure class="fonkie-gallery-card"><img src="assets/fonkie-dark-chocolate-chips-1.jpg" alt="Fonkie Chips de Chocolate Oscuro"><span>Chips de Chocolate Oscuro</span></figure>
-                <figure class="fonkie-gallery-card"><img src="assets/fonkie-pistachio-white-chocolate-1.jpg" alt="Fonkie Pistacho con Chocolate Blanco"><span>Pistacho con Chocolate Blanco</span></figure>
-                <figure class="fonkie-gallery-card"><img src="assets/fonkie-triple-chocolate-fudge-1.jpg" alt="Fonkie Triple Chocolate Fudge"><span>Triple Chocolate Fudge</span></figure>
-                <figure class="fonkie-gallery-card"><img src="assets/fonkie-nutella-fit.jpg" alt="Fonkie Nutella Fit"><span>Nutella Fit</span></figure>
-                <figure class="fonkie-gallery-card"><img src="assets/fonkie-almond-caramel.jpg" alt="Fonkie Almond Caramel"><span>Almond Caramel</span></figure>
-                <figure class="fonkie-gallery-card"><img src="assets/fonkie-cinnamon-roll-1.jpg" alt="Fonkie Cinnamon Roll"><span>Cinnamon Roll</span></figure>
-                <figure class="fonkie-gallery-card"><img src="assets/fonkie-kinder-bueno-1.jpg" alt="Fonkie Kinder Bueno"><span>Kinder Bueno</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-dark-chocolate-chips-fontana-pro.jpg" alt="Fonkie Chips de Chocolate Oscuro"><span>Chips de Chocolate Oscuro</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-pistachio-white-chocolate-fontana-pro.jpg" alt="Fonkie Pistacho con Chocolate Blanco"><span>Pistacho con Chocolate Blanco</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-triple-chocolate-fudge-fontana-pro.jpg" alt="Fonkie Triple Chocolate Fudge"><span>Triple Chocolate Fudge</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-nutella-fit-fontana-pro.jpg" alt="Fonkie Nutella Fit"><span>Nutella Fit</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-almond-caramel-fontana-pro.jpg" alt="Fonkie Almond Caramel"><span>Almond Caramel</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-cinnamon-roll-fontana-pro.jpg" alt="Fonkie Cinnamon Roll"><span>Cinnamon Roll</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-kinder-bueno-fontana-pro.jpg" alt="Fonkie Kinder Bueno"><span>Kinder Bueno</span></figure>
               </div></div>
               <div class="fonkie-builder-body">
                 <div class="fonkie-builder-head"><div><h3>Fonkies · Arma tu caja</h3><p>Elige los sabores y las cantidades. Mínimo 4 unidades.</p></div></div>
-                <details class="choice-panel" open><summary>Elegir sabores</summary><div class="choice-panel-content fonkie-flavors" aria-label="Seleccionar sabores de Fonkies">
+                <details class="choice-panel"><summary>Elegir sabores</summary><div class="choice-panel-content fonkie-flavors" aria-label="Seleccionar sabores de Fonkies">
                   <div class="fonkie-flavor" data-flavor="Chips de Chocolate Oscuro"><span class="fonkie-flavor-name">Chips de Chocolate Oscuro</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Chips de Chocolate Oscuro">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Chips de Chocolate Oscuro">+</button></div></div>
                   <div class="fonkie-flavor" data-flavor="Pistacho con Chocolate Blanco"><span class="fonkie-flavor-name">Pistacho con Chocolate Blanco</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Pistacho con Chocolate Blanco">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Pistacho con Chocolate Blanco">+</button></div></div>
                   <div class="fonkie-flavor" data-flavor="Triple Chocolate Fudge"><span class="fonkie-flavor-name">Triple Chocolate Fudge</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Triple Chocolate Fudge">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Triple Chocolate Fudge">+</button></div></div>
@@ -486,16 +499,16 @@
               </div>
             </div>
           </article>
-          <article class="builder-panel fomb-builder" data-category="fomb" data-id="fomb-box" data-image="assets/fomb-dubai-1.jpg" data-ingredients="Fomb Pistacho, Fomb Dubai y Fomb Ferrero. Ingredientes y alérgenos dependen del sabor elegido y se confirman por WhatsApp.">
+          <article class="builder-panel fomb-builder" data-category="fomb" data-id="fomb-box" data-image="assets/fomb-dubai-fontana-pro.jpg" data-ingredients="Fomb Pistacho, Fomb Dubai y Fomb Ferrero. Ingredientes y alérgenos dependen del sabor elegido y se confirman por WhatsApp.">
             <div class="builder-grid">
               <div class="builder-gallery"><div class="builder-gallery-label"><span>Galería Fomb</span><span>3 sabores</span></div><div class="builder-gallery-track" aria-label="Galería de Fomb">
-                <figure class="builder-gallery-card"><img src="assets/fomb-pistachio-1.jpg" alt="Fomb Pistacho"><span>Pistacho</span></figure>
-                <figure class="builder-gallery-card"><img src="assets/fomb-dubai-1.jpg" alt="Fomb Dubai"><span>Dubai</span></figure>
-                <figure class="builder-gallery-card"><img src="assets/fomb-ferrero.jpg" alt="Fomb Ferrero"><span>Ferrero</span></figure>
+                <figure class="builder-gallery-card"><img src="assets/fomb-pistachio-fontana-pro.jpg" alt="Fomb Pistacho"><span>Pistacho</span></figure>
+                <figure class="builder-gallery-card"><img src="assets/fomb-dubai-fontana-pro.jpg" alt="Fomb Dubai"><span>Dubai</span></figure>
+                <figure class="builder-gallery-card"><img src="assets/fomb-ferrero-fontana-pro.jpg" alt="Fomb Ferrero"><span>Ferrero</span></figure>
               </div></div>
               <div class="builder-body">
                 <div class="builder-head"><h3>Fomb · Arma tu caja</h3><p>Elige el tamaño y añade extras. Los sabores se confirman por WhatsApp.</p></div>
-                <details class="choice-panel" open><summary>Elegir tamaño y extras</summary><div class="choice-panel-content">
+                <details class="choice-panel"><summary>Elegir tamaño y extras</summary><div class="choice-panel-content">
                   <div class="fomb-size-options"><label class="fomb-size-option"><input type="radio" name="fombSize" value="4" checked> Caja de 4 · $15</label><label class="fomb-size-option"><input type="radio" name="fombSize" value="12"> Caja de 12 · $30</label></div>
                   <div class="fomb-extras"><span>Bombones extra · $3,50 c/u</span><div class="fomb-stepper"><button id="fombExtraMinus" type="button" aria-label="Restar extra">−</button><output id="fombExtraCount">0</output><button id="fombExtraPlus" type="button" aria-label="Sumar extra">+</button></div></div>
                 </div></details>
