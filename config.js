@@ -129,7 +129,7 @@ window.FONTANA_CONFIG = {
       category: "salado",
       name: "Nuggets Rora",
       price: 13,
-      image: null,
+      image: "assets/nuggets-rora-fontana-pro.jpg",
       description: "Caja de veinte nuggets congelados, marca Rora.",
       ingredients: "Ingredientes pendientes de confirmar con Fontana.",
       weight: "20 UNIDADES",

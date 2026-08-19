@@ -128,6 +128,8 @@ test("catálogo incluye productos confirmados y fotos profesionales", async ({ p
   await expect(page.locator('[data-product-id="agua-gasificada-minalba"] img')).toHaveAttribute("src", "assets/beverage-minalba-limon-fontana-pro.jpg");
   await page.getByRole("button", { name: "Entrega inmediata" }).click();
   await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
+  await page.getByRole("button", { name: "Salados" }).click();
+  await expect(page.locator('[data-product-id="nuggets-rora"] img')).toHaveAttribute("src", "assets/nuggets-rora-fontana-pro.jpg");
 });
 
 test("los días de preparación incluyen los domingos", async ({ page }) => {
