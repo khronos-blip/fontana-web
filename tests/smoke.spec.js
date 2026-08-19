@@ -63,6 +63,9 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   await openPreview(page);
   await expect(page.locator("#addFonkieBox")).toBeDisabled();
   await expect(page.locator("#fonkieValidation")).toHaveText("Mínimo 4 galletas para armar tu caja.");
+  await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"]')).toHaveCount(1);
+  await expect(page.locator('img[src="assets/fonkie-white-chocolate-chips-fontana-pro.jpg"]')).toHaveCount(1);
+  await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-position", "50% 50%");
 });
 
 test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ page }) => {
