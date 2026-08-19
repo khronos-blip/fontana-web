@@ -22,14 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Prepare static site
-        run: |
-          mkdir dist
-          cp index.html app.js config.js dist/
-          cp -R assets dist/assets
+      - name: Install dependencies
+        run: npm ci
+      - name: Build versioned static site
+        run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
