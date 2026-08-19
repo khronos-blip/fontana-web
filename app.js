@@ -405,13 +405,9 @@
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
   }
 
-  function addBusinessDays(date, days) {
+  function addPreparationDays(date, days) {
     const result = new Date(date);
-    let added = 0;
-    while (added < days) {
-      result.setDate(result.getDate() + 1);
-      if (result.getDay() !== 0) added += 1;
-    }
+    result.setDate(result.getDate() + days);
     return result;
   }
 
@@ -424,7 +420,7 @@
       : 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const minimumDate = addBusinessDays(today, minimumBusinessDays);
+    const minimumDate = addPreparationDays(today, minimumBusinessDays);
     const input = $("#requestedDate");
     input.min = localDateValue(minimumDate);
     if (input.value && input.value < input.min) input.value = "";

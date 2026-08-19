@@ -65,12 +65,15 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   await expect(page.locator("#fonkieValidation")).toHaveText("Mínimo 4 galletas para armar tu caja.");
   await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"]')).toHaveCount(1);
   await expect(page.locator('img[src="assets/fonkie-white-chocolate-chips-fontana-pro.jpg"]')).toHaveCount(1);
+  await expect(page.locator('.fonkie-flavor[data-flavor="Chips Ahoy Fit"]')).toHaveCount(1);
+  await expect(page.locator('img[src="assets/fonkie-chips-ahoy-fit-fontana-pro.jpg"]')).toHaveCount(1);
   await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-position", "50% 50%");
 });
 
 test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ page }) => {
   await openPreview(page);
   await expect(page.locator(".fomb-builder")).toHaveCount(1);
+  await expect(page.locator('img[src="assets/fomb-raffaello-fontana-pro.jpg"]')).toHaveCount(1);
   await page.locator('.catalog-group[data-catalog-group="fomb"] > summary').click();
   await page.locator(".fomb-builder .choice-panel > summary").click();
   await expect(page.locator("#fombTotal")).toContainText("15,00");
@@ -110,18 +113,35 @@ test("las galerías de Fonkies y Fomb están centradas y no recortan las fotos",
   }
 });
 
-test("catálogo incluye nuevas categorías, productos y placeholders honestos", async ({ page }) => {
+test("catálogo incluye productos confirmados y fotos profesionales", async ({ page }) => {
   await openPreview(page);
   await expect(page.getByRole("button", { name: "Foncake · Tortas" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Fonkies · Galletas" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Fomb · Bombones" })).toBeVisible();
   await expect(page.locator('[data-product-id="ballerine"]')).toContainText("12,00");
+  await expect(page.locator('[data-product-id="crumbl-blueberry"]')).toContainText("47,00");
+  await expect(page.locator('[data-product-id="brownie-fit"]')).toContainText("38,00");
   await page.getByRole("button", { name: "Bebidas" }).click();
-  await expect(page.locator('[data-product-id="agua-minalba-355"]')).toBeVisible();
+  await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
   await expect(page.locator('[data-product-id="san-pellegrino"]')).toContainText("5,00");
-  await expect(page.locator('[data-product-id="san-pellegrino"] .product-placeholder')).toContainText("Foto por actualizar");
+  await expect(page.locator('[data-product-id="san-pellegrino"] img')).toHaveAttribute("src", "assets/beverage-sanpellegrino-fontana-pro.jpg");
+  await expect(page.locator('[data-product-id="agua-gasificada-minalba"] img')).toHaveAttribute("src", "assets/beverage-minalba-limon-fontana-pro.jpg");
   await page.getByRole("button", { name: "Entrega inmediata" }).click();
-  await expect(page.locator('[data-product-id="agua-minalba-355"]')).toBeVisible();
+  await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
+});
+
+test("los días de preparación incluyen los domingos", async ({ page }) => {
+  await openPreview(page);
+  await page.locator('[data-id="pistacho"] .add').click();
+  await page.locator("#cartButton").click();
+  await page.locator("#continueCheckout").click();
+  const expectedTomorrow = await page.evaluate(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + 1);
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+  });
+  await expect(page.locator("#requestedDate")).toHaveAttribute("min", expectedTomorrow);
 });
 
 test("el catálogo largo usa secciones desplegables prácticas", async ({ page }, testInfo) => {
