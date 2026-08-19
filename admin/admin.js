@@ -223,6 +223,7 @@
   $$(".nav-item").forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
   $$('[data-view-link]').forEach(button => button.addEventListener("click", () => showView(button.dataset.viewLink)));
   $$('[data-action="new-product"]').forEach(button => button.addEventListener("click", () => openProduct()));
+  $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => button.closest("dialog")?.close()));
   $("#saveAll").addEventListener("click", saveState);
   ["#productSearch","#categoryFilter","#statusFilter"].forEach(selector => $(selector).addEventListener("input", renderProducts));
 

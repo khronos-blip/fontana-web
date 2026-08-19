@@ -334,6 +334,32 @@ test("el panel administrador permite entrar, editar y reflejar el catálogo en l
   await expect(ballerine.locator(".product-tag")).toHaveText("PROMOCIÓN DEL DÍA");
 });
 
+test("el panel móvil cierra sus formularios y evita el zoom automático en campos", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "+ Nuevo producto" }).first().click();
+  const dialog = page.locator("#productDialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[name="name"]')).toHaveCSS("font-size", "16px");
+  await dialog.getByRole("button", { name: "Cerrar" }).click();
+  await expect(dialog).not.toBeVisible();
+
+  await page.getByRole("button", { name: "+ Nuevo producto" }).first().click();
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await expect(dialog).not.toBeVisible();
+});
+
+test("el checkout móvil mantiene los campos a tamaño anti-zoom", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await page.locator('[data-id="pistacho"] .add').click();
+  await page.locator("#cartButton").click();
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator("#customerName")).toHaveCSS("font-size", "16px");
+  await expect(page.locator("#customerNotes")).toHaveCSS("font-size", "16px");
+});
+
 test("el panel administra sabores especiales y conserva el checkout", async ({ page }) => {
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();

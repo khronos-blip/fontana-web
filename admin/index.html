@@ -80,7 +80,7 @@
 
   <dialog id="productDialog">
     <form id="productForm" method="dialog">
-      <div class="dialog-head"><div><span class="eyebrow">Producto</span><h2 id="dialogTitle">Nuevo producto</h2></div><button class="icon-close" value="cancel" aria-label="Cerrar">×</button></div>
+      <div class="dialog-head"><div><span class="eyebrow">Producto</span><h2 id="dialogTitle">Nuevo producto</h2></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
       <input type="hidden" name="originalId">
       <div class="form-grid">
         <label>Nombre<input name="name" required></label>
@@ -99,12 +99,12 @@
         <label class="wide">Presentaciones y precios<textarea name="sizes" rows="3" placeholder="Una por línea: 180 g | 15 | available"></textarea></label>
         <div class="image-field wide"><div class="image-preview" id="productImagePreview"></div><div><label>Ruta de imagen<input name="image" placeholder="assets/foto.jpg"></label><label class="file-button">Subir y optimizar imagen<input id="productImageInput" type="file" accept="image/jpeg,image/png,image/webp"></label><small>Se reduce automáticamente para no sobrecargar la web.</small></div></div>
       </div>
-      <div class="dialog-actions"><button class="ghost" value="cancel">Cancelar</button><button class="primary" id="saveProductButton" value="default">Guardar producto</button></div>
+      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="saveProductButton" type="submit">Guardar producto</button></div>
     </form>
   </dialog>
   <dialog id="flavorDialog">
     <form id="flavorForm" method="dialog">
-      <div class="dialog-head"><div><span class="eyebrow">Sabor</span><h2 id="flavorDialogTitle">Editar sabor</h2></div><button class="icon-close" value="cancel" aria-label="Cerrar">×</button></div>
+      <div class="dialog-head"><div><span class="eyebrow">Sabor</span><h2 id="flavorDialogTitle">Editar sabor</h2></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
       <input type="hidden" name="builder"><input type="hidden" name="index">
       <div class="form-grid">
         <label>Nombre<input name="name" required></label>
@@ -112,7 +112,7 @@
         <label class="wide">Ingredientes<textarea name="ingredients" rows="4"></textarea></label>
         <div class="image-field wide"><div class="image-preview" id="flavorImagePreview"></div><div><label>Ruta de imagen<input name="image"></label><label class="file-button">Subir y optimizar imagen<input id="flavorImageInput" type="file" accept="image/jpeg,image/png,image/webp"></label></div></div>
       </div>
-      <div class="dialog-actions"><button class="ghost" value="cancel">Cancelar</button><button class="primary" id="saveFlavorButton" value="default">Guardar sabor</button></div>
+      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="saveFlavorButton" type="submit">Guardar sabor</button></div>
     </form>
   </dialog>
   <div class="toast" id="adminToast" role="status"></div>
