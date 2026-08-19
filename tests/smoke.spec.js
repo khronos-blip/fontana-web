@@ -90,6 +90,10 @@ test("el selector móvil de Fonkies distribuye los sabores en dos columnas", asy
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
   expect(columns).toBe(2);
+  const lastFlavor = page.locator(".fonkie-flavor").last();
+  await expect(lastFlavor).toHaveCSS("grid-column-start", "1");
+  await expect(lastFlavor).toHaveCSS("grid-column-end", "-1");
+  await expect(lastFlavor).toHaveCSS("justify-content", "center");
   await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"] [data-delta="1"]')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
