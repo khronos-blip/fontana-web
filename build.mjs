@@ -36,7 +36,7 @@ await writeFile(`${outputDirectory}/index.html`, html);
 
 let adminHtml = await readFile("admin/index.html", "utf8");
 adminHtml = adminHtml
-  .replace('href="admin.css"', `href="admin.css?v=${adminStyleVersion}"`)
-  .replace('src="../config.js"', `src="../config.js?v=${configVersion}"`)
-  .replace('src="admin.js"', `src="admin.js?v=${adminScriptVersion}"`);
+  .replace(/href="admin\.css(?:\?v=[^"]*)?"/, `href="admin.css?v=${adminStyleVersion}"`)
+  .replace(/src="\.\.\/config\.js(?:\?v=[^"]*)?"/, `src="../config.js?v=${configVersion}"`)
+  .replace(/src="admin\.js(?:\?v=[^"]*)?"/, `src="admin.js?v=${adminScriptVersion}"`);
 await writeFile(`${outputDirectory}/admin/index.html`, adminHtml);
