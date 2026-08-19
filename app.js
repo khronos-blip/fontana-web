@@ -561,6 +561,27 @@
     const intro = $(".menu-intro");
     const section = intro?.closest(".menu-section");
     if (!intro) return;
+    const title = intro.querySelector("h2");
+    if (title && !title.classList.contains("menu-title-ready")) {
+      const words = title.textContent.trim().split(/\s+/);
+      let letterIndex = 0;
+      title.textContent = "";
+      words.forEach((word, wordIndex) => {
+        const wordElement = document.createElement("span");
+        wordElement.className = "menu-title-word";
+        [...word].forEach(letter => {
+          const letterElement = document.createElement("span");
+          letterElement.className = "menu-title-letter";
+          letterElement.style.setProperty("--letter-index", letterIndex);
+          letterElement.textContent = letter;
+          wordElement.appendChild(letterElement);
+          letterIndex += 1;
+        });
+        title.appendChild(wordElement);
+        if (wordIndex < words.length - 1) title.appendChild(document.createTextNode(" "));
+      });
+      title.classList.add("menu-title-ready");
+    }
     if (!("IntersectionObserver" in window)) {
       intro.classList.add("menu-intro-visible");
       section?.classList.add("menu-entry-visible");
