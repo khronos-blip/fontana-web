@@ -319,7 +319,12 @@
     .menu-section{padding-top:82px}
     .menu-section .section-head{display:block}
     .menu-section .filters{margin-top:30px}
+    .menu-intro .eyebrow,.menu-intro h2{opacity:0;transform:translateY(18px)}
+    .menu-intro.menu-intro-visible .eyebrow{animation:menu-intro-in .38s ease-out both}
+    .menu-intro.menu-intro-visible h2{animation:menu-intro-in .48s .06s cubic-bezier(.2,.8,.2,1) both}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+    @keyframes menu-intro-in{to{opacity:1;transform:translateY(0)}}
+    @media(prefers-reduced-motion:reduce){.menu-intro .eyebrow,.menu-intro h2{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible h2{animation:none}}
 
     .allergy-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
     .allergy-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
@@ -461,7 +466,7 @@
 
     <section class="menu-section" id="menu">
       <div class="container">
-        <div class="section-head"><div><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="foncake">Foncake · Tortas</button><button class="filter" data-filter="fonkies">Fonkies · Galletas</button><button class="filter" data-filter="fomb">Fomb · Bombones</button><button class="filter" data-filter="salado">Salados</button><button class="filter dynamic-filter" data-filter="promo">Promoción del día</button><button class="filter dynamic-filter" data-filter="beverages">Bebidas</button><button class="filter dynamic-filter" data-filter="immediate">Entrega inmediata</button></div></div>
+        <div class="section-head"><div class="menu-intro"><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter dynamic-filter" data-filter="promo">Promo del día</button><button class="filter dynamic-filter" data-filter="immediate">Stock de hoy</button><button class="filter" data-filter="fonkies">Fonkies · Galletas</button><button class="filter" data-filter="fomb">Fomb · Bombones</button><button class="filter" data-filter="foncake">Foncake · Tortas completas</button><button class="filter" data-filter="salado">Salado</button><button class="filter dynamic-filter" data-filter="beverages">Bebida</button></div></div>
         <div class="products" id="products">
           <article class="product" data-category="cakes" data-id="pistacho" data-name="Torta de Pistacho y Frambuesa" data-price="60" data-image="assets/pistachio-raspberry-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho, frambuesa, semillas de amapola, alulosa y chocolate blanco vegano sin azúcar"><div class="product-media"><img src="assets/pistachio-raspberry-fontana-v2.jpg" alt="Torta de pistacho y frambuesa"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho &amp; Frambuesa</h3><span class="price">$60</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho y Frambuesa">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="naranja" data-name="Torta de Manjar de Naranja" data-price="47" data-image="assets/manjar-naranja.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de yuca (10 %), monkfruit, aceite de coco, huevo, naranja, semillas de amapola y alulosa"><div class="product-media"><img src="assets/manjar-naranja.jpg" alt="Torta de manjar de naranja"></div><div class="product-body"><div class="product-top"><h3>Torta de Manjar de Naranja</h3><span class="price">$47</span></div><p>Naranja, harina de almendra, semillas de amapola y alulosa.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Manjar de Naranja">+</button></div></div></article>

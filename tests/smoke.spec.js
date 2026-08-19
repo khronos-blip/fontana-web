@@ -158,26 +158,26 @@ test("el carrito usa fondo lila y el checkout toma los sabores automáticamente"
 
 test("catálogo incluye productos confirmados y fotos profesionales", async ({ page }) => {
   await openPreview(page);
-  await expect(page.getByRole("button", { name: "Foncake · Tortas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Foncake · Tortas completas" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Fonkies · Galletas" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Fomb · Bombones" })).toBeVisible();
   await expect(page.locator('[data-product-id="ballerine"]')).toContainText("12,00");
   await expect(page.locator('[data-product-id="crumbl-blueberry"]')).toContainText("47,00");
   await expect(page.locator('[data-product-id="brownie-fit"]')).toContainText("38,00");
-  await page.getByRole("button", { name: "Bebidas" }).click();
+  await page.getByRole("button", { name: "Bebida" }).click();
   await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
   await expect(page.locator('[data-product-id="san-pellegrino"]')).toContainText("5,00");
   await expect(page.locator('[data-product-id="san-pellegrino"] img')).toHaveAttribute("src", "assets/beverage-sanpellegrino-fontana-pro.jpg");
   await expect(page.locator('[data-product-id="agua-gasificada-minalba"] img')).toHaveAttribute("src", "assets/beverage-minalba-limon-fontana-pro.jpg");
-  await page.getByRole("button", { name: "Entrega inmediata" }).click();
+  await page.getByRole("button", { name: "Stock de hoy" }).click();
   await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
-  await page.getByRole("button", { name: "Salados" }).click();
+  await page.getByRole("button", { name: "Salado" }).click();
   await expect(page.locator('[data-product-id="nuggets-rora"] img')).toHaveAttribute("src", "assets/nuggets-rora-fontana-pro.jpg");
 });
 
 test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotados", async ({ page }) => {
   await openPreview(page);
-  await page.getByRole("button", { name: "Salados" }).click();
+  await page.getByRole("button", { name: "Salado" }).click();
   const panzerottis = page.locator('[data-product-id="panzerottis"]');
   const raviolis = page.locator('[data-product-id="raviolis"]');
   await expect(panzerottis.locator(".product-tag")).toBeHidden();
@@ -219,7 +219,7 @@ test("un sabor desactivado aparece agotado y no puede seleccionarse", async ({ p
     await route.fulfill({ response, body });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Salados" }).click();
+  await page.getByRole("button", { name: "Salado" }).click();
   const carne = page.locator('[data-product-id="panzerottis"] .product-variant option').first();
   await expect(carne).toHaveText("Carne · Agotado");
   await expect(carne).toBeDisabled();
@@ -243,7 +243,7 @@ test("los días de preparación incluyen los domingos", async ({ page }) => {
 
 test("los salados indican que son congelados y se preparan en air fryer u horno", async ({ page }) => {
   await openPreview(page);
-  await page.getByRole("button", { name: "Salados" }).click();
+  await page.getByRole("button", { name: "Salado" }).click();
   for (const id of ["panzerottis", "raviolis", "tequenos-fit", "nuggets-rora", "cachito-fit"]) {
     await expect(page.locator(`[data-product-id="${id}"]`)).toContainText("air fryer u horno");
   }
@@ -256,6 +256,15 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
     if (message.type() === "error") browserErrors.push(message.text());
   });
   await openPreview(page);
+  await expect(page.locator(".filters .filter")).toHaveText([
+    "Promo del día",
+    "Stock de hoy",
+    "Fonkies · Galletas",
+    "Fomb · Bombones",
+    "Foncake · Tortas completas",
+    "Salado",
+    "Bebida"
+  ]);
   const cakes = page.locator('.catalog-group[data-catalog-group="cakes"]');
   const fonkies = page.locator('.catalog-group[data-catalog-group="fonkies"]');
   await expect(page.locator(".catalog-group > summary")).toHaveCount(0);
@@ -264,15 +273,17 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await expect(fonkies.locator(".fonkie-builder")).toBeVisible();
   await expect(cakes).toBeHidden();
-  const standardFilterBorder = await page.getByRole("button", { name: "Salados" }).evaluate(button => getComputedStyle(button).borderTopColor);
-  const dynamicFilterBorder = await page.getByRole("button", { name: "Promoción del día" }).evaluate(button => getComputedStyle(button).borderTopColor);
+  const standardFilterBorder = await page.getByRole("button", { name: "Salado" }).evaluate(button => getComputedStyle(button).borderTopColor);
+  const dynamicFilterBorder = await page.getByRole("button", { name: "Promo del día" }).evaluate(button => getComputedStyle(button).borderTopColor);
   expect(dynamicFilterBorder).toBe(standardFilterBorder);
-  await page.getByRole("button", { name: "Salados" }).click();
+  await page.getByRole("button", { name: "Salado" }).click();
   const salado = page.locator('.catalog-group[data-catalog-group="salado"]');
   await expect(salado).toBeVisible();
   await expect(cakes).toBeHidden();
   const fitsMobileViewport = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   expect(fitsMobileViewport).toBe(true);
+  await page.locator(".menu-intro").scrollIntoViewIfNeeded();
+  await expect(page.locator(".menu-intro")).toHaveClass(/menu-intro-visible/);
   await salado.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("catalogo-movil.png"), fullPage: false });
   expect(browserErrors).toEqual([]);

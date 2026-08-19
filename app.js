@@ -534,7 +534,7 @@
     const emptyCopy = {
       promo: ["Promo del día", "Las promociones activas aparecerán aquí cuando Fontana las publique."],
       beverages: ["Bebidas", "Las bebidas confirmadas aparecerán aquí cuando se incorporen al menú."],
-      immediate: ["Entrega inmediata", "Los productos disponibles para entrega inmediata aparecerán aquí cada día."]
+      immediate: ["Stock de hoy", "Los productos disponibles para entrega inmediata aparecerán aquí cada día."]
     };
     emptyState.hidden = visibleCount > 0;
     if (!visibleCount && emptyCopy[filter]) {
@@ -553,6 +553,21 @@
     button.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
     filterProducts(button.dataset.filter);
   }));
+
+  function setupMenuIntro() {
+    const intro = $(".menu-intro");
+    if (!intro) return;
+    if (!("IntersectionObserver" in window)) {
+      intro.classList.add("menu-intro-visible");
+      return;
+    }
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      intro.classList.add("menu-intro-visible");
+      observer.disconnect();
+    }, { threshold: 0.35 });
+    observer.observe(intro);
+  }
 
   function toggleAllergyDetails() {
     const hasAllergies = checkoutForm.elements.hasAllergies.value === "yes";
@@ -577,6 +592,7 @@
   enhanceProductSafety();
   setupFonkieBuilder();
   setupFombBuilder();
+  setupMenuIntro();
   populateOptions();
   toggleAddress();
   renderCart();
