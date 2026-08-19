@@ -45,7 +45,8 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page, context 
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
-  await page.locator(".fonkie-builder .choice-panel > summary").click();
+  await expect(page.locator(".fonkie-builder .fonkie-flavors")).toBeVisible();
+  await expect(page.locator(".fonkie-builder .choice-panel > summary")).toHaveCount(0);
   const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
   for (let index = 0; index < 4; index += 1) await firstPlus.click();
   await expect(page.locator("#fonkieTotal")).toContainText("15,00");
