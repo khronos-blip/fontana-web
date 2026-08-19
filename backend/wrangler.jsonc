@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "fontana-catalog",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "a9dc17f1-a341-49e0-8a5e-4c2fb204d19f",
       "migrations_dir": "migrations"
     }
   ]
