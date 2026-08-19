@@ -16,8 +16,12 @@ await cp("config.js", `${outputDirectory}/config.js`);
 
 const configContents = await readFile("config.js", "utf8");
 const appContents = await readFile("app.js", "utf8");
+const adminScriptContents = await readFile("admin/admin.js", "utf8");
+const adminStyleContents = await readFile("admin/admin.css", "utf8");
 const configVersion = fingerprint(configContents);
 const appVersion = fingerprint(appContents);
+const adminScriptVersion = fingerprint(adminScriptContents);
+const adminStyleVersion = fingerprint(adminStyleContents);
 
 function inlineScript(contents) {
   return contents.replace(/<\/script/gi, "<\\/script");
@@ -29,3 +33,10 @@ html = html
   .replace('<script src="app.js"></script>', () => `<script data-store-app="${appVersion}">\n${inlineScript(appContents)}\n</script>`);
 
 await writeFile(`${outputDirectory}/index.html`, html);
+
+let adminHtml = await readFile("admin/index.html", "utf8");
+adminHtml = adminHtml
+  .replace('href="admin.css"', `href="admin.css?v=${adminStyleVersion}"`)
+  .replace('src="../config.js"', `src="../config.js?v=${configVersion}"`)
+  .replace('src="admin.js"', `src="admin.js?v=${adminScriptVersion}"`);
+await writeFile(`${outputDirectory}/admin/index.html`, adminHtml);
