@@ -45,7 +45,7 @@ test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await expect(page.locator(".fonkie-builder .fonkie-flavors")).toBeVisible();
-  await expect(page.locator(".fonkie-builder .choice-panel > summary")).toHaveCount(0);
+  await expect(page.locator(".fonkie-builder .choice-panel")).toHaveAttribute("open", "");
   const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
   for (let index = 0; index < 4; index += 1) await firstPlus.click();
   await expect(page.locator("#fonkieTotal")).toContainText("15,00");
@@ -69,6 +69,19 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   await expect(page.locator('img[src="assets/fonkie-chips-ahoy-fit-fontana-pro.jpg"]')).toHaveCount(1);
   await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-position", "50% 50%");
   await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-fit", "cover");
+});
+
+test("el selector de Fonkies es compacto en escritorio y puede plegarse", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openPreview(page);
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const panel = page.locator(".fonkie-builder .choice-panel");
+  const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
+  expect(columns).toBe(2);
+  await panel.locator("summary").click();
+  await expect(page.locator(".fonkie-flavors")).toBeHidden();
+  await panel.locator("summary").click();
+  await expect(page.locator(".fonkie-flavors")).toBeVisible();
 });
 
 test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ page }) => {

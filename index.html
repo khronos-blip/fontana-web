@@ -148,8 +148,8 @@
     .fonkie-builder-head{display:flex;justify-content:space-between;gap:20px;align-items:start;margin-bottom:22px}
     .fonkie-builder h3{font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:2rem;color:var(--plum-dark)}
     .fonkie-builder-head p{margin:7px 0 0;color:#705e70;font-size:.8rem}
-    .fonkie-flavors{display:grid;gap:8px}
-    .fonkie-flavor{display:grid;grid-template-columns:1fr auto;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid rgba(110,35,111,.14)}
+    .fonkie-flavors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px}
+    .fonkie-flavor{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(110,35,111,.14)}
     .fonkie-flavor-name{font-size:.78rem;font-weight:700}
     .fonkie-stepper{display:grid;grid-template-columns:32px 30px 32px;align-items:center;text-align:center}
     .fonkie-stepper button{width:32px;height:32px;border:1px solid rgba(110,35,111,.18);background:rgba(255,255,255,.5);color:var(--plum);border-radius:9px;font-weight:800}
@@ -428,6 +428,7 @@
       .fonkie-gallery{padding:13px 0 0}.fonkie-gallery-label{padding:0 13px}.gallery-swipe-cue{padding:0 13px 8px}
       .fonkie-gallery-card{aspect-ratio:1.12}
       .fonkie-builder-body{padding:18px 14px}
+      .fonkie-flavors{grid-template-columns:1fr}
       .fonkie-builder-head{display:block}
       .fonkie-builder h3{font-size:1.65rem}
       .fonkie-flavor{gap:8px}
@@ -489,7 +490,7 @@
               </div></details>
               <div class="fonkie-builder-body">
                 <div class="fonkie-builder-head"><div><h3>Fonkies · Arma tu caja</h3><p>Elige los sabores y las cantidades. Mínimo 4 unidades.</p></div></div>
-                <div class="choice-panel choice-panel-static"><div class="choice-panel-title">Elegir sabores</div><div class="choice-panel-content fonkie-flavors" aria-label="Seleccionar sabores de Fonkies">
+                <details class="choice-panel" open><summary>Elegir sabores</summary><div class="choice-panel-content fonkie-flavors" aria-label="Seleccionar sabores de Fonkies">
                   <div class="fonkie-flavor" data-flavor="Chips de Chocolate Oscuro"><span class="fonkie-flavor-name">Chips de Chocolate Oscuro</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Chips de Chocolate Oscuro">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Chips de Chocolate Oscuro">+</button></div></div>
                   <div class="fonkie-flavor" data-flavor="Chispa de Chocolate Blanco"><span class="fonkie-flavor-name">Chispa de Chocolate Blanco</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Chispa de Chocolate Blanco">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Chispa de Chocolate Blanco">+</button></div></div>
                   <div class="fonkie-flavor" data-flavor="Pistacho con Chocolate Blanco"><span class="fonkie-flavor-name">Pistacho con Chocolate Blanco</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Pistacho con Chocolate Blanco">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Pistacho con Chocolate Blanco">+</button></div></div>
@@ -499,7 +500,7 @@
                   <div class="fonkie-flavor" data-flavor="Cinnamon Roll"><span class="fonkie-flavor-name">Cinnamon Roll</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Cinnamon Roll">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Cinnamon Roll">+</button></div></div>
                   <div class="fonkie-flavor" data-flavor="Kinder Bueno"><span class="fonkie-flavor-name">Kinder Bueno</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Kinder Bueno">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Kinder Bueno">+</button></div></div>
                   <div class="fonkie-flavor" data-flavor="Chips Ahoy Fit"><span class="fonkie-flavor-name">Chips Ahoy Fit</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Chips Ahoy Fit">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Chips Ahoy Fit">+</button></div></div>
-                </div></div>
+                </div></details>
                 <details class="fonkie-ingredients" id="fonkieIngredients"><summary>Ingredientes</summary><div></div></details>
                 <div class="fonkie-builder-summary" aria-live="polite"><div><b id="fonkieCount">Has seleccionado 0 Fonkies</b><p id="fonkiePriceRule">Selecciona al menos 4 para armar tu caja.</p></div><strong id="fonkieTotal">$0,00</strong><div class="fonkie-validation" id="fonkieValidation">Mínimo 4 galletas para armar tu caja.</div><button class="fonkie-add" id="addFonkieBox" type="button" disabled>Agregar al carrito</button></div>
               </div>
