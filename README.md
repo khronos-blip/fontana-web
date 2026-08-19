@@ -30,12 +30,13 @@ Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a G
 La tienda continúa siendo estática y no dispone todavía de un panel privado con inicio de sesión. Hasta que se apruebe un CMS o backend, `config.js` es la fuente segura para gestionar los productos añadidos en esta revisión:
 
 1. Editar el producto dentro de `dynamicCatalog`.
-2. Usar `status: "available"` para publicarlo o `status: "sold-out"` para mostrarlo agotado.
-3. Activar `promo: true` para incluirlo en «Promoción del día».
-4. Activar `immediate: true` para incluirlo en «Entrega inmediata».
-5. Usar `price: null` cuando el precio aún no esté confirmado; la web mostrará «Por confirmar» y no permitirá añadirlo al carrito.
-6. Guardar las nuevas fotografías dentro de `assets/` y asignar su ruta en `image`.
-7. Para productos con sabores, usar `variants` y cambiar el `status` de cada sabor entre `available` y `sold-out`. Los sabores disponibles no muestran etiqueta; los no disponibles aparecen como «Agotado» y no pueden seleccionarse.
+2. Para productos con varias presentaciones, añadir `sizes` con `name`, `price` y `status`; el carrito y WhatsApp tomarán automáticamente la presentación, el precio y el relleno elegidos.
+3. Usar `status: "available"` para publicarlo o `status: "sold-out"` para mostrarlo agotado.
+4. Activar `promo: true` para incluirlo en «Promoción del día».
+5. Activar `immediate: true` para incluirlo en «Entrega inmediata».
+6. Usar `price: null` cuando el precio aún no esté confirmado; la web mostrará «Por confirmar» y no permitirá añadirlo al carrito.
+7. Guardar las nuevas fotografías dentro de `assets/` y asignar su ruta en `image`.
+8. Para productos con sabores, usar `variants` y cambiar el `status` de cada sabor entre `available` y `sold-out`. Los sabores disponibles no muestran etiqueta; los no disponibles aparecen como «Agotado» y no pueden seleccionarse.
 
 Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
 

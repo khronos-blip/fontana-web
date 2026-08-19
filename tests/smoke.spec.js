@@ -101,6 +101,7 @@ test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el produc
     const card = track.locator(item.card).first();
     const image = card.locator("img");
     await expect(track).toBeVisible();
+    await expect(gallery.locator(".gallery-swipe-cue")).toContainText("Desliza para ver más");
     await expect(image).toHaveCSS("object-fit", "cover");
     await expect(image).toHaveCSS("object-position", "50% 50%");
     const fillsTrack = await card.evaluate(element => {
@@ -115,6 +116,10 @@ test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el produc
       return Math.abs((own.left + own.width / 2) - (parent.left + parent.width / 2)) < 1;
     });
     expect(centered).toBe(true);
+    await gallery.locator("summary").click();
+    await expect(track).toBeHidden();
+    await gallery.locator("summary").click();
+    await expect(track).toBeVisible();
     await track.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(item.screenshot), fullPage: false });
   }
@@ -182,6 +187,11 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
     "Mozzarella, salsa y pecorino"
   ]);
   await expect(raviolis.locator("h3")).toHaveText("Raviolis");
+  await expect(raviolis.locator(".price")).toContainText("Desde USD 15,00");
+  await expect(raviolis.locator(".product-size option")).toHaveText([
+    "180 g · USD 15,00",
+    "300 g · USD 20,00"
+  ]);
   await expect(raviolis.locator(".product-variant option")).toHaveText([
     "Carne",
     "Ricotta de cabra y espinaca"
@@ -191,6 +201,13 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item h4")).toContainText("Panzerottis");
   await expect(page.locator(".cart-choices")).toHaveText("Mozzarella, salsa y pecorino");
+  await page.locator("#closeCart").click();
+  await raviolis.locator(".product-size").selectOption({ label: "300 g · USD 20,00" });
+  await raviolis.locator(".product-variant").selectOption({ label: "Carne" });
+  await raviolis.locator(".add").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" })).toContainText("USD 20,00");
+  await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" }).locator(".cart-choices")).toHaveText("300 g · Carne");
 });
 
 test("un sabor desactivado aparece agotado y no puede seleccionarse", async ({ page }) => {
@@ -221,6 +238,15 @@ test("los días de preparación incluyen los domingos", async ({ page }) => {
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
   });
   await expect(page.locator("#requestedDate")).toHaveAttribute("min", expectedTomorrow);
+  await expect(page.locator("#requestedDate")).toHaveValue(expectedTomorrow);
+});
+
+test("los salados indican que son congelados y se preparan en air fryer u horno", async ({ page }) => {
+  await openPreview(page);
+  await page.getByRole("button", { name: "Salados" }).click();
+  for (const id of ["panzerottis", "raviolis", "tequenos-fit", "nuggets-rora", "cachito-fit"]) {
+    await expect(page.locator(`[data-product-id="${id}"]`)).toContainText("air fryer u horno");
+  }
 });
 
 test("los filtros muestran los productos sin barras desplegables", async ({ page }, testInfo) => {
