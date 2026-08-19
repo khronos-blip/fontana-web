@@ -161,6 +161,9 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await expect(fonkies.locator(".fonkie-builder")).toBeVisible();
   await expect(cakes).toBeHidden();
+  const standardFilterBorder = await page.getByRole("button", { name: "Salados" }).evaluate(button => getComputedStyle(button).borderTopColor);
+  const dynamicFilterBorder = await page.getByRole("button", { name: "Promoción del día" }).evaluate(button => getComputedStyle(button).borderTopColor);
+  expect(dynamicFilterBorder).toBe(standardFilterBorder);
   await page.getByRole("button", { name: "Salados" }).click();
   const salado = page.locator('.catalog-group[data-catalog-group="salado"]');
   await expect(salado).toBeVisible();
@@ -184,16 +187,23 @@ test("el bloque negro fue eliminado y el footer centra la marca", async ({ page 
   expect(brokenImages).toEqual([]);
 });
 
-test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }) => {
+test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }, testInfo) => {
   await openPreview(page);
   const nav = page.locator("#nav");
   await expect(nav.getByRole("link", { name: "Menú", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Reseñas", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Ubicación", exact: true })).toBeVisible();
   await expect(page.locator("#ubicacion h2")).toHaveText("Mañongo.");
+  await expect(page.locator("#ubicacion .eyebrow")).toHaveCSS("color", "rgb(79, 22, 81)");
+  await expect(page.locator("#ubicacion .location-copy p")).toHaveCSS("color", "rgb(79, 22, 81)");
+  await expect(page.locator("#ubicacion .hours b").first()).toHaveCSS("color", "rgb(79, 22, 81)");
+  await expect(page.locator("#ubicacion .hours span").first()).toHaveCSS("color", "rgb(79, 22, 81)");
   await nav.getByRole("link", { name: "Ubicación", exact: true }).click();
+  await page.locator("#ubicacion h2").scrollIntoViewIfNeeded();
+  await expect(page.locator("#ubicacion h2")).toBeInViewport();
   const clearsFixedNav = await page.evaluate(() => document.querySelector("#ubicacion h2").getBoundingClientRect().top >= document.querySelector("#nav").getBoundingClientRect().bottom);
   expect(clearsFixedNav).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("ubicacion-movil.png"), fullPage: false });
 });
 
 test("un pedido con alergias queda marcado para revisión", async ({ page, context }) => {

@@ -99,7 +99,6 @@
     .filters{display:flex;gap:8px;flex-wrap:wrap}
     .filter{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:999px;padding:9px 15px;font-size:.76rem;font-weight:800}
     .filter:hover,.filter.active{background:var(--plum);color:#fff;border-color:var(--plum)}
-    .filter.dynamic-filter{border-color:rgba(120,147,62,.48)}
     .menu-section{background:#fff}
     .products{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
     .product{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--cream);transition:.25s ease;position:relative}
@@ -367,7 +366,9 @@
     .footer-logo{width:min(230px,70vw)!important;height:auto!important;max-height:none!important;border-radius:0!important;object-fit:contain!important;box-shadow:none!important}
     body,main,.menu-section,.story,.location,.testimonials,.final,footer{background:#441945}
     .location-card,.quote{background:var(--lilac);color:var(--plum-dark)}
-    .location-copy p,.hours span,.quote small{color:#705e70}
+    .location-copy .eyebrow,.location-copy p,.location-copy .hours b,.location-copy .hours span{color:var(--plum-dark)}
+    .location-copy .eyebrow:before{background:var(--plum)}
+    .quote small{color:#705e70}
     .final{color:var(--cream)}.final p{color:rgba(255,250,242,.72)}
     .diet{color:var(--plum-dark)}
     .footer-brand{grid-column:1/-1;display:grid;justify-items:center;text-align:center}
