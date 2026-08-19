@@ -84,6 +84,16 @@ test("el selector de Fonkies es compacto en escritorio y puede plegarse", async 
   await expect(page.locator(".fonkie-flavors")).toBeVisible();
 });
 
+test("el selector móvil de Fonkies distribuye los sabores en dos columnas", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
+  expect(columns).toBe(2);
+  await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"] [data-delta="1"]')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ page }) => {
   await openPreview(page);
   await expect(page.locator(".fomb-builder")).toHaveCount(1);

@@ -438,12 +438,12 @@
       .fonkie-gallery{padding:13px 0 0}.fonkie-gallery-label{padding:0 13px}.gallery-swipe-cue{padding:0 13px 8px}
       .fonkie-gallery-card{aspect-ratio:1.12}
       .fonkie-builder-body{padding:18px 14px}
-      .fonkie-flavors{grid-template-columns:1fr}
+      .fonkie-flavors{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px}
       .fonkie-builder-head{display:block}
       .fonkie-builder h3{font-size:1.65rem}
-      .fonkie-flavor{gap:8px}
-      .fonkie-flavor-name{font-size:.68rem;line-height:1.25}
-      .fonkie-stepper{grid-template-columns:30px 27px 30px}
+      .fonkie-flavor{grid-template-columns:1fr;align-content:space-between;gap:7px;padding:10px 0}
+      .fonkie-flavor-name{min-height:34px;font-size:.68rem;line-height:1.25}
+      .fonkie-stepper{grid-template-columns:30px 27px 30px;justify-content:start}
       .fonkie-stepper button{width:30px;height:30px}
       .fonkie-builder-summary{padding:14px}
       .builder-grid{grid-template-columns:1fr}.builder-gallery{padding:13px 0 0}.builder-gallery-label{padding:0 13px}.builder-gallery-card{aspect-ratio:1.12}.builder-body{padding:18px 14px}.builder-head h3{font-size:1.65rem}.fomb-size-options{grid-template-columns:1fr}
