@@ -642,13 +642,13 @@
       `Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
       `Forma de pago: ${data.get("payment")}`,
       "Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
-      `Alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
+      `Condiciones, alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
       hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : "",
       ...itemAllergyLines,
       hasAllergies ? "*Estado: PENDIENTE DE REVISIÓN POR FONTANA*" : "Estado: pendiente de confirmación",
       data.get("notes") ? `Observaciones: ${data.get("notes")}` : "",
       "",
-      "Enviaré el comprobante por este chat. El pedido se confirma únicamente cuando Fontana valide disponibilidad, pago y, si aplica, la solicitud de alergias."
+      "Enviaré el comprobante por este chat. El pedido se confirma únicamente cuando Fontana valide disponibilidad, pago y, si aplica, las condiciones, alergias o intolerancias indicadas."
     ].filter(Boolean).join("\n");
     return { message, orderId };
   }
@@ -658,7 +658,7 @@
     if (!checkoutForm.reportValidity()) return;
     const formData = new FormData(checkoutForm);
     if (formData.get("hasAllergies") === "yes" && !formData.getAll("allergens").length && !String(formData.get("otherAllergy") || "").trim()) {
-      say("Indica al menos una alergia o intolerancia");
+      say("Indica al menos una condición, alergia o intolerancia");
       $("#otherAllergy").focus();
       return;
     }

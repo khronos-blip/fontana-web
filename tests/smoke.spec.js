@@ -492,8 +492,16 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
   await openPreview(page);
   await page.locator('[data-id="pistacho"] .add').click();
   await fillCheckout(page, { allergies: true });
+  for (const option of ["Diabético", "Celíaco", "Leche", "Lactosa"]) {
+    await page.getByLabel(option, { exact: true }).check();
+  }
   await page.locator('#checkoutForm button[type="submit"]').click();
   const message = await page.evaluate(() => navigator.clipboard.readText());
+  expect(message).toContain("Condiciones, alergias o intolerancias:");
+  expect(message).toContain("Diabético");
+  expect(message).toContain("Celíaco");
+  expect(message).toContain("Leche");
+  expect(message).toContain("Lactosa");
   expect(message).toContain("Frutos secos");
   expect(message).toContain("Evitar frutos secos");
   expect(message).toContain("PENDIENTE DE REVISIÓN POR FONTANA");
