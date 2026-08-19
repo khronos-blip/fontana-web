@@ -391,16 +391,9 @@
     .fomb-extras{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-top:14px}.fomb-extras span{font-size:.75rem;font-weight:700}.fomb-stepper{display:grid;grid-template-columns:34px 34px 34px;align-items:center;text-align:center}.fomb-stepper button{width:34px;height:34px;border:1px solid rgba(110,35,111,.18);border-radius:9px;background:rgba(255,255,255,.55);color:var(--plum);font-weight:800}
     .builder-summary{display:grid;grid-template-columns:1fr auto;gap:10px 20px;align-items:center;margin-top:20px;padding:18px;border-radius:16px;background:rgba(255,255,255,.48)}.builder-summary p{min-height:0;margin:3px 0 0;color:#705e70;font-size:.74rem}.builder-summary strong{font-size:1.4rem;color:var(--plum)}.builder-summary button{grid-column:1/-1;width:100%;border:0;border-radius:13px;padding:13px 18px;background:var(--plum);color:#fff;font-weight:800}
     .products.catalog-organized{display:grid;grid-template-columns:1fr;gap:14px}
-    .catalog-group{overflow:hidden;border:1px solid rgba(217,174,220,.23);border-radius:20px;background:rgba(255,255,255,.025)}
+    .catalog-group{display:block}
     .catalog-group[hidden]{display:none}
-    .catalog-group>summary{display:flex;align-items:center;gap:14px;padding:19px 22px;cursor:pointer;list-style:none;background:linear-gradient(120deg,rgba(217,174,220,.16),rgba(111,171,67,.06));color:var(--cream);user-select:none}
-    .catalog-group>summary::-webkit-details-marker{display:none}
-    .catalog-group>summary:focus-visible{outline:2px solid var(--lime);outline-offset:-4px}
-    .catalog-group-title{font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:1.55rem;letter-spacing:.02em}
-    .catalog-group-count{margin-left:auto;padding:6px 10px;border:1px solid rgba(217,174,220,.28);border-radius:999px;color:var(--lilac);font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
-    .catalog-group-toggle{display:grid;place-items:center;width:31px;height:31px;border-radius:50%;background:var(--lilac);color:var(--plum);font-size:1.15rem;font-weight:800;transition:transform .2s ease}
-    .catalog-group[open] .catalog-group-toggle{transform:rotate(45deg)}
-    .catalog-group-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:18px}
+    .catalog-group-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
     .catalog-group-grid>.fonkie-builder,.catalog-group-grid>.builder-panel{grid-column:1/-1}
     @media(max-width:640px){
       .products{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
@@ -432,7 +425,7 @@
       .fonkie-stepper button{width:30px;height:30px}
       .fonkie-builder-summary{padding:14px}
       .builder-grid{grid-template-columns:1fr}.builder-gallery{padding:13px}.builder-gallery-card{aspect-ratio:1}.builder-body{padding:18px 14px}.builder-head h3{font-size:1.65rem}.fomb-size-options{grid-template-columns:1fr}
-      .catalog-group{border-radius:16px}.catalog-group>summary{padding:15px 13px;gap:9px}.catalog-group-title{font-size:1.22rem}.catalog-group-count{padding:5px 8px;font-size:.56rem}.catalog-group-toggle{width:28px;height:28px}.catalog-group-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;padding:11px}
+      .catalog-group-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
     }
   </style>
 </head>

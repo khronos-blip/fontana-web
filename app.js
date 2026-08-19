@@ -92,44 +92,31 @@
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
 
-  function setupCatalogAccordions() {
+  function setupCatalogGroups() {
     const container = $("#products");
     if (!container || container.classList.contains("catalog-organized")) return;
-    const definitions = [
-      ["cakes", "Foncake · Tortas"],
-      ["fonkies", "Fonkies · Galletas"],
-      ["fomb", "Fomb · Bombones"],
-      ["salado", "Salados"],
-      ["beverages", "Bebidas"],
-      ["snacks", "Otros productos"]
-    ];
+    const categories = ["cakes", "fonkies", "fomb", "salado", "beverages", "snacks"];
     const catalogItems = $$(".product, .fonkie-builder, .builder-panel", container);
-    definitions.forEach(([category, label], index) => {
+    categories.forEach(category => {
       const items = catalogItems.filter(item => item.dataset.category === category);
       if (!items.length) return;
-      const group = document.createElement("details");
+      const group = document.createElement("section");
       group.className = "catalog-group";
       group.dataset.catalogGroup = category;
-      group.open = index === 0;
-      const summary = document.createElement("summary");
-      summary.innerHTML = `<span class="catalog-group-title">${label}</span><span class="catalog-group-count">${items.length} ${items.length === 1 ? "producto" : "productos"}</span><span class="catalog-group-toggle" aria-hidden="true">+</span>`;
       const grid = document.createElement("div");
       grid.className = "catalog-group-grid";
       items.forEach(item => grid.appendChild(item));
-      group.append(summary, grid);
+      group.append(grid);
       container.insertBefore(group, $("#emptyFilterState"));
     });
     container.classList.add("catalog-organized");
   }
 
-  function syncCatalogAccordions(filter) {
+  function syncCatalogGroups() {
     $$(".catalog-group").forEach(group => {
       const items = [...group.querySelector(".catalog-group-grid").children];
       const visibleItems = items.filter(item => !item.classList.contains("hidden"));
       group.hidden = visibleItems.length === 0;
-      $(".catalog-group-count", group).textContent = `${visibleItems.length} ${visibleItems.length === 1 ? "producto" : "productos"}`;
-      if (filter === "all") group.open = group.dataset.catalogGroup === "cakes";
-      else if (visibleItems.length) group.open = true;
     });
   }
 
@@ -547,11 +534,11 @@
       $("#emptyFilterTitle").textContent = emptyCopy[filter][0];
       $("#emptyFilterMessage").textContent = emptyCopy[filter][1];
     }
-    syncCatalogAccordions(filter);
+    syncCatalogGroups();
   }
 
   renderDynamicCatalog();
-  setupCatalogAccordions();
+  setupCatalogGroups();
   $$(".add").forEach(button => button.addEventListener("click", () => addProduct(button.closest(".product"))));
   $$(".filter").forEach(button => button.addEventListener("click", () => {
     $$(".filter").forEach(item => item.classList.remove("active"));

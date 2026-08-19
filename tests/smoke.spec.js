@@ -44,7 +44,7 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page, context 
 
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
   await openPreview(page);
-  await page.locator('.catalog-group[data-catalog-group="fonkies"] > summary').click();
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await page.locator(".fonkie-builder .choice-panel > summary").click();
   const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
   for (let index = 0; index < 4; index += 1) await firstPlus.click();
@@ -74,7 +74,7 @@ test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ pa
   await openPreview(page);
   await expect(page.locator(".fomb-builder")).toHaveCount(1);
   await expect(page.locator('img[src="assets/fomb-raffaello-fontana-pro.jpg"]')).toHaveCount(1);
-  await page.locator('.catalog-group[data-catalog-group="fomb"] > summary').click();
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   await page.locator(".fomb-builder .choice-panel > summary").click();
   await expect(page.locator("#fombTotal")).toContainText("15,00");
   await page.locator("#fombExtraPlus").click();
@@ -146,22 +146,30 @@ test("los días de preparación incluyen los domingos", async ({ page }) => {
   await expect(page.locator("#requestedDate")).toHaveAttribute("min", expectedTomorrow);
 });
 
-test("el catálogo largo usa secciones desplegables prácticas", async ({ page }, testInfo) => {
+test("los filtros muestran los productos sin barras desplegables", async ({ page }, testInfo) => {
+  const browserErrors = [];
+  page.on("pageerror", error => browserErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
   await openPreview(page);
   const cakes = page.locator('.catalog-group[data-catalog-group="cakes"]');
   const fonkies = page.locator('.catalog-group[data-catalog-group="fonkies"]');
-  await expect(cakes).toHaveAttribute("open", "");
-  await expect(fonkies).not.toHaveAttribute("open", "");
-  await fonkies.locator(":scope > summary").click();
-  await expect(fonkies).toHaveAttribute("open", "");
+  await expect(page.locator(".catalog-group > summary")).toHaveCount(0);
+  await expect(cakes).toBeVisible();
+  await expect(fonkies).toBeVisible();
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await expect(fonkies.locator(".fonkie-builder")).toBeVisible();
+  await expect(cakes).toBeHidden();
   await page.getByRole("button", { name: "Salados" }).click();
   const salado = page.locator('.catalog-group[data-catalog-group="salado"]');
-  await expect(salado).toHaveAttribute("open", "");
+  await expect(salado).toBeVisible();
   await expect(cakes).toBeHidden();
   const fitsMobileViewport = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   expect(fitsMobileViewport).toBe(true);
+  await salado.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("catalogo-movil.png"), fullPage: false });
+  expect(browserErrors).toEqual([]);
 });
 
 test("el bloque negro fue eliminado y el footer centra la marca", async ({ page }) => {
