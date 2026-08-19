@@ -1,6 +1,6 @@
 const SESSION_COOKIE = "fontana_admin_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
-const PASSWORD_ITERATIONS = 160000;
+const PASSWORD_ITERATIONS = 100000;
 const MAX_CATALOG_BYTES = 1_500_000;
 const MAX_IMAGE_BYTES = 1_500_000;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
