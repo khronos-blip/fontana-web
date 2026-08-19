@@ -10,6 +10,8 @@ window.FONTANA_CONFIG = {
   currency: "USD",
   locale: "es-VE",
   previewMode: false,
+  adminApiBase: "https://api.fontanasingluten.com",
+  catalogApiTimeoutMs: 5000,
   pickupLabel: "Pickup en Mañongo (detalles por WhatsApp)",
   deliveryLabel: "Delivery en todo Carabobo (costo confirmado por WhatsApp)",
   // Catálogo editable. Hasta aprobar un panel privado, este archivo es la

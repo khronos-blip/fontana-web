@@ -1,11 +1,11 @@
-(() => {
+(async () => {
   "use strict";
 
   const config = window.FONTANA_CONFIG || {};
   const $ = (selector, context = document) => context.querySelector(selector);
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
   const adminStorageKey = "fontana-admin-catalog-v1";
-  const adminState = readAdminState();
+  const adminState = await readAdminState();
   const drawer = $("#drawer");
   const backdrop = $("#backdrop");
   const toast = $("#toast");
@@ -17,19 +17,29 @@
   const storageKey = "fontana-cart-v1";
   let cart = readCart();
 
-  function readAdminState() {
+  async function readAdminState() {
+    const localMode = ["localhost", "127.0.0.1"].includes(location.hostname);
     try {
       const stored = JSON.parse(localStorage.getItem(adminStorageKey) || "null");
-      return stored && stored.version === 1 ? stored : null;
-    } catch {
-      return null;
-    }
+      if (localMode) return stored && Array.isArray(stored.products) ? stored : null;
+    } catch { if (localMode) return null; }
+    const apiBase = String(config.adminApiBase || "").replace(/\/$/, "");
+    if (!apiBase) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Number(config.catalogApiTimeoutMs || 5000));
+    try {
+      const response = await fetch(`${apiBase}/v1/catalog`, {signal:controller.signal,cache:"no-store"});
+      if (!response.ok) return null;
+      const payload = await response.json();
+      return payload?.state && Array.isArray(payload.state.products) ? payload.state : null;
+    } catch { return null; }
+    finally { clearTimeout(timer); }
   }
 
   function applyAdminCatalog() {
     if (!adminState || !Array.isArray(adminState.products)) return;
     $$("#products > .product").forEach(product => product.remove());
-    config.dynamicCatalog = adminState.products.filter(product => !product.deleted);
+    config.dynamicCatalog = adminState.products.filter(product => !product.deleted && product.visible !== false);
     config.dynamicCatalog.forEach(product => {
       if (!product.id || !Number.isFinite(Number(product.minimumBusinessDays))) return;
       config.leadTimesByProduct ||= {};
@@ -66,6 +76,17 @@
     })[character]);
   }
 
+  function renderBuilderTags(element, builder) {
+    $(".builder-admin-tags", element)?.remove();
+    const soldOut = builder.status === "sold-out" || builder.stockQuantity === 0;
+    const labels = [soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", builder.immediate ? "ENTREGA INMEDIATA" : ""].filter(Boolean);
+    if (!labels.length) return;
+    const tags = document.createElement("div");
+    tags.className = "builder-admin-tags";
+    tags.innerHTML = labels.map(label => `<span>${escapeHtml(label)}</span>`).join("");
+    element.prepend(tags);
+  }
+
   function applyAdminBuilders() {
     if (!adminState?.builders) return;
     const fonkies = adminState.builders.fonkies;
@@ -73,14 +94,18 @@
     if (fonkies && fonkieBuilder) {
       fonkieBuilder.dataset.promo = String(Boolean(fonkies.promo));
       fonkieBuilder.dataset.immediate = String(Boolean(fonkies.immediate));
-      fonkieBuilder.hidden = fonkies.status === "sold-out";
+      fonkieBuilder.dataset.new = String(Boolean(fonkies.isNew));
+      fonkieBuilder.dataset.preorder = String(Boolean(fonkies.allowPreorder));
+      fonkieBuilder.dataset.soldOut = String(fonkies.status === "sold-out" || fonkies.stockQuantity === 0);
+      fonkieBuilder.hidden = fonkies.visible === false;
+      renderBuilderTags(fonkieBuilder, fonkies);
       const flavors = Array.isArray(fonkies.flavors) ? fonkies.flavors : [];
       const gallery = $(".fonkie-gallery-track", fonkieBuilder);
       const chooser = $(".fonkie-flavors", fonkieBuilder);
       const count = $(".gallery-label-meta span", fonkieBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => `<figure class="fonkie-gallery-card${flavor.status === "sold-out" ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span></figure>`).join("");
-      if (chooser) chooser.innerHTML = flavors.map(flavor => `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${flavor.status === "sold-out"}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}" ${flavor.status === "sold-out" ? "disabled" : ""}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${flavor.status === "sold-out" ? "disabled" : ""}>+</button></div></div>`).join("");
+      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="fonkie-gallery-card${sold ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Agotado" : ""}</span></figure>`; }).join("");
+      if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Agotado" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}" ${sold ? "disabled" : ""}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${sold ? "disabled" : ""}>+</button></div></div>`; }).join("");
       const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       fonkieBuilder.dataset.ingredients = availableIngredients;
       if (fonkies.image) fonkieBuilder.dataset.image = fonkies.image;
@@ -91,14 +116,18 @@
     if (fomb && fombBuilder) {
       fombBuilder.dataset.promo = String(Boolean(fomb.promo));
       fombBuilder.dataset.immediate = String(Boolean(fomb.immediate));
-      fombBuilder.hidden = fomb.status === "sold-out";
+      fombBuilder.dataset.new = String(Boolean(fomb.isNew));
+      fombBuilder.dataset.preorder = String(Boolean(fomb.allowPreorder));
+      fombBuilder.dataset.soldOut = String(fomb.status === "sold-out" || fomb.stockQuantity === 0);
+      fombBuilder.hidden = fomb.visible === false;
+      renderBuilderTags(fombBuilder, fomb);
       const flavors = Array.isArray(fomb.flavors) ? fomb.flavors : [];
       const gallery = $(".builder-gallery-track", fombBuilder);
       const chooser = $(".fomb-flavors", fombBuilder);
       const count = $(".gallery-label-meta span", fombBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => `<figure class="builder-gallery-card${flavor.status === "sold-out" ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span></figure>`).join("");
-      if (chooser) chooser.innerHTML = flavors.map(flavor => `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${flavor.status === "sold-out"}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${flavor.status === "sold-out" ? " · Agotado" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}" ${flavor.status === "sold-out" ? "disabled" : ""}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${flavor.status === "sold-out" ? "disabled" : ""}>+</button></div></div>`).join("");
+      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="builder-gallery-card${sold ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Agotado" : ""}</span></figure>`; }).join("");
+      if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Agotado" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}" ${sold ? "disabled" : ""}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${sold ? "disabled" : ""}>+</button></div></div>`; }).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
       if (sizeOptions) sizeOptions.innerHTML = sizes.map((size, index) => `<label class="fomb-size-option"><input type="radio" name="fombSize" value="${Number(size.quantity)}" data-price="${Number(size.price)}" ${index === 0 ? "checked" : ""}> Caja de ${Number(size.quantity)} · ${money(Number(size.price))}</label>`).join("");
@@ -146,29 +175,40 @@
       const hasPrice = product.price !== null && product.price !== "" && Number.isFinite(price) && price >= 0;
       const variants = Array.isArray(product.variants) ? product.variants : [];
       const sizes = Array.isArray(product.sizes) ? product.sizes : [];
-      const availableVariants = variants.filter(variant => variant.status !== "sold-out");
-      const availableSizes = sizes.filter(size => size.status !== "sold-out");
-      const soldOut = product.status === "sold-out" || (variants.length > 0 && availableVariants.length === 0) || (sizes.length > 0 && availableSizes.length === 0);
+      const availableVariants = variants.filter(variant => variant.status !== "sold-out" && variant.stockQuantity !== 0);
+      const availableSizes = sizes.filter(size => size.status !== "sold-out" && size.stockQuantity !== 0);
+      const soldOut = product.status === "sold-out" || product.stockQuantity === 0 || (variants.length > 0 && availableVariants.length === 0) || (sizes.length > 0 && availableSizes.length === 0);
+      const preorder = soldOut && Boolean(product.allowPreorder);
       const description = String(product.description || "Disponibilidad sujeta a confirmación por WhatsApp.");
       const ingredients = String(product.ingredients || "Ingredientes pendientes de confirmar con Fontana");
-      const badge = soldOut ? "AGOTADO" : product.promo ? "PROMOCIÓN DEL DÍA" : product.immediate ? "ENTREGA INMEDIATA" : category === "beverages" ? "BEBIDA" : String(product.availabilityLabel || "DISPONIBLE");
+      const badges = [];
+      if (soldOut) badges.push("AGOTADO");
+      if (preorder) badges.push("PRE-ORDER");
+      if (product.isNew) badges.push("NUEVO");
+      if (product.promo) badges.push("PROMOCIÓN DEL DÍA");
+      if (product.immediate) badges.push("ENTREGA INMEDIATA");
+      (Array.isArray(product.customLabels) ? product.customLabels : []).forEach(label => { if (label) badges.push(String(label).slice(0,40)); });
+      if (!badges.length && category === "beverages") badges.push("BEBIDA");
       const image = product.image
         ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(name)}">`
         : `<div class="product-placeholder"><div><b>${escapeHtml(name)}</b><small>Foto por actualizar</small></div></div>`;
       const sizePrices = availableSizes.map(size => Number(size.price)).filter(value => Number.isFinite(value));
       const minimumSizePrice = sizePrices.length ? Math.min(...sizePrices) : null;
       const priceCopy = minimumSizePrice !== null ? `Desde ${money(minimumSizePrice)}` : hasPrice ? money(price) : "Por confirmar";
-      const classes = ["product", soldOut ? "product-sold-out" : "", hasPrice ? "" : "product-unpriced"].filter(Boolean).join(" ");
+      const classes = ["product", soldOut && !preorder ? "product-sold-out" : "", preorder ? "product-preorder" : "", hasPrice ? "" : "product-unpriced"].filter(Boolean).join(" ");
       const cartImage = product.image || "assets/logo.png";
-      const variantControl = variants.length ? `<div class="product-variants"><label for="variant-${escapeHtml(productId)}">${escapeHtml(product.variantLabel || "Elige el sabor")}</label><select class="product-variant" id="variant-${escapeHtml(productId)}" ${soldOut ? "disabled" : ""}>${variants.map(variant => {
-        const unavailable = variant.status === "sold-out";
-        return `<option value="${unavailable ? "" : escapeHtml(variant.name)}" ${unavailable ? "disabled" : ""}>${escapeHtml(variant.name)}${unavailable ? " · Agotado" : ""}</option>`;
+      const variantControl = variants.length ? `<div class="product-variants"><label for="variant-${escapeHtml(productId)}">${escapeHtml(product.variantLabel || "Elige el sabor")}</label><select class="product-variant" id="variant-${escapeHtml(productId)}" ${soldOut && !preorder ? "disabled" : ""}>${variants.map(variant => {
+        const optionSold = variant.status === "sold-out" || variant.stockQuantity === 0;
+        const unavailable = optionSold && !preorder;
+        return `<option value="${unavailable ? "" : escapeHtml(variant.name)}" ${unavailable ? "disabled" : ""}>${escapeHtml(variant.name)}${optionSold ? preorder ? " · Pre-order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
-      const sizeControl = sizes.length ? `<div class="product-variants"><label for="size-${escapeHtml(productId)}">${escapeHtml(product.sizeLabel || "Elige la presentación")}</label><select class="product-size" id="size-${escapeHtml(productId)}" ${soldOut ? "disabled" : ""}>${sizes.map(size => {
-        const unavailable = size.status === "sold-out";
-        return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${unavailable ? " · Agotado" : ""}</option>`;
+      const sizeControl = sizes.length ? `<div class="product-variants"><label for="size-${escapeHtml(productId)}">${escapeHtml(product.sizeLabel || "Elige la presentación")}</label><select class="product-size" id="size-${escapeHtml(productId)}" ${soldOut && !preorder ? "disabled" : ""}>${sizes.map(size => {
+        const optionSold = size.status === "sold-out" || size.stockQuantity === 0;
+        const unavailable = optionSold && !preorder;
+        return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${optionSold ? preorder ? " · Pre-order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-promo="${Boolean(product.promo)}" data-immediate="${Boolean(product.immediate)}" data-sold-out="${soldOut}"><div class="product-media">${image}<span class="product-tag">${badge}</span></div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(product.weight || badge))}</span>${hasPrice && !soldOut ? `<button class="add" aria-label="Agregar ${escapeHtml(name)}">+</button>` : ""}</div></div></article>`;
+      const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => `<span class="product-tag${index ? " secondary" : ""}">${escapeHtml(badge)}</span>`).join("")}</div>` : "";
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-promo="${Boolean(product.promo)}" data-immediate="${Boolean(product.immediate)}" data-sold-out="${soldOut}" data-preorder="${preorder}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(product.weight || product.availabilityLabel || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : ""}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
@@ -236,7 +276,8 @@
       say("Este sabor está agotado");
       return;
     }
-    const selectedChoices = [selectedSize, selectedVariant].filter(Boolean);
+    const preorder = card.dataset.preorder === "true";
+    const selectedChoices = [selectedSize, selectedVariant, preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean);
     const choiceSlug = selectedChoices.join("-").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = choiceSlug ? `${card.dataset.id}-${choiceSlug}` : card.dataset.id;
     const selectedPrice = sizeSelect ? Number(sizeSelect.selectedOptions[0]?.dataset.price) : Number(card.dataset.price);
@@ -272,6 +313,8 @@
     if (!builder) return;
     const rows = $$(".fonkie-flavor", builder);
     const addButton = $("#addFonkieBox");
+    const preorder = builder.dataset.preorder === "true" && builder.dataset.soldOut === "true";
+    const unavailable = builder.dataset.soldOut === "true" && !preorder;
     const minimum = Math.max(1, Number(adminState?.builders?.fonkies?.minimumQuantity || 4));
     $("#fonkieIngredients div").textContent = builder.dataset.ingredients;
     const builderIntro = $(".fonkie-builder-head p", builder);
@@ -290,15 +333,18 @@
       const price = fonkiePrice(total, selected.length);
       $("#fonkieCount").textContent = `Has seleccionado ${total} ${total === 1 ? "Fonkie" : "Fonkies"}`;
       $("#fonkieTotal").textContent = money(price);
-      addButton.disabled = total < minimum;
-      if (total < minimum) {
+      addButton.disabled = total < minimum || unavailable;
+      if (unavailable) {
+        $("#fonkiePriceRule").textContent = "Producto agotado temporalmente.";
+        $("#fonkieValidation").textContent = "Consulta disponibilidad por WhatsApp.";
+      } else if (total < minimum) {
         $("#fonkiePriceRule").textContent = `Selecciona al menos ${minimum} para armar tu caja.`;
         $("#fonkieValidation").textContent = `Mínimo ${minimum} galletas para armar tu caja.`;
       } else {
         const type = selected.length === 1 ? "Caja de un solo sabor" : "Caja mixta";
         const extras = total - 4;
         $("#fonkiePriceRule").textContent = `${type}${extras ? ` + ${extras} extra${extras === 1 ? "" : "s"} a $3,50` : ""}.`;
-        $("#fonkieValidation").textContent = "Tu caja está lista para agregar al carrito.";
+        $("#fonkieValidation").textContent = preorder ? "Tu solicitud de pre-order está lista." : "Tu caja está lista para agregar al carrito.";
       }
     }
 
@@ -318,7 +364,7 @@
         return;
       }
       const price = fonkiePrice(total, selected.length);
-      const choices = selected.map(item => `${item.qty} ${item.name}`).join(", ");
+      const choices = [selected.map(item => `${item.qty} ${item.name}`).join(", "), preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean).join(" · ");
       const id = `fonkie-box-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
       const found = cart.find(item => item.id === id);
       if (found) {
@@ -327,7 +373,7 @@
         cart.push({
           id,
           productId: "fonkie-box",
-          name: `Caja de ${total} Fonkies · ${selected.length === 1 ? "Un sabor" : "Mixta"}`,
+          name: `${preorder ? "Pre-order · " : ""}Caja de ${total} Fonkies · ${selected.length === 1 ? "Un sabor" : "Mixta"}`,
           price,
           image: builder.dataset.image,
           ingredients: productIngredients("fonkie-box"),
@@ -348,6 +394,8 @@
     const sizeInputs = $$('input[name="fombSize"]', builder);
     const extrasOutput = $("#fombExtraCount");
     const addButton = $("#addFombBox");
+    const preorder = builder.dataset.preorder === "true" && builder.dataset.soldOut === "true";
+    const unavailable = builder.dataset.soldOut === "true" && !preorder;
     const rows = $$(".fomb-flavor", builder);
     let extras = 0;
     $("#fombIngredients div").textContent = builder.dataset.ingredients;
@@ -387,7 +435,8 @@
         $("#fombValidation").textContent = "Tu caja está lista para agregar al carrito.";
       }
       $("#fombTotal").textContent = money(current.price);
-      addButton.disabled = remaining !== 0;
+      addButton.disabled = remaining !== 0 || unavailable;
+      if (unavailable) $("#fombValidation").textContent = "Producto agotado temporalmente. Consulta por WhatsApp.";
     }
 
     $("#fombExtraMinus").addEventListener("click", () => {
@@ -417,7 +466,7 @@
         say(`Selecciona exactamente ${current.total} bombones para armar tu caja`);
         return;
       }
-      const choices = current.flavors.map(item => `${item.qty} ${item.name}`).join(", ");
+      const choices = [current.flavors.map(item => `${item.qty} ${item.name}`).join(", "), preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean).join(" · ");
       const id = `fomb-box-${current.size}-${extras}-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
       const found = cart.find(item => item.id === id);
       if (found) {
@@ -426,7 +475,7 @@
         cart.push({
           id,
           productId: "fomb-box",
-          name: `Caja de ${current.total} Fomb · ${current.flavors.length === 1 ? "Un sabor" : "Mixta"}`,
+          name: `${preorder ? "Pre-order · " : ""}Caja de ${current.total} Fomb · ${current.flavors.length === 1 ? "Un sabor" : "Mixta"}`,
           price: current.price,
           image: builder.dataset.image,
           ingredients: builder.dataset.ingredients,

@@ -334,6 +334,41 @@ test("el panel administrador permite entrar, editar y reflejar el catálogo en l
   await expect(ballerine.locator(".product-tag")).toHaveText("PROMOCIÓN DEL DÍA");
 });
 
+test("el panel publica stock, etiquetas y pre-order sin romper el carrito", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Productos", exact: true }).click();
+  await page.locator('[data-product-id="ballerine"] [data-edit="ballerine"]').click();
+  await page.locator('#productForm [name="stockQuantity"]').fill("0");
+  await page.locator('#productForm [name="allowPreorder"]').check();
+  await page.locator('#productForm [name="isNew"]').check();
+  await page.locator('#productForm [name="customLabels"]').fill("EDICIÓN ESPECIAL");
+  await page.getByRole("button", { name: "Guardar producto" }).click();
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+
+  await page.goto("/");
+  const ballerine = page.locator('[data-product-id="ballerine"]');
+  await expect(ballerine.locator(".product-tags")).toContainText("AGOTADO");
+  await expect(ballerine.locator(".product-tags")).toContainText("PRE-ORDER");
+  await expect(ballerine.locator(".product-tags")).toContainText("NUEVO");
+  await expect(ballerine.locator(".product-tags")).toContainText("EDICIÓN ESPECIAL");
+  await ballerine.locator(".add").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · Sujeto a confirmación");
+});
+
+test("el panel puede ocultar un producto de toda la tienda", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Productos", exact: true }).click();
+  await page.locator('[data-product-id="san-pellegrino"] [data-edit="san-pellegrino"]').click();
+  await page.locator('#productForm [name="visible"]').uncheck();
+  await page.getByRole("button", { name: "Guardar producto" }).click();
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await page.goto("/");
+  await expect(page.locator('[data-product-id="san-pellegrino"]')).toHaveCount(0);
+});
+
 test("el panel móvil cierra sus formularios y evita el zoom automático en campos", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/");

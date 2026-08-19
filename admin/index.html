@@ -16,17 +16,17 @@
       <span class="eyebrow">Panel privado</span>
       <h1>Gestiona Fontana</h1>
       <p>Actualiza productos, disponibilidad, promociones, sabores e imágenes desde un solo lugar.</p>
-      <label>Usuario<input type="text" autocomplete="username" placeholder="Se configurará en la siguiente fase"></label>
-      <label>Contraseña<input type="password" autocomplete="current-password" placeholder="Se configurará en la siguiente fase"></label>
+      <label>Usuario<input id="loginUsername" name="username" type="text" autocomplete="username" required></label>
+      <label>Contraseña<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label>
       <button class="primary" id="loginButton" type="button">Entrar al panel</button>
-      <small>Acceso temporal abierto para revisión. Todavía no protege información privada.</small>
+      <small id="loginStatus">Acceso privado. Los cambios guardados se publican para todos los clientes.</small>
     </div>
   </section>
 
   <div class="app" id="adminApp" hidden>
     <header class="topbar">
       <a class="admin-brand" href="../" aria-label="Ir a Fontana"><img src="../assets/fontana-seal-transparent.png" alt=""><span>fontana</span></a>
-      <div class="top-actions"><span class="save-status" id="saveStatus">Sin cambios pendientes</span><a class="ghost" href="../" target="_blank">Ver tienda ↗</a><button class="primary compact" id="saveAll" type="button">Guardar cambios</button></div>
+      <div class="top-actions"><span class="save-status" id="saveStatus">Sin cambios pendientes</span><a class="ghost" href="../" target="_blank">Ver tienda ↗</a><button class="ghost compact" id="logoutButton" type="button">Salir</button><button class="primary compact" id="saveAll" type="button" aria-label="Guardar cambios">Guardar y publicar</button></div>
     </header>
 
     <div class="layout">
@@ -45,13 +45,13 @@
           <div class="stats" id="stats"></div>
           <div class="panel-grid">
             <article class="panel"><div class="panel-head"><div><span class="eyebrow">Acciones rápidas</span><h2>Actualiza el día</h2></div></div><div class="quick-actions"><button data-quick="promo">Administrar promociones</button><button data-quick="immediate">Actualizar stock de hoy</button><button data-view-link="fonkies">Editar sabores Fonkies</button><button data-view-link="fomb">Editar sabores Fomb</button></div></article>
-            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Actividad local</span><h2>Último guardado</h2></div></div><div class="activity" id="activity"></div></article>
+            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Actividad publicada</span><h2>Último guardado</h2></div></div><div class="activity" id="activity"></div></article>
           </div>
         </section>
 
         <section class="view" data-panel="products">
           <div class="page-head"><div><span class="eyebrow">Catálogo</span><h1>Productos</h1><p>Edita el contenido que aparece en la tienda y en WhatsApp.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>
-          <div class="toolbar"><input id="productSearch" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="snacks">Otros</option></select><select id="statusFilter"><option value="all">Todos los estados</option><option value="available">Disponibles</option><option value="sold-out">Agotados</option><option value="promo">Promoción</option><option value="immediate">Stock de hoy</option></select></div>
+          <div class="toolbar"><input id="productSearch" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="snacks">Otros</option></select><select id="statusFilter"><option value="all">Todos los estados</option><option value="available">Disponibles</option><option value="sold-out">Agotados</option><option value="hidden">Ocultos</option><option value="preorder">Pre-order</option><option value="new">Nuevos</option><option value="promo">Promoción</option><option value="immediate">Stock de hoy</option></select></div>
           <div class="product-list" id="productList"></div>
         </section>
 
@@ -68,10 +68,10 @@
         <section class="view" data-panel="backup">
           <div class="page-head"><div><span class="eyebrow">Seguridad operativa</span><h1>Copias y publicación</h1><p>Respalda el catálogo antes de cambios grandes.</p></div></div>
           <div class="panel-grid">
-            <article class="panel"><h2>Exportar copia</h2><p>Descarga todos los productos y ajustes en un archivo JSON.</p><button class="primary" id="exportButton">Descargar copia</button></article>
-            <article class="panel"><h2>Restaurar copia</h2><p>Importa una copia creada desde este panel.</p><label class="file-button">Seleccionar archivo<input id="importInput" type="file" accept="application/json"></label></article>
-            <article class="panel warning"><h2>Publicación global</h2><p>Esta primera versión guarda y previsualiza en este navegador. La siguiente fase conectará autenticación y almacenamiento privado para publicar los cambios a todos los visitantes.</p><span class="status-pill">Backend pendiente</span></article>
-            <article class="panel"><h2>Restablecer borrador</h2><p>Recupera el catálogo original incluido en la web.</p><button class="danger" id="resetButton">Restablecer catálogo</button></article>
+            <article class="panel"><h2>Exportar copia</h2><p>Descarga todos los productos y ajustes publicados en un archivo JSON.</p><button class="primary" id="exportButton">Descargar copia</button></article>
+            <article class="panel"><h2>Restaurar copia</h2><p>Importa una copia, revísala y publícala con Guardar.</p><label class="file-button">Seleccionar archivo<input id="importInput" type="file" accept="application/json"></label></article>
+            <article class="panel"><h2>Publicación global</h2><p>La base de datos comparte los cambios con todos los móviles y computadoras. Las ventas por WhatsApp no descuentan stock automáticamente hasta que Fontana confirme el pedido.</p><span class="status-pill">Base de datos conectada</span></article>
+            <article class="panel"><h2>Recuperar catálogo inicial</h2><p>Carga de nuevo el catálogo incluido en la web. Debes guardar para publicarlo.</p><button class="danger" id="resetButton">Cargar catálogo inicial</button></article>
           </div>
         </section>
       </main>
@@ -93,10 +93,15 @@
         <label>Etiqueta de disponibilidad<input name="availabilityLabel" placeholder="Ej. Por encargo"></label>
         <label>Días hábiles mínimos<input name="minimumBusinessDays" type="number" min="0" step="1" value="0"></label>
         <label>Estado<select name="status"><option value="available">Disponible</option><option value="sold-out">Agotado</option></select></label>
+        <label>Cantidad administrada<input name="stockQuantity" type="number" min="0" step="1" placeholder="Vacío = sin control numérico"></label>
+        <label class="switch"><input name="visible" type="checkbox" checked><span>Visible en la tienda</span></label>
+        <label class="switch"><input name="isNew" type="checkbox"><span>Etiqueta Nuevo</span></label>
         <label class="switch"><input name="promo" type="checkbox"><span>Promoción del día</span></label>
         <label class="switch"><input name="immediate" type="checkbox"><span>Stock de hoy</span></label>
-        <label class="wide">Variantes o sabores<textarea name="variants" rows="3" placeholder="Una por línea: Nombre | available"></textarea><small>Usa <b>sold-out</b> para marcar una opción agotada.</small></label>
-        <label class="wide">Presentaciones y precios<textarea name="sizes" rows="3" placeholder="Una por línea: 180 g | 15 | available"></textarea></label>
+        <label class="switch"><input name="allowPreorder" type="checkbox"><span>Permitir pre-order si está agotado</span></label>
+        <label class="wide">Etiquetas personalizadas<textarea name="customLabels" rows="2" placeholder="Una por línea"></textarea></label>
+        <label class="wide">Variantes o sabores<textarea name="variants" rows="3" placeholder="Una por línea: Nombre | available | cantidad"></textarea><small>Usa <b>sold-out</b> para marcar una opción agotada; la cantidad es opcional.</small></label>
+        <label class="wide">Presentaciones y precios<textarea name="sizes" rows="3" placeholder="Una por línea: 180 g | 15 | available | cantidad"></textarea></label>
         <div class="image-field wide"><div class="image-preview" id="productImagePreview"></div><div><label>Ruta de imagen<input name="image" placeholder="assets/foto.jpg"></label><label class="file-button">Subir y optimizar imagen<input id="productImageInput" type="file" accept="image/jpeg,image/png,image/webp"></label><small>Se reduce automáticamente para no sobrecargar la web.</small></div></div>
       </div>
       <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="saveProductButton" type="submit">Guardar producto</button></div>
@@ -109,6 +114,7 @@
       <div class="form-grid">
         <label>Nombre<input name="name" required></label>
         <label>Estado<select name="status"><option value="available">Disponible</option><option value="sold-out">Agotado</option></select></label>
+        <label>Cantidad<input name="stockQuantity" type="number" min="0" step="1" placeholder="Vacío = sin control numérico"></label>
         <label class="wide">Ingredientes<textarea name="ingredients" rows="4"></textarea></label>
         <div class="image-field wide"><div class="image-preview" id="flavorImagePreview"></div><div><label>Ruta de imagen<input name="image"></label><label class="file-button">Subir y optimizar imagen<input id="flavorImageInput" type="file" accept="image/jpeg,image/png,image/webp"></label></div></div>
       </div>

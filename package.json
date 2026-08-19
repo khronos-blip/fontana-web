@@ -3,9 +3,14 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs",
-    "test": "playwright test"
+    "test": "playwright test",
+    "api:dev": "wrangler dev --config backend/wrangler.jsonc",
+    "api:migrate:local": "wrangler d1 migrations apply fontana-catalog --local --config backend/wrangler.jsonc",
+    "api:migrate:remote": "wrangler d1 migrations apply fontana-catalog --remote --config backend/wrangler.jsonc",
+    "api:deploy": "wrangler deploy --config backend/wrangler.jsonc"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.0"
+    "@playwright/test": "^1.58.0",
+    "wrangler": "^4.124.0"
   }
 }
