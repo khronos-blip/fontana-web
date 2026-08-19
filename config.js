@@ -15,6 +15,7 @@ window.FONTANA_CONFIG = {
   // Catálogo editable. Hasta aprobar un panel privado, este archivo es la
   // fuente segura para activar promociones, marcar entrega inmediata o agotado.
   // status: "available" | "sold-out". promo/immediate aceptan true/false.
+  // variants permite controlar cada sabor por separado con el mismo status.
   dynamicCatalog: [
     {
       id: "ballerine",
@@ -94,10 +95,16 @@ window.FONTANA_CONFIG = {
       name: "Panzerottis · Paquete de 3",
       price: 12,
       image: "assets/panzerottis-fontana-pro.jpg",
-      description: "Relleno a elección por WhatsApp: ricotta y espinaca, carne o mozzarella con salsa y pecorino.",
+      description: "Paquete de tres con relleno a elección.",
       ingredients: "Harina de garbanzo, harina de papa, 20 % maicena, huevo y aceite de oliva. Rellenos: ricotta de cabra y espinaca; carne; mozzarella, salsa y pecorino.",
       weight: "3 UNIDADES",
       availabilityLabel: "CONGELADO · STOCK O ENCARGO",
+      variantLabel: "Elige el relleno",
+      variants: [
+        { name: "Carne", status: "available" },
+        { name: "Ricotta de cabra y espinaca", status: "available" },
+        { name: "Mozzarella, salsa y pecorino", status: "available" }
+      ],
       status: "available"
     },
     {
@@ -115,13 +122,18 @@ window.FONTANA_CONFIG = {
     {
       id: "raviolis",
       category: "salado",
-      name: "Raviolis y Tortelloni",
+      name: "Raviolis",
       price: 20,
       image: "assets/ravioli-fontana-pro.jpg",
-      description: "Una misma presentación de pasta rellena. Elige raviolis o tortelloni y el relleno por WhatsApp: ricotta de cabra y espinaca o carne.",
+      description: "Paquete de raviolis congelados con relleno a elección.",
       ingredients: "Masa de harina de arroz, harina de yuca, maicena, huevo, aceite de oliva y sal. Relleno de ricotta de cabra y espinaca o carne.",
       weight: "300 G",
       availabilityLabel: "CONGELADO · STOCK O ENCARGO",
+      variantLabel: "Elige el relleno",
+      variants: [
+        { name: "Carne", status: "available" },
+        { name: "Ricotta de cabra y espinaca", status: "available" }
+      ],
       status: "available"
     },
     {

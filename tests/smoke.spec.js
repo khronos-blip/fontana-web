@@ -170,6 +170,45 @@ test("catálogo incluye productos confirmados y fotos profesionales", async ({ p
   await expect(page.locator('[data-product-id="nuggets-rora"] img')).toHaveAttribute("src", "assets/nuggets-rora-fontana-pro.jpg");
 });
 
+test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotados", async ({ page }) => {
+  await openPreview(page);
+  await page.getByRole("button", { name: "Salados" }).click();
+  const panzerottis = page.locator('[data-product-id="panzerottis"]');
+  const raviolis = page.locator('[data-product-id="raviolis"]');
+  await expect(panzerottis.locator(".product-tag")).toBeHidden();
+  await expect(panzerottis.locator(".product-variant option")).toHaveText([
+    "Carne",
+    "Ricotta de cabra y espinaca",
+    "Mozzarella, salsa y pecorino"
+  ]);
+  await expect(raviolis.locator("h3")).toHaveText("Raviolis");
+  await expect(raviolis.locator(".product-variant option")).toHaveText([
+    "Carne",
+    "Ricotta de cabra y espinaca"
+  ]);
+  await panzerottis.locator(".product-variant").selectOption({ label: "Mozzarella, salsa y pecorino" });
+  await panzerottis.locator(".add").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item h4")).toContainText("Panzerottis");
+  await expect(page.locator(".cart-choices")).toHaveText("Mozzarella, salsa y pecorino");
+});
+
+test("un sabor desactivado aparece agotado y no puede seleccionarse", async ({ page }) => {
+  await page.route("**/config.js", async route => {
+    const response = await route.fetch();
+    const body = (await response.text())
+      .replace("previewMode: false", "previewMode: true")
+      .replace('{ name: "Carne", status: "available" }', '{ name: "Carne", status: "sold-out" }');
+    await route.fulfill({ response, body });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Salados" }).click();
+  const carne = page.locator('[data-product-id="panzerottis"] .product-variant option').first();
+  await expect(carne).toHaveText("Carne · Agotado");
+  await expect(carne).toBeDisabled();
+  await expect(page.locator('[data-product-id="panzerottis"] .product-tag')).toBeHidden();
+});
+
 test("los días de preparación incluyen los domingos", async ({ page }) => {
   await openPreview(page);
   await page.locator('[data-id="pistacho"] .add').click();

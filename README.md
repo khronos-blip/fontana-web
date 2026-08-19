@@ -35,6 +35,7 @@ La tienda continúa siendo estática y no dispone todavía de un panel privado c
 4. Activar `immediate: true` para incluirlo en «Entrega inmediata».
 5. Usar `price: null` cuando el precio aún no esté confirmado; la web mostrará «Por confirmar» y no permitirá añadirlo al carrito.
 6. Guardar las nuevas fotografías dentro de `assets/` y asignar su ruta en `image`.
+7. Para productos con sabores, usar `variants` y cambiar el `status` de cada sabor entre `available` y `sold-out`. Los sabores disponibles no muestran etiqueta; los no disponibles aparecen como «Agotado» y no pueden seleccionarse.
 
 Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
 
