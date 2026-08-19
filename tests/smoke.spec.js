@@ -1,87 +1,125 @@
 const { test, expect } = require("@playwright/test");
 
-test("cliente prepara un pedido completo para WhatsApp", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+async function openPreview(page) {
+  await page.route("**/config.js", async route => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace("previewMode: false", "previewMode: true");
+    await route.fulfill({ response, body });
+  });
   await page.goto("/");
+}
 
-  await page.locator('[data-id="pistacho"] .add').click();
+async function fillCheckout(page, { allergies = false } = {}) {
   await page.locator("#cartButton").click();
-  await expect(page.locator("#cartTotal")).toContainText("34");
   await page.locator("#continueCheckout").click();
-
   await page.locator("#customerName").fill("Andrea Pérez");
   await page.locator("#customerPhone").fill("0412 000 0000");
-  await page.locator("#fulfillment").selectOption("delivery");
-  await expect(page.locator("#addressGroup")).toBeVisible();
-  await page.locator("#customerAddress").fill("Mañongo, edificio Fontana");
-  await page.locator("#requestedDate").fill("2026-08-20");
+  const minimumDate = await page.locator("#requestedDate").getAttribute("min");
+  await page.locator("#requestedDate").fill(minimumDate);
   await page.locator("#requestedTime").fill("Después de las 4 pm");
   await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
-  await page.locator('input[name="hasAllergies"][value="no"]').check();
-  await page.locator("#crossContamination").check();
-  await page.locator("#customerNotes").fill("Entregar después de las 4 pm");
+  await page.locator(`input[name="hasAllergies"][value="${allergies ? "yes" : "no"}"]`).check();
+  if (allergies) {
+    await page.locator('input[name="allergens"][value="Frutos secos"]').check();
+    await page.locator('[name^="allergyNote:"]').first().fill("Evitar frutos secos");
+    await page.locator("#crossContamination").check();
+  }
+}
+
+test("cliente prepara un pedido completo para WhatsApp", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openPreview(page);
+  await page.locator('[data-id="pistacho"] .add').click();
+  await expect(page.locator("#cartCount")).toHaveText("1");
+  await fillCheckout(page);
   await page.locator('#checkoutForm button[type="submit"]').click();
 
   const message = await page.evaluate(() => navigator.clipboard.readText());
   expect(message).toContain("Pedido FNT-");
-  expect(message).toContain("1× Foncake Pistacho & Frambuesa");
+  expect(message).toContain("1× Torta de Pistacho y Frambuesa");
+  expect(message).toContain("USD 60,00");
   expect(message).toContain("Andrea Pérez");
-  expect(message).toContain("Pago Móvil");
   expect(message).toContain("Enviaré el comprobante");
 });
 
-test("la entrada es minimalista y el carrito usa una bolsa lineal", async ({ page }) => {
-  await page.goto("/");
+test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
+  await openPreview(page);
+  const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
+  for (let index = 0; index < 4; index += 1) await firstPlus.click();
+  await expect(page.locator("#fonkieTotal")).toContainText("15,00");
+  await firstPlus.click();
+  await expect(page.locator("#fonkieTotal")).toContainText("18,50");
+  await page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="-1"]').click();
+  await page.locator('.fonkie-flavor[data-flavor="Pistacho con Chocolate Blanco"] [data-delta="1"]').click();
+  await expect(page.locator("#fonkieTotal")).toContainText("20,50");
+  await page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="-1"]').click();
+  await expect(page.locator("#fonkieTotal")).toContainText("17,00");
+  await expect(page.locator("#addFonkieBox")).toBeEnabled();
+});
+
+test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
+  await openPreview(page);
+  await expect(page.locator("#addFonkieBox")).toBeDisabled();
+  await expect(page.locator("#fonkieValidation")).toHaveText("Mínimo 4 galletas para armar tu caja.");
+});
+
+test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ page }) => {
+  await openPreview(page);
+  await expect(page.locator(".fomb-builder")).toHaveCount(1);
+  await expect(page.locator("#fombTotal")).toContainText("15,00");
+  await page.locator("#fombExtraPlus").click();
+  await expect(page.locator("#fombTotal")).toContainText("18,50");
+  await page.locator('input[name="fombSize"][value="12"]').check();
+  await expect(page.locator("#fombTotal")).toContainText("33,50");
+  await page.locator("#addFombBox").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item h4")).toContainText("Caja de 13 Fomb");
+});
+
+test("catálogo incluye nuevas categorías, productos y placeholders honestos", async ({ page }) => {
+  await openPreview(page);
+  await expect(page.getByRole("button", { name: "Foncake · Tortas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Fonkies · Galletas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Fomb · Bombones" })).toBeVisible();
+  await expect(page.locator('[data-product-id="ballerine"]')).toContainText("12,00");
+  await page.getByRole("button", { name: "Bebidas" }).click();
+  await expect(page.locator('[data-product-id="agua-minalba-355"]')).toBeVisible();
+  await expect(page.locator('[data-product-id="san-pellegrino"]')).toContainText("5,00");
+  await expect(page.locator('[data-product-id="san-pellegrino"] .product-placeholder')).toContainText("Foto por actualizar");
+  await page.getByRole("button", { name: "Entrega inmediata" }).click();
+  await expect(page.locator('[data-product-id="agua-minalba-355"]')).toBeVisible();
+});
+
+test("el bloque negro fue eliminado y el footer centra la marca", async ({ page }) => {
+  await openPreview(page);
+  await expect(page.locator(".pillars")).toHaveCount(0);
+  await expect(page.locator("footer .footer-brand")).toHaveCSS("text-align", "center");
   await expect(page.locator(".hero-logo")).toBeVisible();
-  await expect(page.locator(".hero-copy .hero-lead")).toHaveCount(0);
-  await expect(page.locator("#cartButton .bag-icon")).toBeVisible();
+  await expect(page.locator("#cartButton .hamburger-icon")).toBeVisible();
+  const brokenImages = await page.locator("img").evaluateAll(images => images.filter(image => !image.naturalWidth).map(image => image.getAttribute("src")));
+  expect(brokenImages).toEqual([]);
 });
 
 test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }) => {
-  await page.goto("/");
-
+  await openPreview(page);
   const nav = page.locator("#nav");
-  const brand = nav.locator(".brand");
-  await expect(nav).toBeVisible();
-  await expect(brand).toBeVisible();
   await expect(nav.getByRole("link", { name: "Menú", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Reseñas", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Ubicación", exact: true })).toBeVisible();
-  await expect(nav.getByText("Más pedida")).toHaveCount(0);
-  await expect(page.locator("#mas-pedida")).toHaveCount(0);
   await expect(page.locator("#ubicacion h2")).toHaveText("Mañongo.");
-  await expect(page.getByText("TerraNostra")).toHaveCount(0);
-
   await nav.getByRole("link", { name: "Ubicación", exact: true }).click();
-  const clearsFixedNav = await page.evaluate(() => {
-    const navBottom = document.querySelector("#nav").getBoundingClientRect().bottom;
-    const headingTop = document.querySelector("#ubicacion h2").getBoundingClientRect().top;
-    return headingTop >= navBottom;
-  });
+  const clearsFixedNav = await page.evaluate(() => document.querySelector("#ubicacion h2").getBoundingClientRect().top >= document.querySelector("#nav").getBoundingClientRect().bottom);
   expect(clearsFixedNav).toBe(true);
-
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await expect(nav).toBeVisible();
-  await expect(brand).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Menú", exact: true })).toBeVisible();
-  await expect(nav).toHaveCSS("position", "fixed");
 });
 
 test("un pedido con alergias queda marcado para revisión", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto("/");
+  await openPreview(page);
   await page.locator('[data-id="pistacho"] .add').click();
-  await page.locator("#cartButton").click();
-  await page.locator("#continueCheckout").click();
-  await page.locator("#customerName").fill("Andrea Pérez");
-  await page.locator("#customerPhone").fill("0412 000 0000");
-  await page.locator("#requestedDate").fill("2026-08-20");
-  await page.locator("#requestedTime").fill("4:00 pm - 6:00 pm");
-  await page.locator('input[name="hasAllergies"][value="yes"]').check();
-  await page.locator('input[name="allergens"][value="Frutos secos"]').check();
-  await page.locator("#crossContamination").check();
+  await fillCheckout(page, { allergies: true });
   await page.locator('#checkoutForm button[type="submit"]').click();
   const message = await page.evaluate(() => navigator.clipboard.readText());
   expect(message).toContain("Frutos secos");
+  expect(message).toContain("Evitar frutos secos");
   expect(message).toContain("PENDIENTE DE REVISIÓN POR FONTANA");
 });

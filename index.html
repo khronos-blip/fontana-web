@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#6e236f">
   <meta name="robots" content="noindex,nofollow,noarchive">
-  <meta name="description" content="Mockup web de Fontana: cocina de autor sin gluten, sin azúcar y sin lactosa en Valencia.">
+  <meta name="description" content="Fontana sin gluten: cocina de autor con pickup en Mañongo y delivery en todo Carabobo.">
   <meta property="og:title" content="Fontana — sabor que te hace bien">
   <meta property="og:description" content="Postres y snacks de autor, sin gluten, sin azúcar refinada y sin lactosa.">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="assets/pistachio.png">
+  <meta property="og:image" content="assets/pistachio-raspberry-fontana-v2.jpg">
   <title>Fontana — snacks y postres fit</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
@@ -99,6 +99,7 @@
     .filters{display:flex;gap:8px;flex-wrap:wrap}
     .filter{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:999px;padding:9px 15px;font-size:.76rem;font-weight:800}
     .filter:hover,.filter.active{background:var(--plum);color:#fff;border-color:var(--plum)}
+    .filter.dynamic-filter{border-color:rgba(120,147,62,.48)}
     .menu-section{background:#fff}
     .products{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
     .product{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--cream);transition:.25s ease;position:relative}
@@ -113,11 +114,56 @@
     .product h3{font-size:1.35rem}
     .price{font-weight:800;color:var(--plum);white-space:nowrap}
     .product p{color:var(--muted);font-size:.82rem;min-height:40px;margin:9px 0 18px}
+    .product-safety{margin:-3px 0 18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .product-safety summary{padding:11px 0;cursor:pointer;color:var(--plum);font-size:.72rem;font-weight:800;list-style:none}
+    .product-safety summary::-webkit-details-marker{display:none}
+    .product-safety summary:after{content:'+';float:right;font-size:1rem;line-height:1}
+    .product-safety[open] summary:after{content:'−'}
+    .product-safety div{padding:0 0 12px;color:var(--muted);font-size:.7rem;line-height:1.5}
     .product-footer{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .diet{font-size:.68rem;color:var(--green);font-weight:800}
     .add{border:0;background:var(--plum);color:#fff;width:42px;height:42px;border-radius:50%;font-size:1.35rem;display:grid;place-items:center}
     .add:hover{background:var(--plum-dark);transform:rotate(90deg)}
     .demo-note{font-size:.72rem;color:var(--muted);text-align:center;margin:24px 0 0}
+    .empty-filter-state{grid-column:1/-1;min-height:300px;padding:54px 28px;border:1px dashed rgba(217,174,220,.36);border-radius:22px;display:grid;place-items:center;text-align:center;background:rgba(234,213,237,.08)}
+    .empty-filter-state[hidden]{display:none}
+    .empty-filter-state>div{max-width:540px}.empty-filter-state span{color:var(--acid);font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+    .empty-filter-state h3{margin:12px 0 10px;color:var(--cream);font-size:clamp(2rem,5vw,3.4rem)}
+    .empty-filter-state p{margin:0;color:rgba(248,241,245,.58);font-size:.86rem}
+
+    .fonkie-builder{grid-column:1/-1;padding:0;background:var(--lilac);border:1px solid rgba(110,35,111,.18);border-radius:22px;overflow:hidden;color:var(--plum-dark)}
+    .fonkie-builder.hidden{display:none}
+    .fonkie-builder-grid{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr)}
+    .fonkie-gallery{min-width:0;background:var(--plum-dark);padding:24px}
+    .fonkie-gallery-label{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;color:var(--cream);font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+    .fonkie-gallery-track{display:grid;grid-auto-flow:column;grid-auto-columns:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:17px}
+    .fonkie-gallery-track::-webkit-scrollbar{display:none}
+    .fonkie-gallery-card{position:relative;aspect-ratio:1;overflow:hidden;scroll-snap-align:start;background:#e8d6e8}
+    .fonkie-gallery-card img{width:100%;height:100%;object-fit:cover}
+    .fonkie-gallery-card span{position:absolute;left:14px;right:14px;bottom:14px;padding:9px 12px;border-radius:11px;background:rgba(79,22,81,.88);color:#fff;font-size:.77rem;font-weight:800;text-align:center;backdrop-filter:blur(8px)}
+    .fonkie-builder-body{padding:28px}
+    .fonkie-builder-head{display:flex;justify-content:space-between;gap:20px;align-items:start;margin-bottom:22px}
+    .fonkie-builder h3{font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:2rem;color:var(--plum-dark)}
+    .fonkie-builder-head p{margin:7px 0 0;color:#705e70;font-size:.8rem}
+    .fonkie-flavors{display:grid;gap:8px}
+    .fonkie-flavor{display:grid;grid-template-columns:1fr auto;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid rgba(110,35,111,.14)}
+    .fonkie-flavor-name{font-size:.78rem;font-weight:700}
+    .fonkie-stepper{display:grid;grid-template-columns:32px 30px 32px;align-items:center;text-align:center}
+    .fonkie-stepper button{width:32px;height:32px;border:1px solid rgba(110,35,111,.18);background:rgba(255,255,255,.5);color:var(--plum);border-radius:9px;font-weight:800}
+    .fonkie-stepper button:hover{background:#fff}
+    .fonkie-stepper output{font-weight:800;font-size:.8rem}
+    .fonkie-ingredients{margin-top:16px;border-top:1px solid rgba(110,35,111,.18);border-bottom:1px solid rgba(110,35,111,.18)}
+    .fonkie-ingredients summary{padding:12px 0;cursor:pointer;color:var(--plum);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;list-style:none}
+    .fonkie-ingredients summary::-webkit-details-marker{display:none}
+    .fonkie-ingredients summary:after{content:'+';float:right;font-size:1rem}.fonkie-ingredients[open] summary:after{content:'−'}
+    .fonkie-ingredients div{padding:0 0 14px;color:#705e70;font-size:.7rem;line-height:1.55}
+    .fonkie-builder-summary{display:grid;grid-template-columns:1fr auto;gap:10px 20px;align-items:center;margin-top:20px;padding:18px;border-radius:16px;background:rgba(255,255,255,.48)}
+    .fonkie-builder-summary p{min-height:0;margin:0;color:#705e70}
+    .fonkie-builder-summary strong{font-size:1.4rem;color:var(--plum)}
+    .fonkie-validation{grid-column:1/-1;min-height:20px;color:var(--plum);font-size:.72rem;font-weight:700}
+    .fonkie-add{grid-column:1/-1;width:100%;border:0;border-radius:13px;padding:13px 18px;background:var(--plum);color:#fff;font-weight:800}
+    .fonkie-add:disabled{cursor:not-allowed;opacity:.45}
+    .fonkie-add:not(:disabled):hover{background:var(--plum-dark)}
 
     .story{overflow:hidden}
     .story-grid{display:grid;grid-template-columns:.92fr 1.08fr;gap:76px;align-items:center}
@@ -169,6 +215,7 @@
     .empty{text-align:center;color:var(--muted);padding:70px 20px}.empty b{display:block;font-family:'Playfair Display',serif;color:var(--ink);font-size:1.35rem;margin:12px 0}
     .cart-item{display:grid;grid-template-columns:68px 1fr auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
     .cart-item img{width:68px;height:68px;object-fit:cover;border-radius:14px}.cart-item h4{margin:0 0 3px;font-size:.87rem}.cart-item small{color:var(--muted)}
+    .cart-choices{display:block;margin-top:5px;line-height:1.35}
     .qty{display:flex;align-items:center;gap:10px;margin-top:7px}.qty button{border:0;background:var(--lilac-soft);width:25px;height:25px;border-radius:50%;color:var(--plum);font-weight:800}
     .remove{border:0;background:transparent;color:var(--muted);font-size:1.2rem}
     .drawer-foot{padding:24px 28px;border-top:1px solid var(--line);background:#fff}.total{display:flex;justify-content:space-between;font-weight:800;margin-bottom:17px}.drawer-foot .btn{width:100%}.drawer-foot small{display:block;text-align:center;color:var(--muted);margin-top:10px}
@@ -225,14 +272,13 @@
 
     .pillars{padding:0;background:var(--night)}.pillars-grid{border-radius:0;border-left:0;border-right:0;border-color:var(--night-line);background:transparent}.pillar{border-color:var(--night-line);padding:30px}.pillar-icon{background:var(--surface-2)}.pillar small{color:rgba(248,241,245,.5)}
     section{padding:130px 0}
-    .menu-section{background:var(--night)}
+    .menu-section{background:linear-gradient(180deg,#441945 0%,#351238 70%,#241026 100%)}
     .section-head{align-items:end}.section-head h2{font-size:clamp(4.4rem,9vw,8.7rem);line-height:.8;text-transform:uppercase;max-width:790px}.section-head p{color:rgba(248,241,245,.56)}
     .filters{gap:10px}.filter{background:transparent;border-color:var(--night-line);color:rgba(248,241,245,.55);text-transform:uppercase;letter-spacing:.08em}.filter:hover,.filter.active{background:var(--acid);color:var(--night);border-color:var(--acid)}
     .products{gap:18px}.product{background:var(--surface);border-color:var(--night-line);border-radius:20px}.product:hover{box-shadow:0 25px 70px rgba(0,0,0,.35);border-color:rgba(217,174,220,.38)}
-    .product:nth-child(-n+3):after{position:absolute;top:8px;right:14px;font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:4.8rem;line-height:1;color:rgba(255,255,255,.82);text-shadow:0 4px 24px rgba(0,0,0,.6);z-index:3}
-    .product:nth-child(1):after{content:'01'}.product:nth-child(2):after{content:'02'}.product:nth-child(3):after{content:'03'}
     .product-media{background:var(--surface-2);aspect-ratio:.93}.product-tag{background:var(--acid);color:var(--night);backdrop-filter:none;text-transform:uppercase;letter-spacing:.08em}
     .product h3{font-size:2rem;letter-spacing:.02em}.product p{color:rgba(248,241,245,.52)}.price{color:var(--accent)}.diet{color:var(--acid)}.add{background:var(--accent);color:var(--night);border-radius:14px}.add:hover{background:var(--acid)}
+    .product-safety{border-color:var(--night-line)}.product-safety summary{color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.product-safety div{color:rgba(248,241,245,.58)}
     .demo-note{color:rgba(248,241,245,.38)}
 
     .story{background:var(--night)}.story-main,.story-small{border-radius:18px}.story-small{border-color:var(--night)}.story-copy>p{color:rgba(248,241,245,.58)}.check span{background:var(--surface-2);color:var(--acid)}
@@ -252,14 +298,16 @@
     /* Entrada Fontana: logo oficial sobre el color principal de la marca. */
     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
     .topbar{display:none}
-    .nav{position:fixed;width:100%;background:rgba(255,250,242,.94);border-color:rgba(110,35,111,.12);box-shadow:0 10px 30px rgba(79,22,81,.08);color:var(--plum)}
+    .nav{position:fixed;top:0;width:100%;background:rgba(234,213,237,.96);border-color:rgba(110,35,111,.16);box-shadow:0 10px 30px rgba(79,22,81,.12);color:var(--plum)}
     .nav-inner{height:78px}
     .nav .brand,.nav .nav-links{color:var(--plum)}
+    .nav .brand-symbol{width:45px;height:45px;flex:0 0 45px}
+    .nav .brand-wordmark{width:154px;height:auto;max-height:45px;border-radius:0;object-fit:contain;box-shadow:none}
     .icon-btn{color:var(--plum);background:#fff;border-color:rgba(110,35,111,.16)}
     .bag-icon{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
     section[id]{scroll-margin-top:90px}
 
-    .hero{min-height:460px;height:56svh;max-height:620px;padding:0;background:#441945}
+    .hero{min-height:460px;height:56svh;max-height:620px;margin-top:78px;padding:0;background:#441945;scroll-margin-top:78px}
     .hero:before,.hero:after{display:none}
     .hero-grid{height:100%;min-height:0;display:grid;grid-template-columns:1fr;place-items:center}
     .hero-copy{display:grid;place-items:center;width:100%;max-width:none}
@@ -267,6 +315,8 @@
     .hero-scroll{position:absolute;left:50%;bottom:18px;z-index:5;transform:translateX(-50%);width:34px;height:34px;border:1px solid rgba(255,250,242,.42);border-radius:50%;display:grid;place-items:center;color:var(--cream);font-size:1rem}
     .hero-scroll:hover{border-color:var(--green);color:var(--green)}
     .menu-section{padding-top:82px}
+    .menu-section .section-head{display:block}
+    .menu-section .filters{margin-top:30px}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
 
     .allergy-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
@@ -276,6 +326,11 @@
     .choice input{accent-color:var(--accent)}
     .allergy-warning{padding:14px;border-left:3px solid #d96f78;background:rgba(217,111,120,.1);color:rgba(248,241,245,.78);font-size:.74rem;line-height:1.5}
     .allergy-status{color:var(--accent);font-size:.72rem;font-weight:800}
+    .schedule-note{margin:0;color:rgba(248,241,245,.58);font-size:.7rem;line-height:1.45}
+    .item-allergy-list{display:grid;gap:12px;margin-top:14px}
+    .item-allergy-field{display:grid;gap:6px;padding:12px;border:1px solid var(--night-line);border-radius:14px;background:rgba(255,255,255,.025)}
+    .item-allergy-field label{font-size:.72rem;font-weight:800;color:var(--accent)}
+    .item-allergy-field textarea{min-height:70px}
 
     @media(max-width:960px){
       .nav-inner{height:auto;min-height:104px;display:grid;grid-template-columns:1fr auto;grid-template-rows:58px auto;gap:0 12px;padding:6px 0 10px}
@@ -284,22 +339,101 @@
       .nav-actions{grid-column:2;grid-row:1}
       .nav-actions>.btn,.menu-btn{display:none}
       section[id]{scroll-margin-top:116px}
+      .hero{margin-top:104px;scroll-margin-top:104px}
     }
     @media(max-width:640px){
-      .hero{height:43svh;min-height:340px;max-height:440px;padding:0}.hero-grid{height:100%;min-height:0}.hero-logo{width:min(72vw,290px)}.hero-scroll{bottom:14px}.menu-section{padding-top:62px}
+      .nav .brand-symbol{width:39px;height:39px;flex-basis:39px}
+      .nav .brand-wordmark{width:min(34vw,145px);max-height:39px}
+      .hero{height:52svh;min-height:410px;max-height:520px;padding:0}.hero-grid{height:100%;min-height:0}.hero-logo{width:min(68vw,280px)}.hero-scroll{bottom:14px}.menu-section{padding-top:62px}
+    }
+
+    /* Ajustes solicitados por la clienta: catálogo lila, dos columnas y marca limpia. */
+    .hamburger-icon{width:23px;display:grid;gap:4px}
+    .hamburger-icon span{display:block;height:2px;border-radius:999px;background:currentColor}
+    .nav .icon-btn{background:transparent;border-color:transparent;box-shadow:none}
+    .product{background:var(--lilac);border-color:rgba(110,35,111,.18)}
+    .product-body{background:var(--lilac);color:var(--plum-dark)}
+    .product h3{font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;color:var(--plum-dark)}
+    .product p,.product-safety div{color:#705e70}
+    .product-safety{border-color:rgba(110,35,111,.18)}
+    .product-safety summary,.price{color:var(--plum)}
+    .product-tag{display:none}
+    .pillar{display:block;text-align:center}
+    .pillar-icon{display:none}
+    .story{background:var(--plum);color:var(--cream)}
+    .story-grid{display:block;max-width:850px}
+    .story-visual{display:none}
+    .story-copy>p{color:rgba(255,250,242,.75)}
+    .story .eyebrow{color:var(--lilac)}
+    .story .check span{background:rgba(255,255,255,.1);color:var(--acid)}
+    .footer-logo{width:min(230px,70vw)!important;height:auto!important;max-height:none!important;border-radius:0!important;object-fit:contain!important;box-shadow:none!important}
+    body,main,.menu-section,.story,.location,.testimonials,.final,footer{background:#441945}
+    .location-card,.quote{background:var(--lilac);color:var(--plum-dark)}
+    .location-copy p,.hours span,.quote small{color:#705e70}
+    .final{color:var(--cream)}.final p{color:rgba(255,250,242,.72)}
+    .diet{color:var(--plum-dark)}
+    .footer-brand{grid-column:1/-1;display:grid;justify-items:center;text-align:center}
+    .footer-brand p{margin-left:auto;margin-right:auto}
+    .footer-grid>div:not(.footer-brand){text-align:center}
+    .footer-links{justify-items:center}
+    .footer-bottom{justify-content:center;gap:24px;text-align:center}
+    .product-placeholder{width:100%;height:100%;display:grid;place-items:center;padding:24px;text-align:center;background:linear-gradient(145deg,#e4c7e7,#caa4cf);color:var(--plum-dark)}
+    .product-placeholder b{font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:2rem;letter-spacing:.04em}.product-placeholder small{display:block;margin-top:8px;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase}
+    .product-sold-out{opacity:.66}.product-sold-out .add{pointer-events:none;background:#877687}.product-unpriced .add{display:none}
+    .product[data-promo="true"] .product-tag,.product[data-immediate="true"] .product-tag,.product[data-category="beverages"] .product-tag,.product-sold-out .product-tag{display:block}
+    .builder-panel{grid-column:1/-1;padding:0;background:var(--lilac);border:1px solid rgba(110,35,111,.18);border-radius:22px;overflow:hidden;color:var(--plum-dark)}
+    .builder-panel.hidden{display:none}.builder-grid{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(420px,1.2fr)}
+    .builder-gallery{min-width:0;background:var(--plum-dark);padding:24px}.builder-body{padding:28px}
+    .builder-gallery-track{display:grid;grid-auto-flow:column;grid-auto-columns:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:17px}.builder-gallery-track::-webkit-scrollbar{display:none}
+    .builder-gallery-card{position:relative;aspect-ratio:1;overflow:hidden;scroll-snap-align:start;background:#e8d6e8}.builder-gallery-card img{width:100%;height:100%;object-fit:cover}.builder-gallery-card span{position:absolute;left:14px;right:14px;bottom:14px;padding:9px 12px;border-radius:11px;background:rgba(79,22,81,.88);color:#fff;font-size:.77rem;font-weight:800;text-align:center}
+    .builder-gallery-label{display:flex;justify-content:space-between;gap:16px;margin-bottom:14px;color:var(--cream);font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+    .builder-head h3{font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:2rem;color:var(--plum-dark)}.builder-head p{margin:7px 0 20px;color:#705e70;font-size:.8rem}
+    .choice-panel{margin-top:14px;border-top:1px solid rgba(110,35,111,.18);border-bottom:1px solid rgba(110,35,111,.18)}.choice-panel summary{padding:13px 0;cursor:pointer;color:var(--plum);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;list-style:none}.choice-panel summary::-webkit-details-marker{display:none}.choice-panel summary:after{content:'+';float:right;font-size:1rem}.choice-panel[open] summary:after{content:'−'}.choice-panel-content{padding:0 0 14px}
+    .fomb-size-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fomb-size-option{display:flex;gap:9px;align-items:center;padding:12px;border:1px solid rgba(110,35,111,.18);border-radius:12px;background:rgba(255,255,255,.44);font-size:.75rem;font-weight:800}.fomb-size-option input{accent-color:var(--plum)}
+    .fomb-extras{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-top:14px}.fomb-extras span{font-size:.75rem;font-weight:700}.fomb-stepper{display:grid;grid-template-columns:34px 34px 34px;align-items:center;text-align:center}.fomb-stepper button{width:34px;height:34px;border:1px solid rgba(110,35,111,.18);border-radius:9px;background:rgba(255,255,255,.55);color:var(--plum);font-weight:800}
+    .builder-summary{display:grid;grid-template-columns:1fr auto;gap:10px 20px;align-items:center;margin-top:20px;padding:18px;border-radius:16px;background:rgba(255,255,255,.48)}.builder-summary p{min-height:0;margin:3px 0 0;color:#705e70;font-size:.74rem}.builder-summary strong{font-size:1.4rem;color:var(--plum)}.builder-summary button{grid-column:1/-1;width:100%;border:0;border-radius:13px;padding:13px 18px;background:var(--plum);color:#fff;font-weight:800}
+    @media(max-width:640px){
+      .products{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+      .product{border-radius:15px}
+      .product-media{aspect-ratio:1}
+      .product-body{padding:13px 11px}
+      .product-top{gap:6px}
+      .product h3{font-size:1.12rem;line-height:1.02}
+      .price{font-size:.76rem}
+      .product p{font-size:.68rem;line-height:1.4;min-height:58px;margin:7px 0 12px}
+      .product-safety{margin:-1px 0 12px}
+      .product-safety summary{padding:9px 0;font-size:.62rem}
+      .product-safety div{font-size:.62rem}
+      .diet{font-size:.58rem}
+      .add{width:36px;height:36px;border-radius:11px;font-size:1.15rem}
+      .story{padding:78px 0}
+      .filters{display:flex;flex-wrap:nowrap;overflow-x:auto;margin-right:-13px;padding:0 13px 8px 0;scrollbar-width:none;scroll-snap-type:x proximity}
+      .filters::-webkit-scrollbar{display:none}.filter{flex:0 0 auto;scroll-snap-align:start}
+      .empty-filter-state{min-height:240px;padding:38px 18px}
+      .fonkie-builder-grid{grid-template-columns:1fr}
+      .fonkie-gallery{padding:13px}
+      .fonkie-gallery-card{aspect-ratio:1.35}
+      .fonkie-builder-body{padding:18px 14px}
+      .fonkie-builder-head{display:block}
+      .fonkie-builder h3{font-size:1.65rem}
+      .fonkie-flavor{gap:8px}
+      .fonkie-flavor-name{font-size:.68rem;line-height:1.25}
+      .fonkie-stepper{grid-template-columns:30px 27px 30px}
+      .fonkie-stepper button{width:30px;height:30px}
+      .fonkie-builder-summary{padding:14px}
+      .builder-grid{grid-template-columns:1fr}.builder-gallery{padding:13px}.builder-gallery-card{aspect-ratio:1.35}.builder-body{padding:18px 14px}.builder-head h3{font-size:1.65rem}.fomb-size-options{grid-template-columns:1fr}
     }
   </style>
 </head>
 <body>
-  <div class="topbar">DELIVERY + PICKUP EN MAÑONGO · 9:00 AM — 6:00 PM</div>
+  <div class="topbar">DELIVERY EN TODO CARABOBO + PICKUP EN MAÑONGO · 9:30 AM — 6:00 PM</div>
   <nav class="nav" id="nav">
     <div class="container nav-inner">
-      <a class="brand" href="#inicio" aria-label="Fontana, inicio"><img src="assets/logo.png" alt="Logo Fontana">fontana</a>
+      <a class="brand" href="#inicio" aria-label="Fontana, inicio"><img class="brand-symbol" src="assets/logo.png" alt=""><img class="brand-wordmark" src="assets/fontana-wordmark-official.png" alt=""></a>
       <div class="nav-links"><a href="#menu">Menú</a><a href="#resenas">Reseñas</a><a href="#ubicacion">Ubicación</a></div>
       <div class="nav-actions">
         <a class="btn btn-primary" href="#menu">Ver delicias</a>
-        <button class="icon-btn" id="cartButton" aria-label="Abrir pedido"><svg class="bag-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8.5h13l-1 11h-11z"/><path d="M9 9V6.5a3 3 0 0 1 6 0V9"/></svg><span class="cart-count" id="cartCount">0</span></button>
-        <button class="icon-btn menu-btn" id="menuButton" aria-label="Abrir menú">☰</button>
+        <button class="icon-btn" id="cartButton" aria-label="Abrir pedido"><span class="hamburger-icon" aria-hidden="true"><span></span><span></span><span></span></span><span class="cart-count" id="cartCount">0</span></button>
       </div>
     </div>
   </nav>
@@ -317,33 +451,72 @@
 
     <section class="menu-section" id="menu">
       <div class="container">
-        <div class="section-head"><div><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2><p>Fotografía, ingredientes y precio visibles para elegir sin fricción.</p></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="dulce">Dulce</button><button class="filter" data-filter="salado">Salado</button></div></div>
+        <div class="section-head"><div><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Todos</button><button class="filter" data-filter="foncake">Foncake · Tortas</button><button class="filter" data-filter="fonkies">Fonkies · Galletas</button><button class="filter" data-filter="fomb">Fomb · Bombones</button><button class="filter" data-filter="salado">Salados</button><button class="filter dynamic-filter" data-filter="promo">Promoción del día</button><button class="filter dynamic-filter" data-filter="beverages">Bebidas</button><button class="filter dynamic-filter" data-filter="immediate">Entrega inmediata</button></div></div>
         <div class="products" id="products">
-          <article class="product" data-category="cakes" data-id="pistacho" data-name="Foncake Pistacho & Frambuesa" data-price="34" data-image="assets/pistachio.png"><div class="product-media"><img src="assets/pistachio.png" alt="Foncake de pistacho y frambuesa"><span class="product-tag">Favorito</span></div><div class="product-body"><div class="product-top"><h3>Pistacho & Frambuesa</h3><span class="price">$34</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Pistacho y Frambuesa">+</button></div></div></article>
-          <article class="product" data-category="cakes" data-id="chocolate" data-name="Foncake Triple Chocolate" data-price="32" data-image="assets/chocolate.jpg"><div class="product-media"><img src="assets/chocolate.jpg" alt="Foncake triple chocolate"><span class="product-tag">Intenso</span></div><div class="product-body"><div class="product-top"><h3>Triple Chocolate</h3><span class="price">$32</span></div><p>Chocolate vegano 70% cacao, harina de almendra y monk fruit.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Triple Chocolate">+</button></div></div></article>
-          <article class="product" data-category="snacks" data-id="fonkie" data-name="Fonkie Chocolate Blanco" data-price="4.5" data-image="assets/fonkie.png"><div class="product-media"><img src="assets/fonkie.png" alt="Fonkie de chocolate blanco"><span class="product-tag">Snack</span></div><div class="product-body"><div class="product-top"><h3>Fonkie Choco Blanco</h3><span class="price">$4,50</span></div><p>Galleta de almendra, monk fruit y chocolate vegano blanco.</p><div class="product-footer"><span class="diet">INDIVIDUAL</span><button class="add" aria-label="Agregar Fonkie">+</button></div></div></article>
-          <article class="product" data-category="snacks" data-id="trufa" data-name="Trufa Fontana" data-price="3.5" data-image="assets/truffle.png"><div class="product-media"><img src="assets/truffle.png" alt="Trufa saludable Fontana"><span class="product-tag">Nuevo</span></div><div class="product-body"><div class="product-top"><h3>Trufa de autor</h3><span class="price">$3,50</span></div><p>Un bocado cremoso de cacao, perfecto para la pausa de la tarde.</p><div class="product-footer"><span class="diet">SIN CULPA</span><button class="add" aria-label="Agregar Trufa">+</button></div></div></article>
-          <article class="product" data-category="cakes" data-id="lemon" data-name="Foncake Lemon" data-price="30" data-image="assets/lemon.png"><div class="product-media"><img src="assets/lemon.png" alt="Foncake de limón"><span class="product-tag">Fresco</span></div><div class="product-body"><div class="product-top"><h3>Foncake Lemon</h3><span class="price">$30</span></div><p>Limón, harina de almendra, monk fruit y glaseado vegano blanco.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Foncake Lemon">+</button></div></div></article>
-          <article class="product" data-category="salado" data-id="tortellone" data-name="Tortellone Fit" data-price="12" data-image="assets/pasta.png"><div class="product-media"><img src="assets/pasta.png" alt="Tortellone fit Fontana"><span class="product-tag">Salado</span></div><div class="product-body"><div class="product-top"><h3>Tortellone Fit</h3><span class="price">$12</span></div><p>De ricota de cabra y espinaca o de carne, alto en proteína.</p><div class="product-footer"><span class="diet">POR STOCK O ENCARGO</span><button class="add" aria-label="Agregar Tortellone">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="pistacho" data-name="Torta de Pistacho y Frambuesa" data-price="60" data-image="assets/pistachio-raspberry-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho, frambuesa, semillas de amapola, alulosa y chocolate blanco vegano sin azúcar"><div class="product-media"><img src="assets/pistachio-raspberry-fontana-v2.jpg" alt="Torta de pistacho y frambuesa"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho &amp; Frambuesa</h3><span class="price">$60</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho y Frambuesa">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="naranja" data-name="Torta de Manjar de Naranja" data-price="47" data-image="assets/manjar-naranja.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de yuca (10 %), monkfruit, aceite de coco, huevo, naranja, semillas de amapola y alulosa"><div class="product-media"><img src="assets/manjar-naranja.jpg" alt="Torta de manjar de naranja"></div><div class="product-body"><div class="product-top"><h3>Torta de Manjar de Naranja</h3><span class="price">$47</span></div><p>Naranja, harina de almendra, semillas de amapola y alulosa.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Manjar de Naranja">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="zanahoria" data-name="Torta de Zanahoria" data-price="47" data-image="assets/zanahoria-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, zanahoria, canela, jengibre, glaseado vegano y almendras"><div class="product-media"><img src="assets/zanahoria-fontana-v2.jpg" alt="Torta de zanahoria"></div><div class="product-body"><div class="product-top"><h3>Torta de Zanahoria</h3><span class="price">$47</span></div><p>Zanahoria, canela, jengibre, almendras y glaseado vegano.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Zanahoria">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="pistacho-clasico" data-name="Torta de Pistacho" data-price="55" data-image="assets/pistacho-fontana-v3.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho y glaseado vegano"><div class="product-media"><img src="assets/pistacho-fontana-v3.jpg" alt="Torta de pistacho"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho</h3><span class="price">$55</span></div><p>Pistacho, harina de almendra y glaseado vegano.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="chocolate" data-name="Torta de Triple Chocolate" data-price="47" data-image="assets/chocolate-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, cacao, chocolate vegano endulzado con monkfruit y chispas de chocolate vegano endulzadas con monkfruit"><div class="product-media"><img src="assets/chocolate-fontana-v2.jpg" alt="Torta de triple chocolate"></div><div class="product-body"><div class="product-top"><h3>Torta de Triple Chocolate</h3><span class="price">$47</span></div><p>Chocolate vegano 70% cacao, harina de almendra y monk fruit.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Triple Chocolate">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="vainilla" data-name="Torta de Vainilla con Chispas de Chocolate" data-price="47" data-image="assets/vanilla-chips-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa y chispas de chocolate vegano endulzadas con monkfruit"><div class="product-media"><img src="assets/vanilla-chips-fontana-v2.jpg" alt="Torta de vainilla con chispas de chocolate"></div><div class="product-body"><div class="product-top"><h3>Torta de Vainilla con Chispas</h3><span class="price">$47</span></div><p>Vainilla, harina de almendra y chispas de chocolate vegano.</p><div class="product-footer"><span class="diet">BAJO ENCARGO</span><button class="add" aria-label="Agregar Torta de Vainilla con Chispas">+</button></div></div></article>
+          <article class="fonkie-builder" data-category="fonkies" data-id="fonkie-box" data-image="assets/fonkie-dark-chocolate-chips-1.jpg" data-ingredients="Chips de Chocolate Oscuro: harina de almendra, huevo, aceite de coco, chocolate vegano oscuro y monkfruit. Pistacho con Chocolate Blanco: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, pistacho y monkfruit. Triple Chocolate Fudge: harina de almendra, huevo, aceite de coco, chocolate vegano oscuro, cacao y monkfruit. Nutella Fit: harina de almendra, huevo, aceite de coco, nutella artesanal de cacao y avellana, aceite de oliva, alulosa y monkfruit. Almond Caramel: harina de almendra, huevo, aceite de coco, cacao, caramelo de almendra y monkfruit. Cinnamon Roll: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit y canela. Kinder Bueno: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit, avellana y cacao">
+            <div class="fonkie-builder-grid">
+              <div class="fonkie-gallery"><div class="fonkie-gallery-label"><span>Galería de sabores</span><span>7 sabores</span></div><div class="fonkie-gallery-track" aria-label="Galería de Fonkies">
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-dark-chocolate-chips-1.jpg" alt="Fonkie Chips de Chocolate Oscuro"><span>Chips de Chocolate Oscuro</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-pistachio-white-chocolate-1.jpg" alt="Fonkie Pistacho con Chocolate Blanco"><span>Pistacho con Chocolate Blanco</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-triple-chocolate-fudge-1.jpg" alt="Fonkie Triple Chocolate Fudge"><span>Triple Chocolate Fudge</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-nutella-fit.jpg" alt="Fonkie Nutella Fit"><span>Nutella Fit</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-almond-caramel.jpg" alt="Fonkie Almond Caramel"><span>Almond Caramel</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-cinnamon-roll-1.jpg" alt="Fonkie Cinnamon Roll"><span>Cinnamon Roll</span></figure>
+                <figure class="fonkie-gallery-card"><img src="assets/fonkie-kinder-bueno-1.jpg" alt="Fonkie Kinder Bueno"><span>Kinder Bueno</span></figure>
+              </div></div>
+              <div class="fonkie-builder-body">
+                <div class="fonkie-builder-head"><div><h3>Fonkies · Arma tu caja</h3><p>Elige los sabores y las cantidades. Mínimo 4 unidades.</p></div></div>
+                <details class="choice-panel" open><summary>Elegir sabores</summary><div class="choice-panel-content fonkie-flavors" aria-label="Seleccionar sabores de Fonkies">
+                  <div class="fonkie-flavor" data-flavor="Chips de Chocolate Oscuro"><span class="fonkie-flavor-name">Chips de Chocolate Oscuro</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Chips de Chocolate Oscuro">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Chips de Chocolate Oscuro">+</button></div></div>
+                  <div class="fonkie-flavor" data-flavor="Pistacho con Chocolate Blanco"><span class="fonkie-flavor-name">Pistacho con Chocolate Blanco</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Pistacho con Chocolate Blanco">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Pistacho con Chocolate Blanco">+</button></div></div>
+                  <div class="fonkie-flavor" data-flavor="Triple Chocolate Fudge"><span class="fonkie-flavor-name">Triple Chocolate Fudge</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Triple Chocolate Fudge">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Triple Chocolate Fudge">+</button></div></div>
+                  <div class="fonkie-flavor" data-flavor="Nutella Fit"><span class="fonkie-flavor-name">Nutella Fit</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Nutella Fit">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Nutella Fit">+</button></div></div>
+                  <div class="fonkie-flavor" data-flavor="Almond Caramel"><span class="fonkie-flavor-name">Almond Caramel</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Almond Caramel">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Almond Caramel">+</button></div></div>
+                  <div class="fonkie-flavor" data-flavor="Cinnamon Roll"><span class="fonkie-flavor-name">Cinnamon Roll</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Cinnamon Roll">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Cinnamon Roll">+</button></div></div>
+                  <div class="fonkie-flavor" data-flavor="Kinder Bueno"><span class="fonkie-flavor-name">Kinder Bueno</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar Kinder Bueno">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar Kinder Bueno">+</button></div></div>
+                </div></details>
+                <details class="fonkie-ingredients" id="fonkieIngredients"><summary>Ingredientes</summary><div></div></details>
+                <div class="fonkie-builder-summary" aria-live="polite"><div><b id="fonkieCount">Has seleccionado 0 Fonkies</b><p id="fonkiePriceRule">Selecciona al menos 4 para armar tu caja.</p></div><strong id="fonkieTotal">$0,00</strong><div class="fonkie-validation" id="fonkieValidation">Mínimo 4 galletas para armar tu caja.</div><button class="fonkie-add" id="addFonkieBox" type="button" disabled>Agregar al carrito</button></div>
+              </div>
+            </div>
+          </article>
+          <article class="builder-panel fomb-builder" data-category="fomb" data-id="fomb-box" data-image="assets/fomb-dubai-1.jpg" data-ingredients="Fomb Pistacho, Fomb Dubai y Fomb Ferrero. Ingredientes y alérgenos dependen del sabor elegido y se confirman por WhatsApp.">
+            <div class="builder-grid">
+              <div class="builder-gallery"><div class="builder-gallery-label"><span>Galería Fomb</span><span>3 sabores</span></div><div class="builder-gallery-track" aria-label="Galería de Fomb">
+                <figure class="builder-gallery-card"><img src="assets/fomb-pistachio-1.jpg" alt="Fomb Pistacho"><span>Pistacho</span></figure>
+                <figure class="builder-gallery-card"><img src="assets/fomb-dubai-1.jpg" alt="Fomb Dubai"><span>Dubai</span></figure>
+                <figure class="builder-gallery-card"><img src="assets/fomb-ferrero.jpg" alt="Fomb Ferrero"><span>Ferrero</span></figure>
+              </div></div>
+              <div class="builder-body">
+                <div class="builder-head"><h3>Fomb · Arma tu caja</h3><p>Elige el tamaño y añade extras. Los sabores se confirman por WhatsApp.</p></div>
+                <details class="choice-panel" open><summary>Elegir tamaño y extras</summary><div class="choice-panel-content">
+                  <div class="fomb-size-options"><label class="fomb-size-option"><input type="radio" name="fombSize" value="4" checked> Caja de 4 · $15</label><label class="fomb-size-option"><input type="radio" name="fombSize" value="12"> Caja de 12 · $30</label></div>
+                  <div class="fomb-extras"><span>Bombones extra · $3,50 c/u</span><div class="fomb-stepper"><button id="fombExtraMinus" type="button" aria-label="Restar extra">−</button><output id="fombExtraCount">0</output><button id="fombExtraPlus" type="button" aria-label="Sumar extra">+</button></div></div>
+                </div></details>
+                <details class="fonkie-ingredients" id="fombIngredients"><summary>Sabores e ingredientes</summary><div></div></details>
+                <div class="builder-summary" aria-live="polite"><div><b id="fombCount">Caja de 4 Fomb</b><p id="fombRule">Sabores a elección por WhatsApp.</p></div><strong id="fombTotal">$15,00</strong><button id="addFombBox" type="button">Agregar al carrito</button></div>
+              </div>
+            </div>
+          </article>
+          <article class="product" data-category="cakes" data-id="lemon" data-name="Torta de Limón" data-price="47" data-image="assets/lemon-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, limón y chocolate blanco vegano"><div class="product-media"><img src="assets/lemon-fontana-v2.jpg" alt="Torta de limón"></div><div class="product-body"><div class="product-top"><h3>Torta de Limón</h3><span class="price">$47</span></div><p>Limón, harina de almendra, monk fruit y glaseado vegano blanco.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Limón">+</button></div></div></article>
+          <div class="empty-filter-state" id="emptyFilterState" hidden><div><span id="emptyFilterEyebrow">Actualización diaria</span><h3 id="emptyFilterTitle">Muy pronto</h3><p id="emptyFilterMessage"></p></div></div>
         </div>
-        <p class="demo-note">Precios ilustrativos para el mockup. El catálogo final se conecta al menú y WhatsApp reales del negocio.</p>
+        <p class="demo-note">Precios expresados en USD. Disponibilidad y pedidos especiales sujetos a confirmación por WhatsApp.</p>
       </div>
     </section>
 
-    <div class="pillars"><div class="container pillars-grid">
-      <div class="pillar"><div class="pillar-icon">🌾</div><div><b>Sin gluten</b><small>Para disfrutar con tranquilidad</small></div></div>
-      <div class="pillar"><div class="pillar-icon">🍃</div><div><b>Monk fruit</b><small>Dulzor sin azúcar refinada</small></div></div>
-      <div class="pillar"><div class="pillar-icon">🥛</div><div><b>Sin lactosa</b><small>Ligero, cremoso y delicioso</small></div></div>
-      <div class="pillar"><div class="pillar-icon">👩🏻‍🍳</div><div><b>Hecho a mano</b><small>Recetas propias de autor</small></div></div>
-    </div></div>
-
     <section class="story" id="historia"><div class="container story-grid">
-      <div class="story-visual"><img class="story-main" src="assets/chocolate.jpg" alt="Pastelería de autor Fontana"><img class="story-small" src="assets/fonkie.png" alt="Galletas Fonkies"></div>
       <div class="story-copy"><span class="eyebrow">La esencia detrás del sabor</span><h2>No aceptamos que “saludable” signifique aburrido.</h2><p>En el taller de Fontana cada receta empieza con una obsesión: lograr una textura increíble y un sabor que haga olvidar todo lo que quitamos. Horneamos en pequeños lotes, cuidando cada ingrediente y cada detalle.</p><div class="checks"><div class="check"><span>✓</span>Harina 100% de almendra</div><div class="check"><span>✓</span>Chocolate vegano</div><div class="check"><span>✓</span>Bajo índice glucémico</div><div class="check"><span>✓</span>Producción artesanal</div></div><a class="btn btn-light" href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Conoce nuestra historia en Instagram</a></div>
     </div></section>
 
     <section class="location" id="ubicacion"><div class="container"><div class="location-card">
-      <div class="location-copy"><span class="eyebrow">Tu momento Fontana</span><h2>Mañongo.</h2><p>Ven por tu postre favorito, descubre lo recién salido del taller o retira tu pedido. También tenemos delivery en Valencia.</p><div class="hours"><div><b>Lunes a domingo</b><span>9:00 am — 6:00 pm</span></div><div><b>Modalidad</b><span>Pickup + delivery</span></div></div></div>
+      <div class="location-copy"><span class="eyebrow">Tu momento Fontana</span><h2>Mañongo.</h2><p>Ven por tu postre favorito, descubre lo recién salido del taller o retira tu pedido. Tenemos delivery en todo Carabobo; el costo y los detalles del pickup se confirman por WhatsApp.</p><div class="hours"><div><b>Lunes a domingo</b><span>9:30 am — 6:00 pm</span></div><div><b>Modalidad</b><span>Pickup + delivery</span></div></div></div>
       <div class="location-visual"><div class="map-orbit"><div class="pin"><img src="assets/logo.png" alt="Fontana"></div></div></div>
     </div></div></section>
 
@@ -352,10 +525,10 @@
       <article class="quote"><div class="stars">★★★★★</div><blockquote>“El Foncake de pistacho se convirtió en el favorito de toda la familia.”</blockquote><div class="person"><span>AC</span><div><b>Andrea C.</b><small>Fontana lover</small></div></div></article>
     </div><p class="demo-note">Testimonios de muestra para presentar la experiencia visual; se sustituyen por reseñas verificadas del negocio.</p></div></section>
 
-    <section class="final"><div class="container final-inner"><span class="eyebrow">Haz espacio para algo rico</span><h2>Tu próximo antojo ya tiene nombre.</h2><p>Explora el menú, arma tu pedido y recíbelo en Valencia o retíralo en Mañongo.</p><a class="btn btn-primary" href="#menu">Elegir mi favorito</a></div></section>
+    <section class="final"><div class="container final-inner"><span class="eyebrow">Haz espacio para algo rico</span><h2>Tu próximo antojo ya tiene nombre.</h2><p>Explora el menú, arma tu pedido y recíbelo en Carabobo o retíralo en Mañongo.</p><a class="btn btn-primary" href="#menu">Elegir mi favorito</a></div></section>
   </main>
 
-  <footer><div class="container"><div class="footer-grid"><div class="footer-brand"><a class="brand" href="#inicio"><img src="assets/logo.png" alt="Logo Fontana">fontana</a><p>Cocina de autor de alta calidad. Sin gluten, sin azúcar refinada y sin lactosa.</p></div><div><div class="footer-title">Descubre</div><div class="footer-links"><a href="#menu">Menú</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a></div></div><div><div class="footer-title">Conecta</div><div class="footer-links"><a href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Instagram ↗</a><a href="#ubicacion">Mañongo</a><span>Lun–Dom · 9am–6pm</span></div></div></div><div class="footer-bottom"><span>© 2026 Fontana. Todos los derechos reservados.</span><span>Versión de pre-lanzamiento · pedidos en pruebas</span></div></div></footer>
+  <footer><div class="container"><div class="footer-grid"><div class="footer-brand"><a class="brand" href="#inicio" aria-label="Fontana, volver al inicio"><img class="footer-logo" src="assets/fontana-logo-official-reverse.png" alt="Fontana"></a><p>Cocina de autor de alta calidad. Sin gluten, sin azúcar refinada y sin lactosa.</p></div><div><div class="footer-title">Descubre</div><div class="footer-links"><a href="#menu">Menú</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a></div></div><div><div class="footer-title">Conecta</div><div class="footer-links"><a href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Instagram ↗</a><a href="#ubicacion">Mañongo</a><span>Lun–Dom · 9:30am–6pm</span></div></div></div><div class="footer-bottom"><span>© 2026 Fontana. Todos los derechos reservados.</span><span>Pedidos sujetos a confirmación</span></div></div></footer>
 
   <div class="drawer-backdrop" id="backdrop"></div>
   <aside class="drawer" id="drawer" aria-label="Carrito y datos del pedido" aria-hidden="true">
@@ -372,19 +545,21 @@
         <div class="field"><label for="customerPhone">Teléfono de contacto</label><input id="customerPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>
         <div class="field"><label for="fulfillment">¿Cómo lo recibirás?</label><select id="fulfillment" name="fulfillment" required></select></div>
         <div class="field" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
-        <div class="field"><label for="requestedDate">Fecha solicitada</label><input id="requestedDate" name="requestedDate" type="date" required></div>
+        <div class="field"><label id="requestedDateLabel" for="requestedDate">Fecha deseada</label><input id="requestedDate" name="requestedDate" type="date" required><p class="schedule-note" id="scheduleNotice">La disponibilidad y anticipación se confirman por WhatsApp.</p></div>
         <div class="field"><label for="requestedTime">Franja horaria solicitada</label><input id="requestedTime" name="requestedTime" type="text" placeholder="Pendiente de confirmar por Fontana" required></div>
-        <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select></div>
+        <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select><p class="schedule-note" id="paymentNotice">Los datos se envían por WhatsApp. Se requiere el 100% del pago por adelantado.</p></div>
+        <div class="field" id="productChoicesGroup" hidden><label for="productChoices">Sabores elegidos</label><textarea id="productChoices" name="productChoices" placeholder="Ej.: Fonkies Pistacho; bombones 2 Pistache Fomb + 2 Dubai Fomb"></textarea><p class="schedule-note">Indica los sabores y cantidades de cada paquete. Fontana confirmará la combinación por WhatsApp.</p></div>
         <fieldset class="allergy-panel">
           <legend>¿Tienes alguna alergia o intolerancia alimentaria?</legend>
           <div class="choice-row"><label class="choice"><input type="radio" name="hasAllergies" value="no" required> No</label><label class="choice"><input type="radio" name="hasAllergies" value="yes" required> Sí</label></div>
           <div id="allergyDetails" hidden>
             <div class="allergen-grid" aria-label="Alergias o intolerancias"><label class="choice"><input type="checkbox" name="allergens" value="Frutos secos"> Frutos secos</label><label class="choice"><input type="checkbox" name="allergens" value="Gluten"> Gluten</label><label class="choice"><input type="checkbox" name="allergens" value="Leche o lactosa"> Leche/lactosa</label><label class="choice"><input type="checkbox" name="allergens" value="Huevo"> Huevo</label><label class="choice"><input type="checkbox" name="allergens" value="Soya"> Soya</label></div>
             <div class="field"><label for="otherAllergy">Otra alergia o intolerancia</label><input id="otherAllergy" name="otherAllergy" placeholder="Especifica cuál"></div>
+            <div class="item-allergy-list" id="allergyItemNotes" aria-label="Instrucciones de alergia por producto"></div>
+            <div class="allergy-warning">No asumas que un producto puede adaptarse. Fontana revisará los ingredientes y las instrucciones de cada artículo antes de aceptar el pedido.</div>
+            <label class="choice"><input id="crossContamination" name="crossContamination" type="checkbox"> Entiendo que la solicitud debe ser revisada y confirmada por Fontana.</label>
+            <div class="allergy-status" id="allergyStatus">Este pedido quedará pendiente de revisión por Fontana.</div>
           </div>
-          <div class="allergy-warning">Aunque se retire un ingrediente, los productos pueden elaborarse en espacios o con utensilios donde también se manipulan alérgenos. Fontana revisará cada solicitud antes de aceptarla.</div>
-          <label class="choice"><input id="crossContamination" name="crossContamination" type="checkbox" required> He leído y acepto esta información.</label>
-          <div class="allergy-status" id="allergyStatus" hidden>Este pedido quedará pendiente de revisión por Fontana.</div>
         </fieldset>
         <div class="field"><label for="customerNotes">Observaciones <span aria-hidden="true">(opcional)</span></label><textarea id="customerNotes" name="notes" placeholder="Dedicatoria u otra indicación para el pedido"></textarea></div>
       </div>

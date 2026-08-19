@@ -25,15 +25,24 @@ Prompt recomendado:
 
 Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a GitHub. El Mac mini no forma parte del hosting ni es necesario para que la web permanezca online.
 
-## Configuración antes del lanzamiento
+## Gestión del catálogo
 
-Editar `config.js`:
+La tienda continúa siendo estática y no dispone todavía de un panel privado con inicio de sesión. Hasta que se apruebe un CMS o backend, `config.js` es la fuente segura para gestionar los productos añadidos en esta revisión:
 
-1. Añadir el teléfono real en `whatsappNumber` usando solo dígitos y código de país.
-2. Cambiar `previewMode` a `false`.
-3. Confirmar modalidades y formas de pago.
+1. Editar el producto dentro de `dynamicCatalog`.
+2. Usar `status: "available"` para publicarlo o `status: "sold-out"` para mostrarlo agotado.
+3. Activar `promo: true` para incluirlo en «Promoción del día».
+4. Activar `immediate: true` para incluirlo en «Entrega inmediata».
+5. Usar `price: null` cuando el precio aún no esté confirmado; la web mostrará «Por confirmar» y no permitirá añadirlo al carrito.
+6. Guardar las nuevas fotografías dentro de `assets/` y asignar su ruta en `image`.
 
-También deben confirmarse catálogo, precios, reseñas, horarios, zonas de delivery, dirección y textos legales. El sitio conserva `noindex` hasta esa aprobación.
+Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
+
+## Configuración operativa
+
+Los datos de WhatsApp, modalidades de entrega, formas de pago y reglas comerciales también se administran desde `config.js`. No se deben inventar datos que la clienta no haya confirmado.
+
+Crear un panel autogestionable real requiere aprobar antes persistencia, autenticación y publicación de cambios; no debe simularse con controles públicos ni incluir secretos en esta web estática.
 
 ## Despliegue
 
@@ -47,4 +56,4 @@ npm run build
 npm test
 ```
 
-Las pruebas cubren carga, carrito y checkout. Los cambios visuales también requieren revisión manual en móvil y escritorio.
+Las pruebas cubren carga, carrito, checkout, precios de Fonkies y Fomb, filtros, estados del catálogo e integridad de imágenes. Los cambios visuales también requieren revisión manual en móvil y escritorio.
