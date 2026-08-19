@@ -83,6 +83,33 @@ test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ pa
   await expect(page.locator(".cart-item h4")).toContainText("Caja de 13 Fomb");
 });
 
+test("las galerías de Fonkies y Fomb están centradas y no recortan las fotos", async ({ page }, testInfo) => {
+  await openPreview(page);
+  const galleries = [
+    { filter: "Fonkies · Galletas", selector: ".fonkie-gallery", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card", screenshot: "galeria-fonkies-movil.png" },
+    { filter: "Fomb · Bombones", selector: ".builder-gallery", track: ".builder-gallery-track", card: ".builder-gallery-card", screenshot: "galeria-fomb-movil.png" }
+  ];
+  for (const item of galleries) {
+    await page.getByRole("button", { name: item.filter }).click();
+    const selector = item.selector;
+    const gallery = page.locator(selector);
+    const track = gallery.locator(item.track);
+    const card = track.locator(item.card).first();
+    const image = card.locator("img");
+    await expect(track).toBeVisible();
+    await expect(image).toHaveCSS("object-fit", "contain");
+    await expect(image).toHaveCSS("object-position", "50% 50%");
+    const centered = await track.evaluate(element => {
+      const parent = element.parentElement.getBoundingClientRect();
+      const own = element.getBoundingClientRect();
+      return Math.abs((own.left + own.width / 2) - (parent.left + parent.width / 2)) < 1;
+    });
+    expect(centered).toBe(true);
+    await track.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(item.screenshot), fullPage: false });
+  }
+});
+
 test("catálogo incluye nuevas categorías, productos y placeholders honestos", async ({ page }) => {
   await openPreview(page);
   await expect(page.getByRole("button", { name: "Foncake · Tortas" })).toBeVisible();
