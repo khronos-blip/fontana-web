@@ -12,7 +12,6 @@
   const checkoutForm = $("#checkoutForm");
   const drawerTitle = $("#drawerTitle");
   const backToCart = $("#backToCart");
-  const productChoiceIds = new Set(["fonkie-box", "fomb-box", "ballerine", "mini-cake", "panzerottis", "raviolis"]);
   const storageKey = "fontana-cart-v1";
   let cart = readCart();
 
@@ -335,7 +334,7 @@
           </div>
           <button type="button" class="remove" onclick="changeQty('${item.id}',-${item.qty})" aria-label="Eliminar">×</button>
         </div>`).join("")
-      : `<div class="empty"><div class="empty-icon">🧁</div><b>Tu pedido está vacío</b><span>Agrega una delicia del menú para comenzar.</span></div>`;
+      : `<div class="empty"><b>Tu pedido está vacío</b><span>Agrega una delicia del menú para comenzar.</span></div>`;
   }
 
   function showCheckoutStep() {
@@ -348,7 +347,6 @@
     checkoutForm.hidden = false;
     backToCart.hidden = false;
     drawerTitle.textContent = "Datos del pedido";
-    toggleProductChoices();
     renderAllergyItemNotes();
     setupRequestedDate();
     toggleAllergyDetails();
@@ -379,15 +377,6 @@
     $("#requestedDateLabel").textContent = delivery ? "Fecha deseada para delivery" : "Fecha deseada para pickup";
   }
 
-  function toggleProductChoices() {
-    const needsChoices = cart.some(item => productChoiceIds.has(item.productId || item.id));
-    const group = $("#productChoicesGroup");
-    const input = $("#productChoices");
-    group.hidden = !needsChoices;
-    input.required = needsChoices;
-    if (!needsChoices) input.value = "";
-  }
-
   function localDateValue(date) {
     return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
   }
@@ -412,12 +401,6 @@
     input.min = localDateValue(minimumDate);
     if (input.value && input.value < input.min) input.value = "";
 
-    const labels = [...new Set(leadTimes.map(item => item.label).filter(Boolean))];
-    if (!labels.length) {
-      $("#scheduleNotice").textContent = "Selecciona una fecha deseada. La anticipación de cada producto se confirmará por WhatsApp.";
-    } else {
-      $("#scheduleNotice").textContent = `${labels.join(" · ")}. La fecha y disponibilidad finales se confirman por WhatsApp.`;
-    }
   }
 
   function renderAllergyItemNotes() {
@@ -468,10 +451,8 @@
       `Modalidad: ${fulfillment}`,
       data.get("address") ? `Dirección: ${data.get("address")}` : "",
       `Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
-      `Franja horaria solicitada: ${data.get("requestedTime")}`,
       `Forma de pago: ${data.get("payment")}`,
       "Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
-      data.get("productChoices") ? `Sabores elegidos: ${data.get("productChoices")}` : "",
       `Alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
       hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : "",
       ...itemAllergyLines,

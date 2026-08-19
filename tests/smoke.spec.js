@@ -16,7 +16,6 @@ async function fillCheckout(page, { allergies = false } = {}) {
   await page.locator("#customerPhone").fill("0412 000 0000");
   const minimumDate = await page.locator("#requestedDate").getAttribute("min");
   await page.locator("#requestedDate").fill(minimumDate);
-  await page.locator("#requestedTime").fill("Después de las 4 pm");
   await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
   await page.locator(`input[name="hasAllergies"][value="${allergies ? "yes" : "no"}"]`).check();
   if (allergies) {
@@ -69,6 +68,7 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   await expect(page.locator('.fonkie-flavor[data-flavor="Chips Ahoy Fit"]')).toHaveCount(1);
   await expect(page.locator('img[src="assets/fonkie-chips-ahoy-fit-fontana-pro.jpg"]')).toHaveCount(1);
   await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-position", "50% 50%");
+  await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-fit", "cover");
 });
 
 test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ page }) => {
@@ -87,7 +87,7 @@ test("Fomb usa una publicación con caja de 4, caja de 12 y extras", async ({ pa
   await expect(page.locator(".cart-item h4")).toContainText("Caja de 13 Fomb");
 });
 
-test("las galerías de Fonkies y Fomb están centradas y no recortan las fotos", async ({ page }, testInfo) => {
+test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el producto centrado", async ({ page }, testInfo) => {
   await openPreview(page);
   const galleries = [
     { filter: "Fonkies · Galletas", selector: ".fonkie-gallery", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card", screenshot: "galeria-fonkies-movil.png" },
@@ -101,8 +101,14 @@ test("las galerías de Fonkies y Fomb están centradas y no recortan las fotos",
     const card = track.locator(item.card).first();
     const image = card.locator("img");
     await expect(track).toBeVisible();
-    await expect(image).toHaveCSS("object-fit", "contain");
+    await expect(image).toHaveCSS("object-fit", "cover");
     await expect(image).toHaveCSS("object-position", "50% 50%");
+    const fillsTrack = await card.evaluate(element => {
+      const cardBox = element.getBoundingClientRect();
+      const trackBox = element.parentElement.getBoundingClientRect();
+      return Math.abs(cardBox.width - trackBox.width) < 1 && Math.abs(cardBox.left - trackBox.left) < 1;
+    });
+    expect(fillsTrack).toBe(true);
     const centered = await track.evaluate(element => {
       const parent = element.parentElement.getBoundingClientRect();
       const own = element.getBoundingClientRect();
@@ -112,6 +118,37 @@ test("las galerías de Fonkies y Fomb están centradas y no recortan las fotos",
     await track.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(item.screenshot), fullPage: false });
   }
+});
+
+test("el carrito usa fondo lila y el checkout toma los sabores automáticamente", async ({ page }, testInfo) => {
+  await openPreview(page);
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".empty-icon")).toHaveCount(0);
+  await expect(page.locator(".empty")).not.toContainText("🧁");
+  const drawerBackground = await page.locator("#drawer").evaluate(element => getComputedStyle(element).backgroundImage);
+  expect(drawerBackground).toContain("linear-gradient");
+  await page.locator("#closeCart").click();
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
+  for (let index = 0; index < 4; index += 1) await firstPlus.click();
+  await page.locator("#addFonkieBox").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-choices")).toContainText("4 Chips de Chocolate Oscuro");
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator("#requestedTime, #productChoicesGroup, #productChoices")).toHaveCount(0);
+  await expect(page.locator(".allergy-panel")).not.toHaveCSS("background-color", "rgb(23, 18, 23)");
+  await page.locator("#customerName").fill("Andrea Pérez");
+  await page.locator("#customerPhone").fill("0412 000 0000");
+  const minimumDate = await page.locator("#requestedDate").getAttribute("min");
+  await page.locator("#requestedDate").fill(minimumDate);
+  await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
+  await page.locator('input[name="hasAllergies"][value="no"]').check();
+  await page.screenshot({ path: testInfo.outputPath("checkout-lila-movil.png"), fullPage: false });
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  const message = await page.evaluate(() => navigator.clipboard.readText());
+  expect(message).toContain("Sabores: 4 Chips de Chocolate Oscuro");
+  expect(message).not.toContain("Franja horaria solicitada");
+  expect(message).not.toContain("Sabores elegidos:");
 });
 
 test("catálogo incluye productos confirmados y fotos profesionales", async ({ page }) => {
