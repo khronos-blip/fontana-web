@@ -319,12 +319,22 @@
     .menu-section{padding-top:82px}
     .menu-section .section-head{display:block}
     .menu-section .filters{margin-top:30px}
-    .menu-intro .eyebrow,.menu-intro h2{opacity:0;transform:translateY(18px)}
-    .menu-intro.menu-intro-visible .eyebrow{animation:menu-intro-in .38s ease-out both}
-    .menu-intro.menu-intro-visible h2{animation:menu-intro-in .48s .06s cubic-bezier(.2,.8,.2,1) both}
+    .menu-intro{position:relative;width:max-content;max-width:100%;padding-bottom:13px}
+    .menu-intro:after{content:"";position:absolute;left:0;bottom:0;width:min(148px,62%);height:3px;border-radius:999px;background:var(--green);transform:scaleX(0);transform-origin:left;opacity:0}
+    .menu-intro .eyebrow{opacity:0;transform:translateX(-28px)}
+    .menu-intro h2{opacity:0;transform:translateY(26px) scale(.96)}
+    .menu-intro.menu-intro-visible .eyebrow{animation:menu-eyebrow-in .42s ease-out both}
+    .menu-intro.menu-intro-visible h2{animation:menu-title-in .58s .08s cubic-bezier(.2,.85,.2,1) both}
+    .menu-intro.menu-intro-visible:after{animation:menu-line-in .48s .28s cubic-bezier(.2,.85,.2,1) both}
+    .menu-section .filter{opacity:0;transform:translateY(12px)}
+    .menu-section.menu-entry-visible .filter{animation:menu-filter-in .34s cubic-bezier(.2,.8,.2,1) both}
+    .menu-section.menu-entry-visible .filter:nth-child(1){animation-delay:.22s}.menu-section.menu-entry-visible .filter:nth-child(2){animation-delay:.26s}.menu-section.menu-entry-visible .filter:nth-child(3){animation-delay:.30s}.menu-section.menu-entry-visible .filter:nth-child(4){animation-delay:.34s}.menu-section.menu-entry-visible .filter:nth-child(5){animation-delay:.38s}.menu-section.menu-entry-visible .filter:nth-child(6){animation-delay:.42s}.menu-section.menu-entry-visible .filter:nth-child(7){animation-delay:.46s}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
-    @keyframes menu-intro-in{to{opacity:1;transform:translateY(0)}}
-    @media(prefers-reduced-motion:reduce){.menu-intro .eyebrow,.menu-intro h2{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible h2{animation:none}}
+    @keyframes menu-eyebrow-in{to{opacity:1;transform:translateX(0)}}
+    @keyframes menu-title-in{to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes menu-line-in{to{opacity:1;transform:scaleX(1)}}
+    @keyframes menu-filter-in{to{opacity:1;transform:translateY(0)}}
+    @media(prefers-reduced-motion:reduce){.menu-intro .eyebrow,.menu-intro h2,.menu-section .filter{opacity:1;transform:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible h2,.menu-intro.menu-intro-visible:after,.menu-section.menu-entry-visible .filter{animation:none}}
 
     .allergy-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
     .allergy-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}

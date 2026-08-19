@@ -298,6 +298,7 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   expect(fitsMobileViewport).toBe(true);
   await page.locator(".menu-intro").scrollIntoViewIfNeeded();
   await expect(page.locator(".menu-intro")).toHaveClass(/menu-intro-visible/);
+  await expect(page.locator(".menu-section")).toHaveClass(/menu-entry-visible/);
   await salado.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("catalogo-movil.png"), fullPage: false });
   expect(browserErrors).toEqual([]);

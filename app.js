@@ -559,14 +559,17 @@
 
   function setupMenuIntro() {
     const intro = $(".menu-intro");
+    const section = intro?.closest(".menu-section");
     if (!intro) return;
     if (!("IntersectionObserver" in window)) {
       intro.classList.add("menu-intro-visible");
+      section?.classList.add("menu-entry-visible");
       return;
     }
     const observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return;
       intro.classList.add("menu-intro-visible");
+      section?.classList.add("menu-entry-visible");
       observer.disconnect();
     }, { threshold: 0.35 });
     observer.observe(intro);
