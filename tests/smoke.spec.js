@@ -489,6 +489,13 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
 
 test("un pedido con alergias queda marcado para revisión", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => {
+    window.__copiedOrder = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async message => { window.__copiedOrder = message; } }
+    });
+  });
   await openPreview(page);
   await page.locator('[data-id="pistacho"] .add').click();
   await fillCheckout(page, { allergies: true });
@@ -496,7 +503,7 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
     await page.getByLabel(option, { exact: true }).check();
   }
   await page.locator('#checkoutForm button[type="submit"]').click();
-  const message = await page.evaluate(() => navigator.clipboard.readText());
+  const message = await page.evaluate(() => window.__copiedOrder);
   expect(message).toContain("Condiciones, alergias o intolerancias:");
   expect(message).toContain("Diabético");
   expect(message).toContain("Celíaco");
