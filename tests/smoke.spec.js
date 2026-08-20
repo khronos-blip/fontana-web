@@ -33,11 +33,17 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   await page.locator('#checkoutForm button[type="submit"]').click();
 
   const message = await page.evaluate(() => window.__copiedOrder);
-  expect(message).toContain("Pedido FNT-");
-  expect(message).toContain("1× Torta de Pistacho y Frambuesa");
-  expect(message).toContain("USD 60,00");
-  expect(message).toContain("Andrea Pérez");
-  expect(message).toContain("Enviaré el comprobante");
+  expect(message).toMatch(/^Hola Fontana sin gluten 💜 Quiero hacer este pedido:\n\n\*Pedido FNT-[^\n]+\*\n\n• 1× Torta de Pistacho y Frambuesa/);
+  expect(message).toContain("\n\n*Total estimado: USD 60,00*\n\n");
+  expect(message).toContain("• Nombre: Andrea Pérez");
+  expect(message).toContain("• Teléfono: 0412 000 0000");
+  expect(message).toContain("• Modalidad: Pickup en Mañongo (detalles por WhatsApp)");
+  expect(message).toContain("• Fecha deseada para Pickup en Mañongo (detalles por WhatsApp):");
+  expect(message).toContain("• Forma de pago: Pago Móvil");
+  expect(message).toContain("• Condición de pago: 100% por adelantado; los datos se envían por WhatsApp");
+  expect(message).toContain("• Condiciones, alergias o intolerancias: No indica");
+  expect(message).toContain("• Estado: pendiente de confirmación\nEnviaré el comprobante por este chat.");
+  expect(message).toMatch(/\*El pedido se confirma únicamente cuando Fontana valide disponibilidad, pago y, si aplica, las condiciones, alergias o intolerancias indicadas\.\*$/);
 });
 
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {

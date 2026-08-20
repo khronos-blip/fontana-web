@@ -722,24 +722,26 @@
       `Hola ${config.businessName || "Fontana"} 💜 Quiero hacer este pedido:`,
       "",
       `*Pedido ${orderId}*`,
+      "",
       ...lines,
+      "",
       `*Total estimado: ${money(total)}*`,
       "",
-      `Nombre: ${data.get("name")}`,
-      `Teléfono: ${data.get("phone")}`,
-      `Modalidad: ${fulfillment}`,
-      data.get("address") ? `Dirección: ${data.get("address")}` : "",
-      `Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
-      `Forma de pago: ${data.get("payment")}`,
-      "Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
-      `Condiciones, alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
-      hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : "",
+      `• Nombre: ${data.get("name")}`,
+      `• Teléfono: ${data.get("phone")}`,
+      `• Modalidad: ${fulfillment}`,
+      data.get("address") ? `• Dirección: ${data.get("address")}` : null,
+      `• Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
+      `• Forma de pago: ${data.get("payment")}`,
+      "• Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
+      `• Condiciones, alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
+      hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : null,
       ...itemAllergyLines,
-      hasAllergies ? "*Estado: PENDIENTE DE REVISIÓN POR FONTANA*" : "Estado: pendiente de confirmación",
-      data.get("notes") ? `Observaciones: ${data.get("notes")}` : "",
-      "",
-      "Enviaré el comprobante por este chat. El pedido se confirma únicamente cuando Fontana valide disponibilidad, pago y, si aplica, las condiciones, alergias o intolerancias indicadas."
-    ].filter(Boolean).join("\n");
+      hasAllergies ? "*• Estado: PENDIENTE DE REVISIÓN POR FONTANA*" : "• Estado: pendiente de confirmación",
+      data.get("notes") ? `• Observaciones: ${data.get("notes")}` : null,
+      "Enviaré el comprobante por este chat.",
+      "*El pedido se confirma únicamente cuando Fontana valide disponibilidad, pago y, si aplica, las condiciones, alergias o intolerancias indicadas.*"
+    ].filter(line => line !== null).join("\n");
     return { message, orderId };
   }
 
