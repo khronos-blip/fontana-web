@@ -159,7 +159,10 @@ test("cada producto muestra solo sus sellos alimentarios confirmados", async ({ 
   await expect(tequenos.locator(".product-dietary-seals")).not.toContainText("Sin lactosa");
   await expect(page.locator('[data-product-id="agua-minalba-600"] .product-dietary-seal')).toHaveCount(0);
   await expect(page.locator(".fonkie-builder .builder-dietary-seals .product-dietary-seal")).toHaveCount(3);
-  await expect(page.locator(".fomb-builder .builder-dietary-seals .product-dietary-seal")).toHaveCount(3);
+  const fombSeals = page.locator(".fomb-builder .builder-dietary-seals .product-dietary-seal");
+  await expect(fombSeals).toHaveCount(4);
+  await expect(fombSeals).toHaveText(["Sin gluten", "Sin azúcar", "Sin lactosa", "Sin huevo"]);
+  await page.locator(".fomb-builder .builder-dietary-seals").screenshot({ path: testInfo.outputPath("sellos-fomb-movil.png") });
   await expect(ballerine.locator(".product-dietary-seal circle")).toHaveCount(6);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await ballerine.screenshot({ path: testInfo.outputPath("sellos-producto-movil.png") });
@@ -411,11 +414,14 @@ test("el panel controla los sellos visibles de cada producto", async ({ page }, 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Fomb", exact: true }).click();
+  await expect(page.locator('[data-builder="fomb"] [data-builder-field="eggFree"]')).toBeChecked();
   await page.getByRole("button", { name: "Productos", exact: true }).click();
   await page.locator('[data-product-id="ballerine"] [data-edit="ballerine"]').click();
   await expect(page.locator('#productForm [name="glutenFree"]')).toBeChecked();
   await expect(page.locator('#productForm [name="sugarFree"]')).toBeChecked();
   await expect(page.locator('#productForm [name="lactoseFree"]')).toBeChecked();
+  await expect(page.locator('#productForm [name="eggFree"]')).not.toBeChecked();
   await page.locator(".dietary-fieldset").screenshot({ path: testInfo.outputPath("sellos-admin-movil.png") });
   await page.locator('#productForm [name="lactoseFree"]').uncheck();
   await page.getByRole("button", { name: "Guardar producto" }).click();

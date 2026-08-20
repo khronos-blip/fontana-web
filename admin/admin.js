@@ -53,9 +53,9 @@
   ]);
 
   function dietaryDefaults(product) {
-    if (allThreeDietaryProductIds.has(product.id)) return {glutenFree:true,sugarFree:true,lactoseFree:true};
-    if (product.id === "tequenos-fit") return {glutenFree:true,sugarFree:true,lactoseFree:false};
-    return {glutenFree:false,sugarFree:false,lactoseFree:false};
+    if (allThreeDietaryProductIds.has(product.id)) return {glutenFree:true,sugarFree:true,lactoseFree:true,eggFree:false};
+    if (product.id === "tequenos-fit") return {glutenFree:true,sugarFree:true,lactoseFree:false,eggFree:false};
+    return {glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false};
   }
 
   function normalizedDietary(product) {
@@ -63,7 +63,8 @@
     return {
       glutenFree: Object.prototype.hasOwnProperty.call(product, "glutenFree") ? Boolean(product.glutenFree) : defaults.glutenFree,
       sugarFree: Object.prototype.hasOwnProperty.call(product, "sugarFree") ? Boolean(product.sugarFree) : defaults.sugarFree,
-      lactoseFree: Object.prototype.hasOwnProperty.call(product, "lactoseFree") ? Boolean(product.lactoseFree) : defaults.lactoseFree
+      lactoseFree: Object.prototype.hasOwnProperty.call(product, "lactoseFree") ? Boolean(product.lactoseFree) : defaults.lactoseFree,
+      eggFree: Object.prototype.hasOwnProperty.call(product, "eggFree") ? Boolean(product.eggFree) : defaults.eggFree
     };
   }
 
@@ -89,6 +90,7 @@
         glutenFree: Object.prototype.hasOwnProperty.call(builder, "glutenFree") ? Boolean(builder.glutenFree) : true,
         sugarFree: Object.prototype.hasOwnProperty.call(builder, "sugarFree") ? Boolean(builder.sugarFree) : true,
         lactoseFree: Object.prototype.hasOwnProperty.call(builder, "lactoseFree") ? Boolean(builder.lactoseFree) : true,
+        eggFree: Object.prototype.hasOwnProperty.call(builder, "eggFree") ? Boolean(builder.eggFree) : kind === "fomb",
         visible: builder.visible !== false, status: builder.status === "sold-out" ? "sold-out" : "available",
         stockQuantity: builder.stockQuantity === null || builder.stockQuantity === "" || builder.stockQuantity === undefined ? null : Math.max(0, Number(builder.stockQuantity)),
         isNew: Boolean(builder.isNew), promo: Boolean(builder.promo), immediate: Boolean(builder.immediate), allowPreorder: Boolean(builder.allowPreorder),
@@ -222,6 +224,7 @@
     if (product.glutenFree) badges.push('<span class="badge">Sin gluten</span>');
     if (product.sugarFree) badges.push('<span class="badge">Sin azúcar</span>');
     if (product.lactoseFree) badges.push('<span class="badge">Sin lactosa</span>');
+    if (product.eggFree) badges.push('<span class="badge">Sin huevo</span>');
     return badges.join("");
   }
 
@@ -257,7 +260,7 @@
   }
 
   function openProduct(id) {
-    const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:false,allowPreorder:false,glutenFree:false,sugarFree:false,lactoseFree:false,customLabels:[],image:"",variants:[],sizes:[]};
+    const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:false,allowPreorder:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
     if (!product) return;
     const form = $("#productForm");
     $("#dialogTitle").textContent = id ? "Editar producto" : "Nuevo producto";
@@ -274,6 +277,7 @@
     form.elements.glutenFree.checked = Boolean(product.glutenFree);
     form.elements.sugarFree.checked = Boolean(product.sugarFree);
     form.elements.lactoseFree.checked = Boolean(product.lactoseFree);
+    form.elements.eggFree.checked = Boolean(product.eggFree);
     form.elements.customLabels.value = (product.customLabels || []).join("\n");
     form.elements.variants.value = (product.variants || []).map(item => `${item.name} | ${item.status || "available"}${item.stockQuantity === null || item.stockQuantity === undefined ? "" : ` | ${item.stockQuantity}`}`).join("\n");
     form.elements.sizes.value = (product.sizes || []).map(item => `${item.name} | ${item.price} | ${item.status || "available"}${item.stockQuantity === null || item.stockQuantity === undefined ? "" : ` | ${item.stockQuantity}`}`).join("\n");
@@ -311,6 +315,7 @@
       ? `<label>Precio 4 iguales<input data-builder-field="singlePrice" type="number" min="0" step=".01" value="${builder.singlePrice}"></label><label>Precio 4 mixtas<input data-builder-field="mixedPrice" type="number" min="0" step=".01" value="${builder.mixedPrice}"></label><label>Precio extra<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label><label>Mínimo<input data-builder-field="minimumQuantity" type="number" min="1" value="${builder.minimumQuantity}"></label>`
       : `<label>Precio caja de 4<input data-builder-size="0" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[0]?.price ?? 15}"></label><label>Precio caja de 12<input data-builder-size="1" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[1]?.price ?? 30}"></label><label>Precio extra<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label>`;
     $(`#${kind}Editor`).innerHTML = `<article class="builder-card" data-builder="${kind}"><div class="builder-form">${pricing}<label>Estado<select data-builder-field="status"><option value="available" ${builder.status !== "sold-out" ? "selected" : ""}>Disponible</option><option value="sold-out" ${builder.status === "sold-out" ? "selected" : ""}>Agotado</option></select></label><label>Cantidad administrada<input data-builder-field="stockQuantity" type="number" min="0" step="1" value="${builder.stockQuantity ?? ""}" placeholder="Sin control numérico"></label><label class="switch"><input data-builder-field="visible" type="checkbox" ${builder.visible !== false ? "checked" : ""}><span>Visible en la tienda</span></label><label class="switch"><input data-builder-field="isNew" type="checkbox" ${builder.isNew ? "checked" : ""}><span>Etiqueta Nuevo</span></label><label class="switch"><input data-builder-field="promo" type="checkbox" ${builder.promo ? "checked" : ""}><span>Promoción del día</span></label><label class="switch"><input data-builder-field="immediate" type="checkbox" ${builder.immediate ? "checked" : ""}><span>Stock de hoy</span></label><label class="switch"><input data-builder-field="allowPreorder" type="checkbox" ${builder.allowPreorder ? "checked" : ""}><span>Permitir pre-order agotado</span></label><label class="switch"><input data-builder-field="glutenFree" type="checkbox" ${builder.glutenFree ? "checked" : ""}><span>Mostrar sello Sin gluten</span></label><label class="switch"><input data-builder-field="sugarFree" type="checkbox" ${builder.sugarFree ? "checked" : ""}><span>Mostrar sello Sin azúcar</span></label><label class="switch"><input data-builder-field="lactoseFree" type="checkbox" ${builder.lactoseFree ? "checked" : ""}><span>Mostrar sello Sin lactosa</span></label></div><div class="panel-head"><div><span class="eyebrow">${builder.flavors.length} sabores</span><h2>Sabores de ${title}</h2></div><button class="ghost" data-add-flavor="${kind}">+ Agregar sabor</button></div><div class="flavor-admin-list">${builder.flavors.map((flavor,index) => `<div class="flavor-row"><img src="${escapeHtml(absoluteImage(flavor.image))}" alt=""><div><h3>${escapeHtml(flavor.name)}</h3><p>${escapeHtml(flavor.ingredients)}</p></div><span class="badge ${flavor.status === "sold-out" || flavor.stockQuantity === 0 ? "red" : "green"}">${flavor.status === "sold-out" || flavor.stockQuantity === 0 ? "Agotado" : "Disponible"}${flavor.stockQuantity === null || flavor.stockQuantity === undefined ? "" : ` · ${flavor.stockQuantity}`}</span><div class="row-actions"><button data-edit-flavor="${kind}:${index}" aria-label="Editar sabor">✎</button><button data-delete-flavor="${kind}:${index}" aria-label="Eliminar sabor">×</button></div></div>`).join("")}</div><div class="builder-actions"><button class="primary" data-save-builder="${kind}" aria-label="Guardar ${title}">Guardar y publicar ${title}</button></div></article>`;
+    $(".builder-form", $(`#${kind}Editor`)).insertAdjacentHTML("beforeend", `<label class="switch"><input data-builder-field="eggFree" type="checkbox" ${builder.eggFree ? "checked" : ""}><span>Mostrar sello Sin huevo</span></label>`);
   }
 
   function openFlavor(kind,index) {
@@ -385,7 +390,7 @@
     const duplicate = state.products.some(product => product.id === id && product.id !== originalId && !product.deleted);
     if (duplicate) return toast("Ya existe un producto con ese identificador");
     const product = {
-      id,name:String(data.get("name")).trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:String(data.get("weight")).trim(),availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
+      id,name:String(data.get("name")).trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:String(data.get("weight")).trim(),availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
     };
     const index = state.products.findIndex(item => item.id === originalId);
     if (index >= 0) state.products[index] = product; else state.products.push(product);
