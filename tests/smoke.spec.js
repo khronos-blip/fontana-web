@@ -617,7 +617,8 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await openPreview(page);
   const nav = page.locator("#nav");
   await expect(nav.getByRole("link", { name: "Menú", exact: true })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "¿Para ti?", exact: true })).toBeVisible();
+  const fitLink = nav.getByRole("link", { name: "¿Es para ti?", exact: true });
+  await expect(fitLink).toBeVisible();
   await expect(nav.getByRole("link", { name: "Reseñas", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Ubicación", exact: true })).toBeVisible();
   const whatsappLink = nav.getByRole("link", { name: "Hablar con Fontana por WhatsApp" });
@@ -631,6 +632,8 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await expect(page.locator("#ubicacion .location-copy p")).toHaveCSS("color", "rgb(79, 22, 81)");
   await expect(page.locator("#ubicacion .hours b").first()).toHaveCSS("color", "rgb(79, 22, 81)");
   await expect(page.locator("#ubicacion .hours span").first()).toHaveCSS("color", "rgb(79, 22, 81)");
+  await fitLink.click();
+  await expect(page.locator("#para-ti h2")).toBeInViewport();
   await nav.getByRole("link", { name: "Ubicación", exact: true }).click();
   await page.locator("#ubicacion h2").scrollIntoViewIfNeeded();
   await expect(page.locator("#ubicacion h2")).toBeInViewport();
