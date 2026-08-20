@@ -421,6 +421,7 @@
       const selected = selectedFlavors();
       const total = selected.reduce((sum, item) => sum + item.qty, 0);
       const price = fonkiePrice(total, selected.length);
+      $("#fonkieChoiceCount").textContent = `${total} ${total === 1 ? "elegido" : "elegidos"}`;
       $("#fonkieCount").textContent = `Has seleccionado ${total} ${total === 1 ? "Fonkie" : "Fonkies"}`;
       $("#fonkieTotal").textContent = money(price);
       addButton.disabled = total < minimum || unavailable;
@@ -511,6 +512,7 @@
       const current = selection();
       extrasOutput.value = String(extras);
       extrasOutput.textContent = String(extras);
+      $("#fombChoiceCount").textContent = `${current.selectedTotal} ${current.selectedTotal === 1 ? "elegido" : "elegidos"}`;
       $("#fombCount").textContent = `Has seleccionado ${current.selectedTotal} de ${current.total} Fomb`;
       const remaining = current.total - current.selectedTotal;
       if (remaining > 0) {

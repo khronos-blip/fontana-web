@@ -9,6 +9,13 @@ async function openPreview(page) {
   await page.goto("/");
 }
 
+async function openFlavorChoice(page, builderSelector) {
+  const flavorSelector = builderSelector.includes("fomb") ? ".fomb-flavors" : ".fonkie-flavors";
+  const panel = page.locator(`${builderSelector} .choice-panel`).filter({ has: page.locator(flavorSelector) });
+  if (!(await panel.getAttribute("open"))) await panel.locator("summary").click();
+  await expect(panel).toHaveAttribute("open", "");
+}
+
 async function fillCheckout(page, { allergies = false } = {}) {
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
@@ -49,6 +56,7 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await openFlavorChoice(page, ".fonkie-builder");
   await expect(page.locator(".fonkie-builder .fonkie-flavors")).toBeVisible();
   await expect(page.locator(".fonkie-builder .choice-panel")).toHaveAttribute("open", "");
   const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
@@ -81,15 +89,20 @@ test("los selectores de Fonkies y Fomb son compactos en escritorio y pueden pleg
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   const panel = page.locator(".fonkie-builder .choice-panel");
+  await expect(panel).not.toHaveAttribute("open", "");
+  await expect(page.locator(".fonkie-flavors")).toBeHidden();
+  const collapsedPanel = await panel.boundingBox();
+  expect(collapsedPanel.height).toBeLessThanOrEqual(45);
+  await panel.locator("summary").click();
   const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
   expect(columns).toBe(3);
   const fonkieBox = await page.locator(".fonkie-flavors").boundingBox();
   expect(fonkieBox.height).toBeLessThanOrEqual(190);
   await panel.locator("summary").click();
   await expect(page.locator(".fonkie-flavors")).toBeHidden();
-  await panel.locator("summary").click();
-  await expect(page.locator(".fonkie-flavors")).toBeVisible();
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await expect(page.locator(".fomb-flavors")).toBeHidden();
+  await openFlavorChoice(page, ".fomb-builder");
   const fombColumns = await page.locator(".fomb-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
   expect(fombColumns).toBe(4);
   const fombBox = await page.locator(".fomb-flavors").boundingBox();
@@ -100,6 +113,7 @@ test("el selector móvil de Fonkies distribuye los sabores en dos columnas", asy
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await openFlavorChoice(page, ".fonkie-builder");
   const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
   expect(columns).toBe(2);
   const lastFlavor = page.locator(".fonkie-flavor").last();
@@ -114,6 +128,7 @@ test("el selector móvil de Fonkies distribuye los sabores en dos columnas", asy
   await expect(lastFlavor).toHaveCSS("justify-self", "center");
   await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"] [data-delta="1"]')).toBeVisible();
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await openFlavorChoice(page, ".fomb-builder");
   const fombSelectorBox = await page.locator(".fomb-flavors").boundingBox();
   expect(fombSelectorBox.height).toBeLessThanOrEqual(115);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -223,6 +238,7 @@ test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y ext
   await expect(page.locator(".fomb-builder")).toHaveCount(1);
   await expect(page.locator('img[src="assets/fomb-raffaello-fontana-pro.jpg"]')).toHaveCount(1);
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await openFlavorChoice(page, ".fomb-builder");
   await expect(page.locator(".fomb-flavors")).toBeVisible();
   await expect(page.locator("#addFombBox")).toBeDisabled();
   await expect(page.locator("#fombTotal")).toContainText("15,00");
@@ -299,6 +315,7 @@ test("el carrito usa fondo lila y el checkout toma los sabores automáticamente"
   expect(drawerBackground).toContain("linear-gradient");
   await page.locator("#closeCart").click();
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await openFlavorChoice(page, ".fonkie-builder");
   const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
   for (let index = 0; index < 4; index += 1) await firstPlus.click();
   await page.locator("#addFonkieBox").click();
@@ -552,6 +569,7 @@ test("el panel administra sabores especiales y conserva el checkout", async ({ p
 
   await page.goto("/");
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await openFlavorChoice(page, ".fonkie-builder");
   const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
   for (let index = 0; index < 4; index += 1) await firstPlus.click();
   await expect(page.locator("#fonkieTotal")).toContainText("16,00");
