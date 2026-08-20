@@ -638,6 +638,29 @@ test("el bloque negro fue eliminado y el footer centra la marca", async ({ page 
   expect(brokenImages).toEqual([]);
 });
 
+test("Layer Cake se consulta por WhatsApp sin precio inventado ni carrito", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await page.getByRole("button", { name: "Foncake · Tortas" }).click();
+  const layerCake = page.locator('[data-product-id="layer-cake"]');
+  await expect(layerCake).toBeVisible();
+  await expect(layerCake.getByRole("heading")).toHaveText("Layer Cake · Torta en capas");
+  await expect(layerCake.locator(".price")).toHaveText("Cotizar");
+  await expect(layerCake.locator("img")).toHaveAttribute("src", "assets/layer-cake-fontana-pro.png");
+  await expect(layerCake.locator(".product-safety")).toHaveCount(0);
+  await expect(layerCake.locator(".add")).toHaveCount(0);
+  const quote = layerCake.getByRole("link", { name: "Consultar Layer Cake · Torta en capas por WhatsApp" });
+  await expect(quote).toHaveAttribute("href", /https:\/\/wa\.me\/584244350800\?text=/);
+  await expect(quote).toHaveAttribute("target", "_blank");
+  const quoteFitsCard = await layerCake.evaluate(card => {
+    const cardBounds = card.getBoundingClientRect();
+    const quoteBounds = card.querySelector(".product-quote").getBoundingClientRect();
+    return quoteBounds.left >= cardBounds.left && quoteBounds.right <= cardBounds.right;
+  });
+  expect(quoteFitsCard).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }, testInfo) => {
   await openPreview(page);
   const nav = page.locator("#nav");

@@ -80,6 +80,18 @@ window.FONTANA_CONFIG = {
       status: "available"
     },
     {
+      id: "layer-cake",
+      category: "cakes",
+      name: "Layer Cake · Torta en capas",
+      price: null,
+      image: "assets/layer-cake-fontana-pro.png",
+      description: "Torta personalizada en capas. El sabor y el presupuesto se coordinan directamente por WhatsApp.",
+      ingredients: "",
+      weight: "PERSONALIZADA",
+      availabilityLabel: "SABOR Y PRESUPUESTO POR WHATSAPP",
+      status: "available"
+    },
+    {
       id: "cachito-fit",
       category: "salado",
       name: "Cachito Fit · Paquete de 3",
@@ -218,6 +230,7 @@ window.FONTANA_CONFIG = {
     "crumbl-blueberry": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
     "brownie-fit": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
     "mini-cake": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
+    "layer-cake": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
     fonkie: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
     "fonkie-mix": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
     "fonkie-box": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },

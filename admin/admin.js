@@ -72,7 +72,13 @@
     const next = source && Array.isArray(source.products) && source.builders ? clone(source) : {};
     next.version = 2;
     next.updatedAt ||= null;
-    next.products = (next.products || clone(originalProducts)).map(product => ({
+    const sourceProducts = next.products || clone(originalProducts);
+    const sourceIds = new Set(sourceProducts.map(product => product.id));
+    const productsWithNewDefaults = [
+      ...sourceProducts,
+      ...clone(originalProducts).filter(product => !sourceIds.has(product.id))
+    ];
+    next.products = productsWithNewDefaults.map(product => ({
       ...product, ...normalizedDietary(product),
       visible: product.visible !== false,
       status: product.status === "sold-out" ? "sold-out" : "available",

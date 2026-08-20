@@ -39,7 +39,13 @@
   function applyAdminCatalog() {
     if (!adminState || !Array.isArray(adminState.products)) return;
     $$("#products > .product").forEach(product => product.remove());
-    config.dynamicCatalog = adminState.products.filter(product => !product.deleted && product.visible !== false);
+    const configuredProducts = Array.isArray(config.dynamicCatalog) ? config.dynamicCatalog : [];
+    const managedIds = new Set(adminState.products.map(product => product.id));
+    const newlyConfiguredProducts = configuredProducts.filter(product => !managedIds.has(product.id));
+    config.dynamicCatalog = [
+      ...adminState.products.filter(product => !product.deleted && product.visible !== false),
+      ...newlyConfiguredProducts
+    ];
     config.dynamicCatalog.forEach(product => {
       if (!product.id || !Number.isFinite(Number(product.minimumBusinessDays))) return;
       config.leadTimesByProduct ||= {};
@@ -233,6 +239,7 @@
 
   function enhanceProductSafety() {
     $$(".product").forEach(product => {
+      if (!product.dataset.ingredients) return;
       const body = $(".product-body", product);
       const footer = $(".product-footer", product);
       const details = document.createElement("details");
@@ -269,7 +276,7 @@
       const soldOut = product.status === "sold-out" || product.stockQuantity === 0 || (variants.length > 0 && availableVariants.length === 0) || (sizes.length > 0 && availableSizes.length === 0);
       const preorder = soldOut && Boolean(product.allowPreorder);
       const description = String(product.description || "Disponibilidad sujeta a confirmación por WhatsApp.");
-      const ingredients = String(product.ingredients || "Ingredientes pendientes de confirmar con Fontana");
+      const ingredients = String(product.ingredients || "");
       const dietary = resolvedDietary(product);
       const badges = [];
       if (soldOut) badges.push("AGOTADO");
@@ -284,7 +291,7 @@
         : `<div class="product-placeholder"><div><b>${escapeHtml(name)}</b><small>Foto por actualizar</small></div></div>`;
       const sizePrices = availableSizes.map(size => Number(size.price)).filter(value => Number.isFinite(value));
       const minimumSizePrice = sizePrices.length ? Math.min(...sizePrices) : null;
-      const priceCopy = minimumSizePrice !== null ? `Desde ${money(minimumSizePrice)}` : hasPrice ? money(price) : "Por confirmar";
+      const priceCopy = minimumSizePrice !== null ? `Desde ${money(minimumSizePrice)}` : hasPrice ? money(price) : "Cotizar";
       const classes = ["product", soldOut && !preorder ? "product-sold-out" : "", preorder ? "product-preorder" : "", hasPrice ? "" : "product-unpriced"].filter(Boolean).join(" ");
       const cartImage = product.image || "assets/logo.png";
       const variantControl = variants.length ? `<div class="product-variants"><label for="variant-${escapeHtml(productId)}">${escapeHtml(product.variantLabel || "Elige el sabor")}</label><select class="product-variant" id="variant-${escapeHtml(productId)}" ${soldOut && !preorder ? "disabled" : ""}>${variants.map(variant => {
@@ -298,7 +305,13 @@
         return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${optionSold ? preorder ? " · Pre-order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
       const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => `<span class="product-tag${index ? " secondary" : ""}">${escapeHtml(badge)}</span>`).join("")}</div>` : "";
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${Boolean(product.immediate)}" data-sold-out="${soldOut}" data-preorder="${preorder}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(product.weight || product.availabilityLabel || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : ""}</div></div></article>`;
+      const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
+      const quoteText = `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
+      const quoteButton = !hasPrice && whatsappNumber
+        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">Consultar por WhatsApp</a>`
+        : "";
+      const footerCopy = product.weight || product.availabilityLabel;
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${Boolean(product.immediate)}" data-sold-out="${soldOut}" data-preorder="${preorder}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
