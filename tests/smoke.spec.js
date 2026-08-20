@@ -543,6 +543,7 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   });
   await openPreview(page);
   await expect(page.locator(".filters .filter")).toHaveText([
+    "Ver todo",
     "Promo del día",
     "Stock de hoy",
     "Fonkies · Galletas",
@@ -556,9 +557,13 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   await expect(page.locator(".catalog-group > summary")).toHaveCount(0);
   await expect(cakes).toBeVisible();
   await expect(fonkies).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ver todo" })).toHaveClass(/active/);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await expect(fonkies.locator(".fonkie-builder")).toBeVisible();
   await expect(cakes).toBeHidden();
+  await page.getByRole("button", { name: "Ver todo" }).click();
+  await expect(cakes).toBeVisible();
+  await expect(fonkies).toBeVisible();
   const standardFilterBorder = await page.getByRole("button", { name: "Salado" }).evaluate(button => getComputedStyle(button).borderTopColor);
   const dynamicFilterBorder = await page.getByRole("button", { name: "Promo del día" }).evaluate(button => getComputedStyle(button).borderTopColor);
   expect(dynamicFilterBorder).toBe(standardFilterBorder);
