@@ -602,6 +602,12 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await expect(nav.getByRole("link", { name: "¿Para ti?", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Reseñas", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Ubicación", exact: true })).toBeVisible();
+  const whatsappLink = nav.getByRole("link", { name: "Hablar con Fontana por WhatsApp" });
+  await expect(whatsappLink).toBeVisible();
+  await expect(whatsappLink).toHaveAttribute("href", "https://wa.me/584244350800");
+  await expect(whatsappLink).toHaveAttribute("target", "_blank");
+  await expect(whatsappLink.locator(".whatsapp-icon")).toBeVisible();
+  await expect(page.locator("#cartCount")).toHaveText("0");
   await expect(page.locator("#ubicacion h2")).toHaveText("Mañongo.");
   await expect(page.locator("#ubicacion .eyebrow")).toHaveCSS("color", "rgb(79, 22, 81)");
   await expect(page.locator("#ubicacion .location-copy p")).toHaveCSS("color", "rgb(79, 22, 81)");

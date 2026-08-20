@@ -66,6 +66,17 @@
     }).format(value);
   }
 
+  function setupWhatsappChatLink() {
+    const link = $("#whatsappChatLink");
+    if (!link) return;
+    const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
+    if (!whatsappNumber) {
+      link.hidden = true;
+      return;
+    }
+    link.href = `https://wa.me/${whatsappNumber}`;
+  }
+
   function escapeHtml(value) {
     return String(value).replace(/[&<>'"]/g, character => ({
       "&": "&amp;",
@@ -859,6 +870,7 @@
   document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
 
   enhanceDietarySeals();
+  setupWhatsappChatLink();
   enhanceProductSafety();
   setupFonkieBuilder();
   setupFombBuilder();
