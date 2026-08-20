@@ -109,6 +109,27 @@ test("la torta de pistacho mantiene el producto centrado en su tarjeta", async (
   await expect(image).toHaveCSS("object-position", "50% 50%");
 });
 
+test("los tres sellos alimentarios son compactos y simétricos", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const seals = page.locator(".dietary-seal");
+  await expect(seals).toHaveCount(3);
+  await expect(seals.nth(0)).toContainText("Sin gluten");
+  await expect(seals.nth(1)).toContainText("Sin azúcar refinada");
+  await expect(seals.nth(2)).toContainText("Sin lactosa");
+  await expect(page.locator(".dietary-seal-icon")).toHaveCount(3);
+  const boxes = await seals.evaluateAll(elements => elements.map(element => element.getBoundingClientRect()).map(({ x, y, width, height }) => ({ x, y, width, height })));
+  expect(Math.max(...boxes.map(box => box.y)) - Math.min(...boxes.map(box => box.y))).toBeLessThanOrEqual(1);
+  expect(Math.max(...boxes.map(box => box.width)) - Math.min(...boxes.map(box => box.width))).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.locator("#menu .section-head").screenshot({ path: testInfo.outputPath("sellos-menu-movil.png") });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const desktopBoxes = await seals.evaluateAll(elements => elements.map(element => element.getBoundingClientRect()).map(({ y, width }) => ({ y, width })));
+  expect(Math.max(...desktopBoxes.map(box => box.y)) - Math.min(...desktopBoxes.map(box => box.y))).toBeLessThanOrEqual(1);
+  expect(Math.max(...desktopBoxes.map(box => box.width)) - Math.min(...desktopBoxes.map(box => box.width))).toBeLessThanOrEqual(1);
+  await page.locator("#menu .section-head").screenshot({ path: testInfo.outputPath("sellos-menu-escritorio.png") });
+});
+
 test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y extras", async ({ page }) => {
   await openPreview(page);
   await expect(page.locator(".fomb-builder")).toHaveCount(1);

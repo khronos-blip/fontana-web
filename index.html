@@ -406,6 +406,10 @@
     .menu-intro.menu-intro-visible .eyebrow{animation:menu-eyebrow-in .42s ease-out both}
     .menu-intro.menu-intro-visible .menu-title-letter{animation:menu-letter-in .78s cubic-bezier(.16,.86,.28,1) both;animation-delay:calc(.12s + var(--letter-index) * .055s)}
     .menu-intro.menu-intro-visible:after{animation:menu-line-in .62s 1.12s cubic-bezier(.2,.85,.2,1) both}
+    .dietary-seals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:min(560px,100%);margin-top:22px}
+    .dietary-seal{min-width:0;display:flex;align-items:center;justify-content:center;gap:9px;padding:9px 12px;border:1px solid rgba(248,241,245,.2);border-radius:999px;background:rgba(248,241,245,.055);color:rgba(255,250,242,.88)}
+    .dietary-seal-icon{flex:0 0 30px;width:30px;height:30px;padding:6px;border-radius:50%;background:rgba(184,205,105,.13);color:var(--acid);fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .dietary-seal span{min-width:0;font-size:.66rem;font-weight:900;line-height:1.1;letter-spacing:.065em;text-align:center;text-transform:uppercase}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
     @keyframes menu-eyebrow-in{to{opacity:1;transform:translateX(0)}}
     @keyframes menu-letter-in{0%{opacity:0;transform:translateY(42px) scale(.78);filter:blur(5px)}65%{opacity:1;transform:translateY(-4px) scale(1.03);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
@@ -437,6 +441,11 @@
     @media(max-width:640px){
       .nav .brand-seal{width:48px;height:48px;flex-basis:48px}
       .hero{height:52svh;min-height:410px;max-height:520px;padding:0}.hero-grid{height:100%;min-height:0}.hero-logo{width:min(68vw,280px)}.hero-scroll{bottom:14px}.menu-section{padding-top:62px}
+      .dietary-seals{gap:7px;margin-top:18px}
+      .dietary-seal{min-height:66px;flex-direction:column;gap:4px;padding:7px 4px;border-radius:16px}
+      .dietary-seal-icon{width:27px;height:27px;flex-basis:27px;padding:5px}
+      .dietary-seal span{font-size:.54rem;letter-spacing:.04em}
+      .menu-section .filters{margin-top:20px}
     }
 
     /* Ajustes solicitados por la clienta: catálogo lila, dos columnas y marca limpia. */
@@ -562,7 +571,15 @@
 
     <section class="menu-section" id="menu">
       <div class="container">
-        <div class="section-head"><div class="menu-intro"><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2></div><div class="filters" role="group" aria-label="Filtrar productos"><button class="filter dynamic-filter" data-filter="promo">Promo del día</button><button class="filter dynamic-filter" data-filter="immediate">Stock de hoy</button><button class="filter" data-filter="fonkies">Fonkies · Galletas</button><button class="filter" data-filter="fomb">Fomb · Bombones</button><button class="filter" data-filter="foncake">Foncake · Tortas completas</button><button class="filter" data-filter="salado">Salado</button><button class="filter dynamic-filter" data-filter="beverages">Bebida</button></div></div>
+        <div class="section-head">
+          <div class="menu-intro"><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2></div>
+          <div class="dietary-seals" aria-label="Características del menú">
+            <div class="dietary-seal"><svg class="dietary-seal-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5v22M16 10c-4 0-6-2-6-5 4 0 6 2 6 5Zm0 5c4 0 6-2 6-5-4 0-6 2-6 5Zm0 5c-4 0-6-2-6-5 4 0 6 2 6 5Zm0 5c4 0 6-2 6-5-4 0-6 2-6 5Z"/><path d="M7 7l18 18"/></svg><span>Sin gluten</span></div>
+            <div class="dietary-seal"><svg class="dietary-seal-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="m10 11 6-3 6 3v8l-6 4-6-4Z"/><path d="m10 11 6 4 6-4M16 15v8M7 7l18 18"/></svg><span>Sin azúcar refinada</span></div>
+            <div class="dietary-seal"><svg class="dietary-seal-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M12 7h8M13 7v4l-2 3v10h10V14l-2-3V7M11 16h10M7 7l18 18"/></svg><span>Sin lactosa</span></div>
+          </div>
+          <div class="filters" role="group" aria-label="Filtrar productos"><button class="filter dynamic-filter" data-filter="promo">Promo del día</button><button class="filter dynamic-filter" data-filter="immediate">Stock de hoy</button><button class="filter" data-filter="fonkies">Fonkies · Galletas</button><button class="filter" data-filter="fomb">Fomb · Bombones</button><button class="filter" data-filter="foncake">Foncake · Tortas completas</button><button class="filter" data-filter="salado">Salado</button><button class="filter dynamic-filter" data-filter="beverages">Bebida</button></div>
+        </div>
         <div class="products" id="products">
           <article class="product" data-category="cakes" data-id="pistacho" data-name="Torta de Pistacho y Frambuesa" data-price="60" data-image="assets/pistachio-raspberry-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho, frambuesa, semillas de amapola, alulosa y chocolate blanco vegano sin azúcar"><div class="product-media"><img src="assets/pistachio-raspberry-fontana-v2.jpg" alt="Torta de pistacho y frambuesa"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho &amp; Frambuesa</h3><span class="price">$60</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho y Frambuesa">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="naranja" data-name="Torta de Manjar de Naranja" data-price="47" data-image="assets/manjar-naranja.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de yuca (10 %), monkfruit, aceite de coco, huevo, naranja, semillas de amapola y alulosa"><div class="product-media"><img src="assets/manjar-naranja.jpg" alt="Torta de manjar de naranja"></div><div class="product-body"><div class="product-top"><h3>Torta de Manjar de Naranja</h3><span class="price">$47</span></div><p>Naranja, harina de almendra, semillas de amapola y alulosa.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Manjar de Naranja">+</button></div></div></article>
