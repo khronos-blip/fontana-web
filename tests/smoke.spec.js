@@ -146,6 +146,29 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   expect(menuBox.y).toBeGreaterThanOrEqual(840);
   await expect(page.locator(".hero-logo")).toBeVisible();
   await expect(page.locator(".hero-scroll")).toBeVisible();
+  await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#para-ti");
+});
+
+test("la sección para ti presenta el mensaje, los sellos y el acceso al menú", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const section = page.locator("#para-ti");
+  await expect(section.getByRole("heading", { name: "¿Fontana es para ti?" })).toBeVisible();
+  await expect(section).toContainText("en Fontana creamos para ti");
+  await expect(section).toContainText("¿Listo para probar la diferencia?");
+  await expect(section.locator(".fit-benefit")).toHaveCount(3);
+  await expect(section.locator(".fit-benefit")).toHaveText(["Sin gluten", "Sin azúcar", "Sin lactosa"]);
+  const menuLink = section.getByRole("link", { name: "Explorar nuestro menú" });
+  await expect(menuLink).toHaveAttribute("href", "#menu");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await section.scrollIntoViewIfNeeded();
+  await section.screenshot({ path: testInfo.outputPath("para-ti-movil.png") });
+  await menuLink.click();
+  await expect(page).toHaveURL(/#menu$/);
+  await expect(page.locator("#menu h2")).toBeInViewport();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await section.scrollIntoViewIfNeeded();
+  await section.screenshot({ path: testInfo.outputPath("para-ti-escritorio.png") });
 });
 
 test("cada producto muestra solo sus sellos alimentarios confirmados", async ({ page }, testInfo) => {
@@ -571,6 +594,7 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await openPreview(page);
   const nav = page.locator("#nav");
   await expect(nav.getByRole("link", { name: "Menú", exact: true })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "¿Para ti?", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Reseñas", exact: true })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Ubicación", exact: true })).toBeVisible();
   await expect(page.locator("#ubicacion h2")).toHaveText("Mañongo.");
