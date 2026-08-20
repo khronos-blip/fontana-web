@@ -104,7 +104,9 @@ test("el selector móvil de Fonkies distribuye los sabores en dos columnas", asy
 
 test("la torta de pistacho mantiene el producto centrado en su tarjeta", async ({ page }) => {
   await openPreview(page);
-  await expect(page.locator('[data-id="pistacho-clasico"] .product-media img')).toHaveCSS("object-position", "0% 50%");
+  const image = page.locator('[data-id="pistacho-clasico"] .product-media img');
+  await expect(image).toHaveAttribute("src", "assets/pistacho-fontana-v4.png");
+  await expect(image).toHaveCSS("object-position", "50% 50%");
 });
 
 test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y extras", async ({ page }) => {
