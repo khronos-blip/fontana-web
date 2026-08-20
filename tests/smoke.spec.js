@@ -526,3 +526,25 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
   expect(message).toContain("Evitar frutos secos");
   expect(message).toContain("PENDIENTE DE REVISIÓN POR FONTANA");
 });
+
+test("SEO público es indexable y mantiene privado el panel", async ({ page, request }) => {
+  await page.goto("/");
+  await expect(page).toHaveTitle("Fontana sin gluten en Carabobo | Postres y comidas fit");
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /index,follow/);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://fontanasingluten.com/");
+  await expect(page.locator("h1")).toContainText("Fontana sin gluten");
+
+  const structuredData = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent());
+  expect(structuredData["@graph"].some(item => item["@type"] === "WebSite" && item.name === "Fontana sin gluten")).toBe(true);
+  expect(structuredData["@graph"].some(item => item["@type"] === "FoodEstablishment" && item.address.addressLocality === "Mañongo")).toBe(true);
+
+  const robots = await request.get("/robots.txt");
+  expect(robots.ok()).toBe(true);
+  expect(await robots.text()).toContain("Sitemap: https://fontanasingluten.com/sitemap.xml");
+  const sitemap = await request.get("/sitemap.xml");
+  expect(sitemap.ok()).toBe(true);
+  expect(await sitemap.text()).toContain("<loc>https://fontanasingluten.com/</loc>");
+
+  await page.goto("/admin/");
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+});
