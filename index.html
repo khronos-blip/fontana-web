@@ -393,14 +393,14 @@
     .bag-icon{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
     section[id]{scroll-margin-top:90px}
 
-    .hero{min-height:460px;height:56svh;max-height:620px;margin-top:78px;padding:0;background:#441945;scroll-margin-top:78px}
+    .hero{min-height:460px;height:calc(100svh - 78px);max-height:none;margin-top:78px;padding:0;background:#441945;scroll-margin-top:78px}
     .hero:before,.hero:after{display:none}
     .hero-grid{height:100%;min-height:0;display:grid;grid-template-columns:1fr;place-items:center}
     .hero-copy{display:grid;place-items:center;width:100%;max-width:none}
     .hero-logo{width:clamp(250px,29vw,360px);height:auto;animation:logo-in .8s ease-out both}
     .hero-scroll{position:absolute;left:50%;bottom:18px;z-index:5;transform:translateX(-50%);width:34px;height:34px;border:1px solid rgba(255,250,242,.42);border-radius:50%;display:grid;place-items:center;color:var(--cream);font-size:1rem}
     .hero-scroll:hover{border-color:var(--green);color:var(--green)}
-    .menu-section{padding-top:82px}
+    .menu-section{padding-top:96px}
     .menu-section .section-head{display:block}
     .menu-section .filters{margin-top:30px}
     .menu-intro{position:relative;width:max-content;max-width:100%;padding-bottom:13px}
@@ -413,9 +413,9 @@
     .menu-intro.menu-intro-visible .eyebrow{animation:menu-eyebrow-in .42s ease-out both}
     .menu-intro.menu-intro-visible .menu-title-letter{animation:menu-letter-in .78s cubic-bezier(.16,.86,.28,1) both;animation-delay:calc(.12s + var(--letter-index) * .055s)}
     .menu-intro.menu-intro-visible:after{animation:menu-line-in .62s 1.12s cubic-bezier(.2,.85,.2,1) both}
-    .dietary-seals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;width:min(420px,100%);margin-top:22px}
-    .dietary-seal{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;color:rgba(255,250,242,.9)}
-    .dietary-seal-icon{width:70px;height:70px;color:var(--acid);fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .dietary-seals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;width:min(230px,100%);margin-top:14px}
+    .dietary-seal{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px;color:rgba(255,250,242,.9)}
+    .dietary-seal-icon{width:50px;height:50px;color:var(--acid);fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
     .dietary-seal-icon .seal-ring-inner{opacity:.72;stroke-width:1.35}
     .dietary-seal span{min-width:0;font-size:.64rem;font-weight:900;line-height:1.1;letter-spacing:.065em;text-align:center;text-transform:uppercase}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
@@ -444,14 +444,14 @@
       .nav-actions{grid-column:2;grid-row:1}
       .nav-actions>.btn,.menu-btn{display:none}
       section[id]{scroll-margin-top:116px}
-      .hero{margin-top:104px;scroll-margin-top:104px}
+      .hero{height:calc(100svh - 104px);min-height:410px;margin-top:104px;scroll-margin-top:104px}
     }
     @media(max-width:640px){
       .nav .brand-seal{width:48px;height:48px;flex-basis:48px}
-      .hero{height:52svh;min-height:410px;max-height:520px;padding:0}.hero-grid{height:100%;min-height:0}.hero-logo{width:min(68vw,280px)}.hero-scroll{bottom:14px}.menu-section{padding-top:62px}
-      .dietary-seals{gap:12px;margin-top:18px}
-      .dietary-seal{gap:6px}
-      .dietary-seal-icon{width:58px;height:58px}
+      .hero{height:calc(100svh - 104px);min-height:410px;max-height:none;padding:0}.hero-grid{height:100%;min-height:0}.hero-logo{width:min(68vw,280px)}.hero-scroll{bottom:14px}.menu-section{padding-top:82px}
+      .dietary-seals{width:min(210px,100%);gap:4px;margin-top:12px}
+      .dietary-seal{gap:4px}
+      .dietary-seal-icon{width:44px;height:44px}
       .dietary-seal span{font-size:.54rem;letter-spacing:.04em}
       .menu-section .filters{margin-top:20px}
     }

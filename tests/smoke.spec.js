@@ -121,13 +121,31 @@ test("los tres sellos alimentarios son compactos y simétricos", async ({ page }
   const boxes = await seals.evaluateAll(elements => elements.map(element => element.getBoundingClientRect()).map(({ x, y, width, height }) => ({ x, y, width, height })));
   expect(Math.max(...boxes.map(box => box.y)) - Math.min(...boxes.map(box => box.y))).toBeLessThanOrEqual(1);
   expect(Math.max(...boxes.map(box => box.width)) - Math.min(...boxes.map(box => box.width))).toBeLessThanOrEqual(1);
+  const sealGroupBox = await page.locator(".dietary-seals").boundingBox();
+  const introBox = await page.locator(".menu-intro").boundingBox();
+  expect(sealGroupBox.width).toBeLessThanOrEqual(210);
+  expect(sealGroupBox.y).toBeGreaterThanOrEqual(introBox.y + introBox.height);
+  expect(sealGroupBox.x).toBeLessThanOrEqual(introBox.x + 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.locator(".menu-intro").scrollIntoViewIfNeeded();
+  await expect(page.locator(".menu-title-letter").last()).toHaveCSS("opacity", "1");
   await page.locator("#menu .section-head").screenshot({ path: testInfo.outputPath("sellos-menu-movil.png") });
   await page.setViewportSize({ width: 1440, height: 1000 });
   const desktopBoxes = await seals.evaluateAll(elements => elements.map(element => element.getBoundingClientRect()).map(({ y, width }) => ({ y, width })));
   expect(Math.max(...desktopBoxes.map(box => box.y)) - Math.min(...desktopBoxes.map(box => box.y))).toBeLessThanOrEqual(1);
   expect(Math.max(...desktopBoxes.map(box => box.width)) - Math.min(...desktopBoxes.map(box => box.width))).toBeLessThanOrEqual(1);
   await page.locator("#menu .section-head").screenshot({ path: testInfo.outputPath("sellos-menu-escritorio.png") });
+});
+
+test("la portada ocupa la primera vista antes de presentar el menú", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const heroBox = await page.locator(".hero").boundingBox();
+  const menuBox = await page.locator("#menu").boundingBox();
+  expect(heroBox.height).toBeGreaterThanOrEqual(730);
+  expect(menuBox.y).toBeGreaterThanOrEqual(840);
+  await expect(page.locator(".hero-logo")).toBeVisible();
+  await expect(page.locator(".hero-scroll")).toBeVisible();
 });
 
 test("cada producto muestra solo sus sellos alimentarios confirmados", async ({ page }, testInfo) => {
