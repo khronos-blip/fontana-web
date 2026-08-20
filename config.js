@@ -62,7 +62,7 @@ window.FONTANA_CONFIG = {
       price: 38,
       image: "assets/brownie-fit-fontana-pro.jpg",
       description: "Torta completa de brownie Fontana.",
-      ingredients: "Ingredientes pendientes de confirmar con Fontana.",
+      ingredients: "Harina de almendra, cacao, aceite de coco, alulosa, monkfruit, chispas de chocolate vegano, huevo, sal Maldon y harina de yuca (5 %).",
       weight: "TORTA COMPLETA",
       availabilityLabel: "POR ENCARGO · 1–2 DÍAS",
       status: "available"
@@ -74,7 +74,7 @@ window.FONTANA_CONFIG = {
       price: 20,
       image: "assets/mini-cake-fontana-pro.jpg",
       description: "Mini cake de sabor a elección, sujeto a confirmación por WhatsApp.",
-      ingredients: "Ingredientes pendientes de confirmar con Fontana.",
+      ingredients: "Base vainilla: harina de almendra, monkfruit, huevo, leche sin lactosa y aceite de coco. Base chocolate: los mismos ingredientes más cacao.",
       weight: "MINI CAKE",
       availabilityLabel: "POR ENCARGO · 1–2 DÍAS",
       status: "available"
@@ -158,12 +158,12 @@ window.FONTANA_CONFIG = {
     {
       id: "agua-minalba-600",
       category: "beverages",
-      name: "Agua Minalba 600 ml",
+      name: "Agua mineral Minalba 355 ml",
       price: 2.5,
       image: "assets/beverage-minalba-600-fontana-pro.jpg",
       description: "Agua refrigerada para pickup o delivery.",
       ingredients: "Producto comercial Minalba.",
-      weight: "600 ML",
+      weight: "355 ML",
       availabilityLabel: "REFRIGERADA",
       immediate: true,
       status: "available"
@@ -196,7 +196,7 @@ window.FONTANA_CONFIG = {
       id: "san-pellegrino",
       category: "beverages",
       name: "Sanpellegrino Melograno & Arancia",
-      price: 5,
+      price: 7,
       image: "assets/beverage-sanpellegrino-fontana-pro.jpg",
       description: "Bebida refrigerada para pickup o delivery.",
       ingredients: "Producto comercial San Pellegrino.",

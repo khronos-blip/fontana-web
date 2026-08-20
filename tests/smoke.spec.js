@@ -209,9 +209,13 @@ test("catálogo incluye productos confirmados y fotos profesionales", async ({ p
   await expect(page.locator('[data-product-id="ballerine"]')).toContainText("12,00");
   await expect(page.locator('[data-product-id="crumbl-blueberry"]')).toContainText("47,00");
   await expect(page.locator('[data-product-id="brownie-fit"]')).toContainText("38,00");
+  await expect(page.locator('[data-product-id="brownie-fit"]')).toContainText("sal Maldon");
+  await expect(page.locator('[data-product-id="brownie-fit"]')).toContainText("harina de yuca (5 %)");
+  await expect(page.locator('[data-product-id="mini-cake"]')).toContainText("Base vainilla: harina de almendra");
+  await expect(page.locator('[data-product-id="mini-cake"]')).toContainText("Base chocolate: los mismos ingredientes más cacao");
   await page.getByRole("button", { name: "Bebida" }).click();
-  await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
-  await expect(page.locator('[data-product-id="san-pellegrino"]')).toContainText("5,00");
+  await expect(page.locator('[data-product-id="agua-minalba-600"]')).toContainText("355 ML");
+  await expect(page.locator('[data-product-id="san-pellegrino"]')).toContainText("7,00");
   await expect(page.locator('[data-product-id="san-pellegrino"] img')).toHaveAttribute("src", "assets/beverage-sanpellegrino-fontana-pro.jpg");
   await expect(page.locator('[data-product-id="agua-gasificada-minalba"] img')).toHaveAttribute("src", "assets/beverage-minalba-limon-fontana-pro.jpg");
   await expect(page.locator('[data-product-id="tevia-durazno"]')).toContainText("USD 4,00");
