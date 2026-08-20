@@ -78,6 +78,7 @@ test("el selector de Fonkies es compacto en escritorio y puede plegarse", async 
   const panel = page.locator(".fonkie-builder .choice-panel");
   const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
   expect(columns).toBe(2);
+  await expect(page.locator(".fonkie-flavor").last()).toHaveCSS("justify-self", "center");
   await panel.locator("summary").click();
   await expect(page.locator(".fonkie-flavors")).toBeHidden();
   await panel.locator("summary").click();
@@ -93,9 +94,17 @@ test("el selector móvil de Fonkies distribuye los sabores en dos columnas", asy
   const lastFlavor = page.locator(".fonkie-flavor").last();
   await expect(lastFlavor).toHaveCSS("grid-column-start", "1");
   await expect(lastFlavor).toHaveCSS("grid-column-end", "-1");
-  await expect(lastFlavor).toHaveCSS("justify-content", "center");
+  const firstBox = await page.locator(".fonkie-flavor").first().boundingBox();
+  const lastBox = await lastFlavor.boundingBox();
+  expect(Math.abs(firstBox.width - lastBox.width)).toBeLessThanOrEqual(1);
+  await expect(lastFlavor).toHaveCSS("justify-self", "center");
   await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"] [data-delta="1"]')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("la torta de pistacho mantiene el producto centrado en su tarjeta", async ({ page }) => {
+  await openPreview(page);
+  await expect(page.locator('[data-id="pistacho-clasico"] .product-media img')).toHaveCSS("object-position", "0% 50%");
 });
 
 test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y extras", async ({ page }) => {

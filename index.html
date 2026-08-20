@@ -106,6 +106,7 @@
     .product.hidden{display:none}
     .product-media{aspect-ratio:1.05;overflow:hidden;background:var(--lilac-soft);position:relative}
     .product-media img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;transition:.5s ease}
+    .product[data-id="pistacho-clasico"] .product-media img{object-position:0% 50%}
     .product:hover .product-media img{transform:scale(1.045)}
     .product-tag{position:absolute;left:15px;top:15px;background:rgba(255,255,255,.92);border-radius:999px;padding:6px 10px;font-size:.67rem;font-weight:800;color:var(--plum);backdrop-filter:blur(8px)}
     .product-tags{position:absolute;left:15px;right:15px;top:15px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}.product-tags .product-tag{position:static;display:block}.product-tags .product-tag.secondary{background:rgba(255,255,255,.9);color:var(--plum)}
@@ -151,6 +152,9 @@
     .fonkie-builder-head p{margin:7px 0 0;color:#705e70;font-size:.8rem}
     .fonkie-flavors,.fomb-flavors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px}
     .fonkie-flavor,.fomb-flavor{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(110,35,111,.14)}
+    .fonkie-flavors{gap:12px}
+    .fonkie-flavors .fonkie-flavor{padding:11px 12px;border:1px solid rgba(110,35,111,.14);border-radius:12px;background:rgba(255,255,255,.28)}
+    .fonkie-flavors .fonkie-flavor:last-child:nth-child(odd){grid-column:1/-1;width:calc((100% - 12px)/2);justify-self:center}
     .fonkie-flavor-name{font-size:.78rem;font-weight:700}
     .fonkie-stepper{display:grid;grid-template-columns:32px 30px 32px;align-items:center;text-align:center}
     .fonkie-stepper button{width:32px;height:32px;border:1px solid rgba(110,35,111,.18);background:rgba(255,255,255,.5);color:var(--plum);border-radius:9px;font-weight:800}
@@ -443,15 +447,18 @@
       .fonkie-gallery-card{aspect-ratio:1.12}
       .fonkie-builder-body{padding:16px 12px}
       .fonkie-flavors,.fomb-flavors{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px}
+      .fonkie-flavors{gap:10px}
       .fonkie-builder-head{display:block}
       .fonkie-builder h3{font-size:1.65rem}
       .fonkie-flavor,.fomb-flavor{grid-template-columns:1fr;align-content:space-between;gap:5px;padding:7px 0}
+      .fonkie-flavors .fonkie-flavor{grid-template-rows:minmax(34px,auto) auto;align-content:stretch;justify-items:center;gap:8px;min-height:82px;padding:9px 7px}
       .fonkie-flavor-name{display:flex;align-items:flex-start;min-height:32px;font-size:.66rem;line-height:1.2}
+      .fonkie-flavors .fonkie-flavor-name{align-items:center;justify-content:center;text-align:center}
       .fonkie-stepper{grid-template-columns:28px 23px 28px;justify-content:start}
+      .fonkie-flavors .fonkie-stepper{justify-content:center}
       .fonkie-stepper button{width:28px;height:28px;border-radius:8px}
       .fonkie-stepper output{font-size:.72rem}
-      .fonkie-flavor:last-child:nth-child(odd){grid-column:1/-1;grid-template-columns:auto auto;justify-content:center;align-items:center;gap:12px;padding:8px 0}
-      .fonkie-flavor:last-child:nth-child(odd) .fonkie-flavor-name{min-height:0}
+      .fonkie-flavors .fonkie-flavor:last-child:nth-child(odd){width:calc((100% - 10px)/2)}
       .fonkie-builder-summary{padding:14px}
       .builder-grid{grid-template-columns:1fr}.builder-gallery{padding:13px 0 0}.builder-gallery-label{padding:0 13px}.builder-gallery-card{aspect-ratio:1.12}.builder-body{padding:18px 14px}.builder-head h3{font-size:1.65rem}.fomb-size-options{grid-template-columns:1fr}
       .catalog-group-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
