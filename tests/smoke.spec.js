@@ -115,9 +115,10 @@ test("los tres sellos alimentarios son compactos y simétricos", async ({ page }
   const seals = page.locator(".dietary-seal");
   await expect(seals).toHaveCount(3);
   await expect(seals.nth(0)).toContainText("Sin gluten");
-  await expect(seals.nth(1)).toContainText("Sin azúcar refinada");
+  await expect(seals.nth(1)).toContainText("Sin azúcar");
   await expect(seals.nth(2)).toContainText("Sin lactosa");
   await expect(page.locator(".dietary-seal-icon")).toHaveCount(3);
+  await expect(page.locator(".dietary-seal-icon circle")).toHaveCount(6);
   const boxes = await seals.evaluateAll(elements => elements.map(element => element.getBoundingClientRect()).map(({ x, y, width, height }) => ({ x, y, width, height })));
   expect(Math.max(...boxes.map(box => box.y)) - Math.min(...boxes.map(box => box.y))).toBeLessThanOrEqual(1);
   expect(Math.max(...boxes.map(box => box.width)) - Math.min(...boxes.map(box => box.width))).toBeLessThanOrEqual(1);
