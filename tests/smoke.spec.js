@@ -164,13 +164,16 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   expect(menuBox.y).toBeGreaterThanOrEqual(840);
   await expect(page.locator(".hero-logo")).toBeVisible();
   await expect(page.locator(".hero-scroll")).toBeVisible();
-  await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#para-ti");
+  await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#menu");
 });
 
-test("la sección para ti presenta el mensaje, los sellos y el acceso al menú", async ({ page }, testInfo) => {
+test("¿Es para ti? abre una vista propia con el mensaje, los sellos y el acceso al menú", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   const section = page.locator("#para-ti");
+  await expect(section).not.toBeVisible();
+  await page.locator("#nav").getByRole("link", { name: "¿Es para ti?", exact: true }).click();
+  await expect(section).toHaveAttribute("open", "");
   await expect(section.getByRole("heading", { name: "¿Fontana es para ti?" })).toBeVisible();
   await expect(section).toContainText("en Fontana creamos para ti");
   await expect(section).toContainText("¿Listo para probar la diferencia?");
@@ -182,11 +185,15 @@ test("la sección para ti presenta el mensaje, los sellos y el acceso al menú",
   await section.scrollIntoViewIfNeeded();
   await section.screenshot({ path: testInfo.outputPath("para-ti-movil.png") });
   await menuLink.click();
+  await expect(section).not.toBeVisible();
   await expect(page).toHaveURL(/#menu$/);
   await expect(page.locator("#menu h2")).toBeInViewport();
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await section.scrollIntoViewIfNeeded();
+  await page.locator("#nav").getByRole("link", { name: "¿Es para ti?", exact: true }).click();
+  await expect(section).toHaveAttribute("open", "");
   await section.screenshot({ path: testInfo.outputPath("para-ti-escritorio.png") });
+  await section.getByRole("button", { name: "Cerrar ¿Es para ti?" }).click();
+  await expect(section).not.toBeVisible();
 });
 
 test("cada producto muestra solo sus sellos alimentarios confirmados", async ({ page }, testInfo) => {
@@ -633,7 +640,9 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await expect(page.locator("#ubicacion .hours b").first()).toHaveCSS("color", "rgb(79, 22, 81)");
   await expect(page.locator("#ubicacion .hours span").first()).toHaveCSS("color", "rgb(79, 22, 81)");
   await fitLink.click();
-  await expect(page.locator("#para-ti h2")).toBeInViewport();
+  await expect(page.locator("#para-ti")).toHaveAttribute("open", "");
+  await expect(page.locator("#para-ti h2")).toBeVisible();
+  await page.getByRole("button", { name: "Cerrar ¿Es para ti?" }).click();
   await nav.getByRole("link", { name: "Ubicación", exact: true }).click();
   await page.locator("#ubicacion h2").scrollIntoViewIfNeeded();
   await expect(page.locator("#ubicacion h2")).toBeInViewport();

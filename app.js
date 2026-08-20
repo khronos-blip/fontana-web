@@ -851,6 +851,29 @@
     observer.observe(intro);
   }
 
+  function setupFitDialog() {
+    const dialog = $("#para-ti");
+    const closeButton = $("#closeFitDialog");
+    const menuLink = dialog?.querySelector(".fit-menu-link");
+    if (!dialog || !closeButton || typeof dialog.showModal !== "function") return;
+
+    const openDialog = event => {
+      event?.preventDefault();
+      if (!dialog.open) dialog.showModal();
+      document.body.classList.add("fit-dialog-open");
+    };
+    const closeDialog = () => {
+      if (dialog.open) dialog.close();
+      document.body.classList.remove("fit-dialog-open");
+    };
+
+    $$('.nav-links a[href="#para-ti"]').forEach(link => link.addEventListener("click", openDialog));
+    closeButton.addEventListener("click", closeDialog);
+    menuLink?.addEventListener("click", closeDialog);
+    dialog.addEventListener("close", () => document.body.classList.remove("fit-dialog-open"));
+    if (location.hash === "#para-ti") openDialog();
+  }
+
   function toggleAllergyDetails() {
     const hasAllergies = checkoutForm.elements.hasAllergies.value === "yes";
     $("#allergyDetails").hidden = !hasAllergies;
@@ -876,6 +899,7 @@
   enhanceProductSafety();
   setupFonkieBuilder();
   setupFombBuilder();
+  setupFitDialog();
   setupMenuIntro();
   populateOptions();
   toggleAddress();
