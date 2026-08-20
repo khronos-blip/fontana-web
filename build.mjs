@@ -25,6 +25,10 @@ const appVersion = fingerprint(appContents);
 const adminScriptVersion = fingerprint(adminScriptContents);
 const adminStyleVersion = fingerprint(adminStyleContents);
 
+await writeFile(`${outputDirectory}/config.${configVersion}.js`, configContents);
+await writeFile(`${outputDirectory}/admin/admin.${adminScriptVersion}.js`, adminScriptContents);
+await writeFile(`${outputDirectory}/admin/admin.${adminStyleVersion}.css`, adminStyleContents);
+
 function inlineScript(contents) {
   return contents.replace(/<\/script/gi, "<\\/script");
 }
@@ -38,7 +42,7 @@ await writeFile(`${outputDirectory}/index.html`, html);
 
 let adminHtml = await readFile("admin/index.html", "utf8");
 adminHtml = adminHtml
-  .replace(/href="admin\.css(?:\?v=[^"]*)?"/, `href="admin.css?v=${adminStyleVersion}"`)
-  .replace(/src="\.\.\/config\.js(?:\?v=[^"]*)?"/, `src="../config.js?v=${configVersion}"`)
-  .replace(/src="admin\.js(?:\?v=[^"]*)?"/, `src="admin.js?v=${adminScriptVersion}"`);
+  .replace(/href="admin\.css(?:\?v=[^"]*)?"/, `href="admin.${adminStyleVersion}.css"`)
+  .replace(/src="\.\.\/config\.js(?:\?v=[^"]*)?"/, `src="../config.${configVersion}.js"`)
+  .replace(/src="admin\.js(?:\?v=[^"]*)?"/, `src="admin.${adminScriptVersion}.js"`);
 await writeFile(`${outputDirectory}/admin/index.html`, adminHtml);

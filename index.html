@@ -192,6 +192,13 @@
     .product-safety summary:after{content:'+';float:right;font-size:1rem;line-height:1}
     .product-safety[open] summary:after{content:'−'}
     .product-safety div{padding:0 0 12px;color:var(--muted);font-size:.7rem;line-height:1.5}
+    .product-dietary-seals{display:flex;align-items:flex-start;justify-content:flex-start;gap:9px;margin:12px 0 15px;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .product-dietary-seal{flex:0 1 66px;min-width:0;display:grid;justify-items:center;gap:5px;color:var(--plum)}
+    .product-dietary-seal svg{width:36px;height:36px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .product-dietary-seal .seal-ring-inner{opacity:.72;stroke-width:1.35}
+    .product-dietary-seal span{font-size:.5rem;font-weight:900;line-height:1.05;letter-spacing:.035em;text-align:center;text-transform:uppercase}
+    .builder-dietary-seals{width:max-content;max-width:100%;margin:-7px 0 16px;padding:0;border:0}
+    .builder-dietary-seals .product-dietary-seal{flex-basis:72px}
     .product-footer{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .diet{font-size:.68rem;color:var(--green);font-weight:800}
     .add{border:0;background:var(--plum);color:#fff;width:42px;height:42px;border-radius:50%;font-size:1.35rem;display:grid;place-items:center}
@@ -516,6 +523,12 @@
       .product-safety{margin:-1px 0 12px}
       .product-safety summary{padding:9px 0;font-size:.62rem}
       .product-safety div{font-size:.62rem}
+      .product-dietary-seals{justify-content:space-between;gap:3px;margin:9px 0 12px;padding:8px 0}
+      .product-dietary-seal{flex:1 1 0;gap:3px}
+      .product-dietary-seal svg{width:29px;height:29px}
+      .product-dietary-seal span{font-size:.42rem;letter-spacing:0}
+      .builder-dietary-seals{justify-content:flex-start;gap:8px;margin:-5px 0 13px;padding:0}
+      .builder-dietary-seals .product-dietary-seal{flex:0 1 64px}
       .diet{font-size:.58rem}
       .add{width:36px;height:36px;border-radius:11px;font-size:1.15rem}
       .story{padding:78px 0}

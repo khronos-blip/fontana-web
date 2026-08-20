@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
 async function openPreview(page) {
-  await page.route("**/config.js", async route => {
+  await page.route("**/config.js*", async route => {
     const response = await route.fetch({ maxRetries: 2 });
     const body = (await response.text()).replace("previewMode: false", "previewMode: true");
     await route.fulfill({ response, body });
@@ -25,15 +25,14 @@ async function fillCheckout(page, { allergies = false } = {}) {
   }
 }
 
-test("cliente prepara un pedido completo para WhatsApp", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   await openPreview(page);
   await page.locator('[data-id="pistacho"] .add').click();
   await expect(page.locator("#cartCount")).toHaveText("1");
   await fillCheckout(page);
   await page.locator('#checkoutForm button[type="submit"]').click();
 
-  const message = await page.evaluate(() => navigator.clipboard.readText());
+  const message = await page.evaluate(() => window.__copiedOrder);
   expect(message).toContain("Pedido FNT-");
   expect(message).toContain("1× Torta de Pistacho y Frambuesa");
   expect(message).toContain("USD 60,00");
@@ -129,6 +128,25 @@ test("los tres sellos alimentarios son compactos y simétricos", async ({ page }
   expect(Math.max(...desktopBoxes.map(box => box.y)) - Math.min(...desktopBoxes.map(box => box.y))).toBeLessThanOrEqual(1);
   expect(Math.max(...desktopBoxes.map(box => box.width)) - Math.min(...desktopBoxes.map(box => box.width))).toBeLessThanOrEqual(1);
   await page.locator("#menu .section-head").screenshot({ path: testInfo.outputPath("sellos-menu-escritorio.png") });
+});
+
+test("cada producto muestra solo sus sellos alimentarios confirmados", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const ballerine = page.locator('[data-product-id="ballerine"]');
+  await expect(ballerine.locator(".product-dietary-seal")).toHaveCount(3);
+  await expect(ballerine.locator(".product-dietary-seal")).toHaveText(["Sin gluten", "Sin azúcar", "Sin lactosa"]);
+  const tequenos = page.locator('[data-product-id="tequenos-fit"]');
+  await expect(tequenos.locator(".product-dietary-seal")).toHaveCount(2);
+  await expect(tequenos.locator(".product-dietary-seals")).not.toContainText("Sin lactosa");
+  await expect(page.locator('[data-product-id="agua-minalba-600"] .product-dietary-seal')).toHaveCount(0);
+  await expect(page.locator(".fonkie-builder .builder-dietary-seals .product-dietary-seal")).toHaveCount(3);
+  await expect(page.locator(".fomb-builder .builder-dietary-seals .product-dietary-seal")).toHaveCount(3);
+  await expect(ballerine.locator(".product-dietary-seal circle")).toHaveCount(6);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await ballerine.screenshot({ path: testInfo.outputPath("sellos-producto-movil.png") });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await ballerine.screenshot({ path: testInfo.outputPath("sellos-producto-escritorio.png") });
 });
 
 test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y extras", async ({ page }) => {
@@ -228,7 +246,7 @@ test("el carrito usa fondo lila y el checkout toma los sabores automáticamente"
   await page.locator('input[name="hasAllergies"][value="no"]').check();
   await page.screenshot({ path: testInfo.outputPath("checkout-lila-movil.png"), fullPage: false });
   await page.locator('#checkoutForm button[type="submit"]').click();
-  const message = await page.evaluate(() => navigator.clipboard.readText());
+  const message = await page.evaluate(() => window.__copiedOrder);
   expect(message).toContain("Sabores: 4 Chips de Chocolate Oscuro");
   expect(message).not.toContain("Franja horaria solicitada");
   expect(message).not.toContain("Sabores elegidos:");
@@ -295,11 +313,11 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
 });
 
 test("un sabor desactivado aparece agotado y no puede seleccionarse", async ({ page }) => {
-  await page.route("**/config.js", async route => {
+  await page.route("**/config.js*", async route => {
     const response = await route.fetch({ maxRetries: 2 });
     const body = (await response.text())
       .replace("previewMode: false", "previewMode: true")
-      .replace('{ name: "Carne", status: "available" }', '{ name: "Carne", status: "sold-out" }');
+      .replace(/(id: "panzerottis"[\s\S]*?variants: \[\s*\{ name: "Carne", status: ")available(" \})/, "$1sold-out$2");
     await route.fulfill({ response, body });
   });
   await page.goto("/");
@@ -369,6 +387,26 @@ test("el panel administrador permite entrar, editar y reflejar el catálogo en l
   await expect(ballerine).toBeVisible();
   await expect(ballerine).toContainText("Disponible para celebrar hoy.");
   await expect(ballerine.locator(".product-tag")).toHaveText("PROMOCIÓN DEL DÍA");
+});
+
+test("el panel controla los sellos visibles de cada producto", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Productos", exact: true }).click();
+  await page.locator('[data-product-id="ballerine"] [data-edit="ballerine"]').click();
+  await expect(page.locator('#productForm [name="glutenFree"]')).toBeChecked();
+  await expect(page.locator('#productForm [name="sugarFree"]')).toBeChecked();
+  await expect(page.locator('#productForm [name="lactoseFree"]')).toBeChecked();
+  await page.locator(".dietary-fieldset").screenshot({ path: testInfo.outputPath("sellos-admin-movil.png") });
+  await page.locator('#productForm [name="lactoseFree"]').uncheck();
+  await page.getByRole("button", { name: "Guardar producto" }).click();
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+
+  await page.goto("/");
+  const seals = page.locator('[data-product-id="ballerine"] .product-dietary-seal');
+  await expect(seals).toHaveCount(2);
+  await expect(seals).toHaveText(["Sin gluten", "Sin azúcar"]);
 });
 
 test("el panel publica stock, etiquetas y pre-order sin romper el carrito", async ({ page }) => {

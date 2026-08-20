@@ -6,8 +6,15 @@
   <meta name="robots" content="noindex,nofollow,noarchive">
   <meta name="theme-color" content="#4b164d">
   <title>Panel Fontana</title>
-  <link rel="stylesheet" href="admin.css?v=admin-db-v1">
-  <style>[hidden]{display:none!important}</style>
+  <link rel="stylesheet" href="admin.css">
+  <style>
+    [hidden]{display:none!important}
+    .dietary-fieldset{margin:0;padding:14px;border:1px solid var(--line);border-radius:16px}
+    .dietary-fieldset legend{padding:0 7px;color:var(--plum-dark);font-size:.72rem;font-weight:900}
+    .dietary-fieldset>p{margin:0 0 11px;color:var(--muted);font-size:.67rem}
+    .dietary-admin-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    @media(max-width:620px){.dietary-admin-options{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
   <section class="login" id="loginView">
@@ -89,6 +96,15 @@
         <label>Precio USD<input name="price" type="number" min="0" step="0.01" placeholder="Vacío = por confirmar"></label>
         <label class="wide">Descripción<textarea name="description" rows="3"></textarea></label>
         <label class="wide">Ingredientes<textarea name="ingredients" rows="4"></textarea></label>
+        <fieldset class="wide dietary-fieldset">
+          <legend>Sellos visibles en la tienda</legend>
+          <p>Activa únicamente las afirmaciones confirmadas para este producto.</p>
+          <div class="dietary-admin-options">
+            <label class="switch"><input name="glutenFree" type="checkbox"><span>Sin gluten</span></label>
+            <label class="switch"><input name="sugarFree" type="checkbox"><span>Sin azúcar</span></label>
+            <label class="switch"><input name="lactoseFree" type="checkbox"><span>Sin lactosa</span></label>
+          </div>
+        </fieldset>
         <label>Presentación o peso<input name="weight" placeholder="Ej. 1 KG"></label>
         <label>Etiqueta de disponibilidad<input name="availabilityLabel" placeholder="Ej. Por encargo"></label>
         <label>Días hábiles mínimos<input name="minimumBusinessDays" type="number" min="0" step="1" value="0"></label>
@@ -122,7 +138,7 @@
     </form>
   </dialog>
   <div class="toast" id="adminToast" role="status"></div>
-  <script src="../config.js?v=admin-db-v1"></script>
-  <script src="admin.js?v=admin-db-v1"></script>
+  <script src="../config.js"></script>
+  <script src="admin.js"></script>
 </body>
 </html>

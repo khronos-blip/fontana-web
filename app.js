@@ -76,6 +76,73 @@
     })[character]);
   }
 
+  const allThreeDietaryProductIds = new Set([
+    "pistacho", "naranja", "zanahoria", "pistacho-clasico", "chocolate", "vainilla", "lemon",
+    "ballerine", "tentacion-coco", "crumbl-blueberry", "brownie-fit", "mini-cake",
+    "cachito-fit", "panzerottis", "raviolis", "nuggets-rora"
+  ]);
+
+  function dietaryDefaults(product) {
+    if (allThreeDietaryProductIds.has(product.id)) return {glutenFree:true,sugarFree:true,lactoseFree:true};
+    if (product.id === "tequenos-fit") return {glutenFree:true,sugarFree:true,lactoseFree:false};
+    return {glutenFree:false,sugarFree:false,lactoseFree:false};
+  }
+
+  function resolvedDietary(product) {
+    const defaults = dietaryDefaults(product);
+    return {
+      glutenFree: Object.prototype.hasOwnProperty.call(product, "glutenFree") ? Boolean(product.glutenFree) : defaults.glutenFree,
+      sugarFree: Object.prototype.hasOwnProperty.call(product, "sugarFree") ? Boolean(product.sugarFree) : defaults.sugarFree,
+      lactoseFree: Object.prototype.hasOwnProperty.call(product, "lactoseFree") ? Boolean(product.lactoseFree) : defaults.lactoseFree
+    };
+  }
+
+  function dietarySealSvg(kind) {
+    const symbols = {
+      gluten: '<path d="M20 10v20M20 15c-4 0-6-2-6-5 4 0 6 2 6 5Zm0 5c4 0 6-2 6-5-4 0-6 2-6 5Zm0 5c-4 0-6-2-6-5 4 0 6 2 6 5Zm0 5c4 0 6-2 6-5-4 0-6 2-6 5Z"/>',
+      sugar: '<path d="m14 15 6-3 6 3v9l-6 4-6-4Z"/><path d="m14 15 6 4 6-4M20 19v9"/>',
+      lactose: '<path d="M16 11h8M17 11v4l-3 3v11h12V18l-3-3v-4M14 21h12"/>'
+    };
+    return `<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17"/><circle class="seal-ring-inner" cx="20" cy="20" r="14.2"/>${symbols[kind]}<path d="M8 8l24 24"/></svg>`;
+  }
+
+  function dietarySealsMarkup(flags, extraClass = "") {
+    const seals = [
+      [flags.glutenFree, "gluten", "Sin gluten"],
+      [flags.sugarFree, "sugar", "Sin azúcar"],
+      [flags.lactoseFree, "lactose", "Sin lactosa"]
+    ].filter(([active]) => active);
+    if (!seals.length) return "";
+    return `<div class="product-dietary-seals${extraClass ? ` ${extraClass}` : ""}" aria-label="Características de este producto">${seals.map(([,kind,label]) => `<div class="product-dietary-seal">${dietarySealSvg(kind)}<span>${label}</span></div>`).join("")}</div>`;
+  }
+
+  function elementDietaryFlags(element, defaultAll = false) {
+    const parse = (key, fallback) => element.dataset[key] === undefined ? fallback : element.dataset[key] === "true";
+    if (element.dataset.glutenFree !== undefined || element.dataset.sugarFree !== undefined || element.dataset.lactoseFree !== undefined) {
+      return {glutenFree:parse("glutenFree",false),sugarFree:parse("sugarFree",false),lactoseFree:parse("lactoseFree",false)};
+    }
+    const safety = String(element.dataset.safety || "").toLowerCase();
+    if (safety) return {glutenFree:safety.includes("sin gluten"),sugarFree:safety.includes("sin azúcar"),lactoseFree:safety.includes("sin lactosa")};
+    return {glutenFree:defaultAll,sugarFree:defaultAll,lactoseFree:defaultAll};
+  }
+
+  function enhanceDietarySeals() {
+    $$(".product").forEach(product => {
+      $(".product-dietary-seals", product)?.remove();
+      const description = $(".product-body > p", product);
+      const markup = dietarySealsMarkup(elementDietaryFlags(product));
+      if (description && markup) description.insertAdjacentHTML("afterend", markup);
+    });
+    [[".fonkie-builder", ".fonkie-builder-head"], [".fomb-builder", ".builder-head"]].forEach(([builderSelector, headSelector]) => {
+      const builder = $(builderSelector);
+      if (!builder) return;
+      $(".builder-dietary-seals", builder)?.remove();
+      const head = $(headSelector, builder);
+      const markup = dietarySealsMarkup(elementDietaryFlags(builder, true), "builder-dietary-seals");
+      if (head && markup) head.insertAdjacentHTML("afterend", markup);
+    });
+  }
+
   function renderBuilderTags(element, builder) {
     $(".builder-admin-tags", element)?.remove();
     const soldOut = builder.status === "sold-out" || builder.stockQuantity === 0;
@@ -96,6 +163,9 @@
       fonkieBuilder.dataset.immediate = String(Boolean(fonkies.immediate));
       fonkieBuilder.dataset.new = String(Boolean(fonkies.isNew));
       fonkieBuilder.dataset.preorder = String(Boolean(fonkies.allowPreorder));
+      fonkieBuilder.dataset.glutenFree = String(fonkies.glutenFree !== false);
+      fonkieBuilder.dataset.sugarFree = String(fonkies.sugarFree !== false);
+      fonkieBuilder.dataset.lactoseFree = String(fonkies.lactoseFree !== false);
       fonkieBuilder.dataset.soldOut = String(fonkies.status === "sold-out" || fonkies.stockQuantity === 0);
       fonkieBuilder.hidden = fonkies.visible === false;
       renderBuilderTags(fonkieBuilder, fonkies);
@@ -118,6 +188,9 @@
       fombBuilder.dataset.immediate = String(Boolean(fomb.immediate));
       fombBuilder.dataset.new = String(Boolean(fomb.isNew));
       fombBuilder.dataset.preorder = String(Boolean(fomb.allowPreorder));
+      fombBuilder.dataset.glutenFree = String(fomb.glutenFree !== false);
+      fombBuilder.dataset.sugarFree = String(fomb.sugarFree !== false);
+      fombBuilder.dataset.lactoseFree = String(fomb.lactoseFree !== false);
       fombBuilder.dataset.soldOut = String(fomb.status === "sold-out" || fomb.stockQuantity === 0);
       fombBuilder.hidden = fomb.visible === false;
       renderBuilderTags(fombBuilder, fomb);
@@ -181,6 +254,7 @@
       const preorder = soldOut && Boolean(product.allowPreorder);
       const description = String(product.description || "Disponibilidad sujeta a confirmación por WhatsApp.");
       const ingredients = String(product.ingredients || "Ingredientes pendientes de confirmar con Fontana");
+      const dietary = resolvedDietary(product);
       const badges = [];
       if (soldOut) badges.push("AGOTADO");
       if (preorder) badges.push("PRE-ORDER");
@@ -208,7 +282,7 @@
         return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${optionSold ? preorder ? " · Pre-order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
       const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => `<span class="product-tag${index ? " secondary" : ""}">${escapeHtml(badge)}</span>`).join("")}</div>` : "";
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-promo="${Boolean(product.promo)}" data-immediate="${Boolean(product.immediate)}" data-sold-out="${soldOut}" data-preorder="${preorder}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(product.weight || product.availabilityLabel || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : ""}</div></div></article>`;
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-promo="${Boolean(product.promo)}" data-immediate="${Boolean(product.immediate)}" data-sold-out="${soldOut}" data-preorder="${preorder}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(product.weight || product.availabilityLabel || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : ""}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
@@ -666,6 +740,7 @@
     const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
 
     if (config.previewMode || !whatsappNumber) {
+      window.__copiedOrder = message;
       try {
         await navigator.clipboard.writeText(message);
         say(`Pedido ${orderId} preparado y copiado ✓`);
@@ -778,6 +853,7 @@
   $$('input[name="hasAllergies"]').forEach(input => input.addEventListener("change", toggleAllergyDetails));
   document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
 
+  enhanceDietarySeals();
   enhanceProductSafety();
   setupFonkieBuilder();
   setupFombBuilder();
