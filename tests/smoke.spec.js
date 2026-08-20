@@ -76,18 +76,24 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-fit", "cover");
 });
 
-test("el selector de Fonkies es compacto en escritorio y puede plegarse", async ({ page }) => {
+test("los selectores de Fonkies y Fomb son compactos en escritorio y pueden plegarse", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   const panel = page.locator(".fonkie-builder .choice-panel");
   const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
-  expect(columns).toBe(2);
-  await expect(page.locator(".fonkie-flavor").last()).toHaveCSS("justify-self", "center");
+  expect(columns).toBe(3);
+  const fonkieBox = await page.locator(".fonkie-flavors").boundingBox();
+  expect(fonkieBox.height).toBeLessThanOrEqual(190);
   await panel.locator("summary").click();
   await expect(page.locator(".fonkie-flavors")).toBeHidden();
   await panel.locator("summary").click();
   await expect(page.locator(".fonkie-flavors")).toBeVisible();
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  const fombColumns = await page.locator(".fomb-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
+  expect(fombColumns).toBe(4);
+  const fombBox = await page.locator(".fomb-flavors").boundingBox();
+  expect(fombBox.height).toBeLessThanOrEqual(70);
 });
 
 test("el selector móvil de Fonkies distribuye los sabores en dos columnas", async ({ page }) => {
@@ -102,8 +108,14 @@ test("el selector móvil de Fonkies distribuye los sabores en dos columnas", asy
   const firstBox = await page.locator(".fonkie-flavor").first().boundingBox();
   const lastBox = await lastFlavor.boundingBox();
   expect(Math.abs(firstBox.width - lastBox.width)).toBeLessThanOrEqual(1);
+  expect(firstBox.height).toBeLessThanOrEqual(58);
+  const selectorBox = await page.locator(".fonkie-flavors").boundingBox();
+  expect(selectorBox.height).toBeLessThanOrEqual(285);
   await expect(lastFlavor).toHaveCSS("justify-self", "center");
   await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"] [data-delta="1"]')).toBeVisible();
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  const fombSelectorBox = await page.locator(".fomb-flavors").boundingBox();
+  expect(fombSelectorBox.height).toBeLessThanOrEqual(115);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
