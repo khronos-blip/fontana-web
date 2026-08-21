@@ -775,6 +775,13 @@ test("la torta personalizada usa la foto original y la experiencia muestra la ca
   await expect(experience).toContainText("Abre la caja, cierra los ojos y disfruta el verdadero sabor de Fontana");
   await expect(experience.locator("img")).toHaveCSS("mask-image", /linear-gradient\(to right/);
   await expect(experience.locator("img")).toHaveCSS("mask-composite", /intersect/);
+  const experienceToStoryGap = await page.evaluate(() => {
+    const experienceBounds = document.querySelector(".experience-banner").getBoundingClientRect();
+    const storyBounds = document.querySelector(".story-copy").getBoundingClientRect();
+    return storyBounds.top - experienceBounds.bottom;
+  });
+  expect(experienceToStoryGap).toBeLessThanOrEqual(120);
+  expect(experienceToStoryGap).toBeGreaterThanOrEqual(80);
 
   const founder = page.locator(".founder-note");
   await expect(founder).toContainText("El rostro detrás de Fontana");
