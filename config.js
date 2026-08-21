@@ -96,7 +96,7 @@ window.FONTANA_CONFIG = {
       category: "cakes",
       name: "Torta completa personalizada",
       price: null,
-      image: "assets/torta-personalizada-fontana-original.jpg",
+      image: "assets/torta-personalizada-fontana-pro-v2.jpg",
       description: "Torta completa personalizada. El sabor y el presupuesto se coordinan directamente por WhatsApp.",
       ingredients: "",
       weight: "PERSONALIZADA",

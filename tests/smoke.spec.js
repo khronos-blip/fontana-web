@@ -739,7 +739,7 @@ test("la torta personalizada usa la foto original y la experiencia muestra la ca
   const customCake = page.locator('[data-product-id="torta-personalizada"]');
   await expect(customCake).toBeVisible();
   await expect(customCake.getByRole("heading")).toHaveText("Torta completa personalizada");
-  await expect(customCake.locator("img")).toHaveAttribute("src", "assets/torta-personalizada-fontana-original.jpg");
+  await expect(customCake.locator("img")).toHaveAttribute("src", "assets/torta-personalizada-fontana-pro-v2.jpg");
   await expect(customCake.locator(".price")).toHaveText("Cotizar");
   await expect(customCake.getByRole("link", { name: "Consultar Torta completa personalizada por WhatsApp" })).toBeVisible();
 
