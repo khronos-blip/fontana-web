@@ -192,18 +192,23 @@ test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ pa
   await expect(leaves.last()).toBeVisible();
   await expect(leaves.first()).toHaveCSS("animation-name", "leaf-upper-breeze");
   await expect(leaves.last()).toHaveCSS("animation-name", "leaf-lower-breeze");
-  await expect(leaves.first()).toHaveCSS("animation-duration", "4.6s");
-  await expect(leaves.last()).toHaveCSS("animation-duration", "4.2s");
+  await expect(leaves.first()).toHaveCSS("animation-duration", "7.4s");
+  await expect(leaves.last()).toHaveCSS("animation-duration", "8.2s");
   const logoSize = await logo.evaluate(element => ({ width: element.offsetWidth, height: element.offsetHeight }));
   const leafCanvasSize = await page.locator(".hero-logo-leaves").evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }));
   expect(leafCanvasSize).toEqual(logoSize);
-  await expect(page.locator(".hero-logo-leaf-art")).toHaveCount(2);
-  await expect(page.locator("feDisplacementMap animate")).toHaveCount(2);
+  await expect(page.locator("path.hero-logo-leaf-art")).toHaveCount(2);
+  await expect(page.locator("image.hero-logo-leaf-art")).toHaveCount(0);
+  await expect(page.locator("feDisplacementMap")).toHaveCount(0);
   const keyframeRotations = await leaves.evaluateAll(elements => elements.map(element => element.getAnimations()[0].effect.getKeyframes().map(frame => {
     const match = String(frame.transform).match(/rotate\((-?[\d.]+)deg\)/);
     return match ? Number(match[1]) : 0;
   })));
-  keyframeRotations.forEach(rotations => expect(Math.max(...rotations) - Math.min(...rotations)).toBeGreaterThanOrEqual(7));
+  keyframeRotations.forEach(rotations => {
+    const amplitude = Math.max(...rotations) - Math.min(...rotations);
+    expect(amplitude).toBeGreaterThanOrEqual(3);
+    expect(amplitude).toBeLessThanOrEqual(4);
+  });
   const firstTransform = await leaves.evaluateAll(elements => elements.map(element => getComputedStyle(element).transform));
   await page.waitForTimeout(1200);
   const secondTransform = await leaves.evaluateAll(elements => elements.map(element => getComputedStyle(element).transform));
