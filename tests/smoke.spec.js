@@ -408,14 +408,16 @@ test("el catálogo separa visualmente cada familia de productos", async ({ page 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("las reseñas de muestra avanzan automáticamente hacia la izquierda", async ({ page }) => {
+test("las reseñas reales avanzan automáticamente hacia la izquierda", async ({ page }) => {
   await openPreview(page);
   const carousel = page.locator(".testimonials-carousel");
   const track = page.locator(".testimonials-track");
   await expect(carousel).toHaveAttribute("aria-roledescription", "carrusel");
-  await expect(track.locator(".quote")).toHaveCount(3);
-  await expect(page.locator(".testimonial-dot")).toHaveCount(2);
-  await expect(page.locator(".testimonials .demo-note")).toContainText("Testimonios de muestra");
+  await expect(carousel).toHaveAttribute("aria-label", "Reseñas de clientes");
+  await expect(track.locator(".quote")).toHaveCount(7);
+  await expect(page.locator(".testimonial-dot")).toHaveCount(6);
+  await expect(track.locator(".review-source")).toHaveCount(7);
+  await expect(page.locator(".testimonials .demo-note")).toHaveCount(0);
   const initialTransform = await track.evaluate(element => getComputedStyle(element).transform);
   await page.waitForTimeout(4200);
   await expect.poll(() => track.evaluate(element => getComputedStyle(element).transform)).not.toBe(initialTransform);

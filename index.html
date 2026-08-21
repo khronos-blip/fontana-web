@@ -586,6 +586,9 @@
     .testimonial-dots{display:flex;justify-content:center;gap:8px;margin-top:14px}
     .testimonial-dot{width:8px;height:8px;padding:0;border:0;border-radius:999px;background:rgba(248,241,245,.28);transition:width .25s ease,background .25s ease}
     .testimonial-dot.active{width:26px;background:var(--acid)}
+    .review-source{display:flex;align-items:center;gap:9px;margin-top:2px;color:var(--plum-dark);font-size:.72rem;font-weight:800;letter-spacing:.02em}
+    .review-source span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--plum-dark);color:var(--acid);font-size:.75rem}
+    .quote.featured .review-source{color:var(--night)}
     @media(max-width:640px){
       .products{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
       .product{border-radius:15px}
@@ -783,12 +786,16 @@
       <div class="location-visual"><div class="map-orbit"><div class="pin"><img src="assets/logo.png" alt="Fontana"></div></div></div>
     </div></div></section>
 
-    <section class="testimonials" id="resenas"><div class="container"><div class="section-head"><div><span class="eyebrow">Lo dicen los Fontana lovers</span><h2>Amor al primer bocado</h2></div></div><div class="quotes testimonials-carousel" aria-label="Reseñas de muestra" aria-roledescription="carrusel">
+    <section class="testimonials" id="resenas"><div class="container"><div class="section-head"><div><span class="eyebrow">Lo dicen los Fontana lovers</span><h2>Amor al primer bocado</h2></div></div><div class="quotes testimonials-carousel" aria-label="Reseñas de clientes" aria-roledescription="carrusel">
       <div class="testimonials-track">
-        <article class="quote featured"><div class="stars">★★★★★</div><blockquote>“No parece un postre sin azúcar. La textura, el sabor y hasta la presentación se sienten realmente premium.”</blockquote><div class="person"><span>MG</span><div><b>María G.</b><small>Cliente frecuente · Valencia</small></div></div></article>
-        <article class="quote"><div class="stars">★★★★★</div><blockquote>“El Foncake de pistacho se convirtió en el favorito de toda la familia.”</blockquote><div class="person"><span>AC</span><div><b>Andrea C.</b><small>Fontana lover</small></div></div></article>
+        <article class="quote featured"><div class="stars">★★★★★</div><blockquote>“Las Fonkies estaban brutales. Mi amiga y yo nos estábamos matando por las dos de chocolate chips.”</blockquote><div class="review-source"><span aria-hidden="true">✓</span>Mensaje compartido por Fontana</div></article>
+        <article class="quote"><div class="stars">★★★★★</div><blockquote>“Qué delicia todo. Los bombones, de morirse; las galletas deliciosas. La de pistacho no la había probado: qué delicia.”</blockquote><div class="review-source"><span aria-hidden="true">✓</span>Mensaje compartido por Fontana</div></article>
+        <article class="quote featured"><div class="stars">★★★★★</div><blockquote>“La torta, súper espectacular, súper sabrosa de verdad. Qué cosa tan buena. Muchísimas gracias por ese regalo.”</blockquote><div class="review-source"><span aria-hidden="true">✓</span>Mensaje compartido por Fontana</div></article>
+        <article class="quote"><div class="stars">★★★★★</div><blockquote>“Muchas gracias, están riquísimas. Te felicito, compraré más. Me encantaron.”</blockquote><div class="review-source"><span aria-hidden="true">✓</span>Mensaje compartido por Fontana</div></article>
+        <article class="quote featured"><div class="stars">★★★★★</div><blockquote>“Estos panzerottos de verdad son del más allá: divinos, deliciosos. Adicta a ellos.”</blockquote><div class="review-source"><span aria-hidden="true">✓</span>Mensaje compartido por Fontana</div></article>
+        <article class="quote"><div class="stars">★★★★★</div><blockquote>“Quería felicitarte por tan deliciosas galletas. Le compré para la merienda de mi hijo y le encantó.”</blockquote><div class="review-source"><span aria-hidden="true">✓</span>Mensaje compartido por Fontana</div></article>
       </div>
-    </div><div class="testimonial-dots" aria-label="Seleccionar reseña"></div><p class="demo-note">Testimonios de muestra para presentar la experiencia visual; se sustituyen por reseñas verificadas del negocio.</p></div></section>
+    </div><div class="testimonial-dots" aria-label="Seleccionar reseña"></div></div></section>
 
     <section class="final"><div class="container final-inner"><span class="eyebrow">Haz espacio para algo rico</span><h2>Tu próximo antojo ya tiene nombre.</h2><p>Explora el menú, arma tu pedido y recíbelo en Carabobo o retíralo en Mañongo.</p><a class="btn btn-primary" href="#menu">Elegir mi favorito</a></div></section>
   </main>
