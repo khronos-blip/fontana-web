@@ -182,6 +182,28 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#menu");
 });
 
+test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const logo = page.locator(".hero-logo");
+  const leaves = page.locator(".hero-logo-leaves");
+  await expect(leaves).toBeVisible();
+  await expect(leaves).toHaveCSS("animation-name", "leaves-breeze");
+  const [logoBox, leavesBox] = await Promise.all([logo.boundingBox(), leaves.boundingBox()]);
+  expect(Math.abs(leavesBox.width - logoBox.width)).toBeLessThan(3);
+  expect(Math.abs(leavesBox.height - logoBox.height)).toBeLessThan(3);
+  expect(Math.abs(leavesBox.x - logoBox.x)).toBeLessThan(3);
+  expect(Math.abs(leavesBox.y - logoBox.y)).toBeLessThan(7);
+  const firstTransform = await leaves.evaluate(element => getComputedStyle(element).transform);
+  await page.waitForTimeout(1200);
+  const secondTransform = await leaves.evaluate(element => getComputedStyle(element).transform);
+  expect(secondTransform).not.toBe(firstTransform);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(leaves).toHaveCSS("animation-name", "none");
+  await expect(leaves).toHaveCSS("transform", "none");
+});
+
 test("¿Es para ti? abre una vista propia con el mensaje, los sellos y el acceso al menú", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
