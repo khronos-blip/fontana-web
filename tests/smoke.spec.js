@@ -842,6 +842,11 @@ test("la torta personalizada usa la foto original y la experiencia muestra la ca
   await expect(founder.locator("img")).toHaveAttribute("src", "assets/fundadora-fontana-editorial-v2.jpg");
   await expect(founder.locator("img")).toHaveAttribute("alt", "Dueña y creadora de Fontana");
   expect((await founder.locator(".founder-portrait").boundingBox())?.width).toBeGreaterThanOrEqual(146);
+  const locationDivider = await page.locator(".story + .location").evaluate(element => {
+    const divider = getComputedStyle(element, "::before");
+    return { color: divider.backgroundColor, height: divider.height };
+  });
+  expect(locationDivider).toEqual({ color: "rgba(217, 174, 220, 0.22)", height: "1px" });
 });
 
 test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }, testInfo) => {
