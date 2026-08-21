@@ -393,6 +393,21 @@ test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el produc
   }
 });
 
+test("el catálogo separa visualmente cada familia de productos", async ({ page }) => {
+  await openPreview(page);
+  const groups = page.locator(".catalog-group:not([hidden])");
+  await expect(groups.locator(".catalog-group-heading h3")).toHaveText([
+    "Tortas",
+    "Fonkies",
+    "Bombones",
+    "Salados",
+    "Bebidas"
+  ]);
+  await expect(groups.locator(".catalog-group-line")).toHaveCount(5);
+  await expect(groups.first().locator(".catalog-group-heading")).toHaveCSS("color", "rgb(184, 205, 105)");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("el carrito usa fondo lila y el checkout toma los sabores automáticamente", async ({ page }, testInfo) => {
   await openPreview(page);
   await page.locator("#cartButton").click();

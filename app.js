@@ -320,6 +320,14 @@
     const container = $("#products");
     if (!container || container.classList.contains("catalog-organized")) return;
     const categories = ["cakes", "fonkies", "fomb", "salado", "beverages", "snacks"];
+    const categoryLabels = {
+      cakes: "Tortas",
+      fonkies: "Fonkies",
+      fomb: "Bombones",
+      salado: "Salados",
+      beverages: "Bebidas",
+      snacks: "Otros antojos"
+    };
     const catalogItems = $$(".product, .fonkie-builder, .builder-panel", container);
     categories.forEach(category => {
       const items = catalogItems.filter(item => item.dataset.category === category);
@@ -327,10 +335,20 @@
       const group = document.createElement("section");
       group.className = "catalog-group";
       group.dataset.catalogGroup = category;
+      const heading = document.createElement("div");
+      heading.className = "catalog-group-heading";
+      const line = document.createElement("span");
+      line.className = "catalog-group-line";
+      line.setAttribute("aria-hidden", "true");
+      const title = document.createElement("h3");
+      title.id = `catalog-heading-${category}`;
+      title.textContent = categoryLabels[category];
+      heading.append(line, title);
+      group.setAttribute("aria-labelledby", title.id);
       const grid = document.createElement("div");
       grid.className = "catalog-group-grid";
       items.forEach(item => grid.appendChild(item));
-      group.append(grid);
+      group.append(heading, grid);
       container.insertBefore(group, $("#emptyFilterState"));
     });
     container.classList.add("catalog-organized");
