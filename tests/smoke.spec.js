@@ -280,7 +280,8 @@ test("¿Es para ti? abre una vista propia con el mensaje, los sellos y el acceso
   await expect(section.locator(".fit-benefit")).toHaveText(["Sin gluten", "Sin azúcar", "Sin lactosa"]);
   const menuLink = section.getByRole("link", { name: "Explorar nuestro menú" });
   await expect(menuLink).toHaveAttribute("href", "#menu");
-  await expect(menuLink).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(menuLink).toHaveCSS("color", "rgb(247, 239, 248)");
+  await expect(menuLink).toHaveCSS("background-color", "rgb(79, 22, 81)");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await section.scrollIntoViewIfNeeded();
   await section.screenshot({ path: testInfo.outputPath("para-ti-movil.png") });
