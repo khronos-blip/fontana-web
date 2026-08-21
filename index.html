@@ -579,6 +579,13 @@
     .catalog-group-heading h3{margin:0;color:inherit;font-family:'DM Sans',system-ui,sans-serif;font-size:.72rem;font-weight:900;letter-spacing:.13em;line-height:1;text-transform:uppercase}
     .catalog-group-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
     .catalog-group-grid>.fonkie-builder,.catalog-group-grid>.builder-panel{grid-column:1/-1}
+    .testimonials-carousel{display:block;width:min(860px,100%);margin:0 auto;overflow:hidden;touch-action:pan-y}
+    .testimonials-track{display:flex;align-items:stretch;will-change:transform;transition:transform .72s cubic-bezier(.22,.75,.24,1)}
+    .testimonials-track.no-transition{transition:none}
+    .testimonials-track>.quote{flex:0 0 100%;min-width:0;min-height:330px;display:flex;flex-direction:column;justify-content:center}
+    .testimonial-dots{display:flex;justify-content:center;gap:8px;margin-top:18px}
+    .testimonial-dot{width:8px;height:8px;padding:0;border:0;border-radius:999px;background:rgba(248,241,245,.28);transition:width .25s ease,background .25s ease}
+    .testimonial-dot.active{width:26px;background:var(--acid)}
     @media(max-width:640px){
       .products{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
       .product{border-radius:15px}
@@ -634,6 +641,7 @@
       .catalog-group:first-of-type .catalog-group-heading{margin-top:2px}
       .catalog-group-line{width:24px}
       .catalog-group-heading h3{font-size:.66rem;letter-spacing:.11em}
+      .testimonials-track>.quote{min-height:360px;padding:30px}
       input,select,textarea{font-size:16px}
     }
   </style>
@@ -774,10 +782,12 @@
       <div class="location-visual"><div class="map-orbit"><div class="pin"><img src="assets/logo.png" alt="Fontana"></div></div></div>
     </div></div></section>
 
-    <section class="testimonials" id="resenas"><div class="container"><div class="section-head"><div><span class="eyebrow">Lo dicen los Fontana lovers</span><h2>Amor al primer bocado</h2></div></div><div class="quotes">
-      <article class="quote featured"><div class="stars">★★★★★</div><blockquote>“No parece un postre sin azúcar. La textura, el sabor y hasta la presentación se sienten realmente premium.”</blockquote><div class="person"><span>MG</span><div><b>María G.</b><small>Cliente frecuente · Valencia</small></div></div></article>
-      <article class="quote"><div class="stars">★★★★★</div><blockquote>“El Foncake de pistacho se convirtió en el favorito de toda la familia.”</blockquote><div class="person"><span>AC</span><div><b>Andrea C.</b><small>Fontana lover</small></div></div></article>
-    </div><p class="demo-note">Testimonios de muestra para presentar la experiencia visual; se sustituyen por reseñas verificadas del negocio.</p></div></section>
+    <section class="testimonials" id="resenas"><div class="container"><div class="section-head"><div><span class="eyebrow">Lo dicen los Fontana lovers</span><h2>Amor al primer bocado</h2></div></div><div class="quotes testimonials-carousel" aria-label="Reseñas de muestra" aria-roledescription="carrusel">
+      <div class="testimonials-track">
+        <article class="quote featured"><div class="stars">★★★★★</div><blockquote>“No parece un postre sin azúcar. La textura, el sabor y hasta la presentación se sienten realmente premium.”</blockquote><div class="person"><span>MG</span><div><b>María G.</b><small>Cliente frecuente · Valencia</small></div></div></article>
+        <article class="quote"><div class="stars">★★★★★</div><blockquote>“El Foncake de pistacho se convirtió en el favorito de toda la familia.”</blockquote><div class="person"><span>AC</span><div><b>Andrea C.</b><small>Fontana lover</small></div></div></article>
+      </div>
+    </div><div class="testimonial-dots" aria-label="Seleccionar reseña"></div><p class="demo-note">Testimonios de muestra para presentar la experiencia visual; se sustituyen por reseñas verificadas del negocio.</p></div></section>
 
     <section class="final"><div class="container final-inner"><span class="eyebrow">Haz espacio para algo rico</span><h2>Tu próximo antojo ya tiene nombre.</h2><p>Explora el menú, arma tu pedido y recíbelo en Carabobo o retíralo en Mañongo.</p><a class="btn btn-primary" href="#menu">Elegir mi favorito</a></div></section>
   </main>

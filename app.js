@@ -914,6 +914,74 @@
     reducedMotion.addEventListener?.("change", syncMotion);
   }
 
+  function setupTestimonialsCarousel() {
+    const carousel = $(".testimonials-carousel");
+    const track = $(".testimonials-track", carousel);
+    const dots = $(".testimonial-dots");
+    const slides = track ? $$(".quote", track) : [];
+    if (!carousel || !track || !dots || slides.length < 2) return;
+
+    slides.forEach((slide, index) => {
+      slide.setAttribute("role", "group");
+      slide.setAttribute("aria-roledescription", "diapositiva");
+      slide.setAttribute("aria-label", `${index + 1} de ${slides.length}`);
+    });
+
+    const clone = slides[0].cloneNode(true);
+    clone.setAttribute("aria-hidden", "true");
+    clone.removeAttribute("aria-label");
+    track.appendChild(clone);
+
+    let index = 0;
+    let timer;
+    let resetTimer;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+
+    const renderDots = () => {
+      dots.innerHTML = slides.map((_, dotIndex) => `<button class="testimonial-dot${dotIndex === 0 ? " active" : ""}" type="button" aria-label="Ver reseña ${dotIndex + 1}" aria-current="${dotIndex === 0 ? "true" : "false"}"></button>`).join("");
+    };
+    const updateDots = () => $$(".testimonial-dot", dots).forEach((dot, dotIndex) => {
+      const active = dotIndex === index % slides.length;
+      dot.classList.toggle("active", active);
+      dot.setAttribute("aria-current", String(active));
+    });
+    const goTo = (nextIndex, animate = true) => {
+      clearTimeout(resetTimer);
+      track.classList.toggle("no-transition", !animate);
+      index = nextIndex;
+      track.style.transform = `translate3d(-${index * 100}%,0,0)`;
+      updateDots();
+      if (index === slides.length) {
+        resetTimer = setTimeout(() => {
+          index = 0;
+          track.classList.add("no-transition");
+          track.style.transform = "translate3d(0,0,0)";
+          updateDots();
+          requestAnimationFrame(() => requestAnimationFrame(() => track.classList.remove("no-transition")));
+        }, 760);
+      }
+    };
+    const stop = () => clearInterval(timer);
+    const start = () => {
+      stop();
+      if (reducedMotion?.matches || document.hidden) return;
+      timer = setInterval(() => goTo(index + 1), 3000);
+    };
+
+    renderDots();
+    $$(".testimonial-dot", dots).forEach((dot, dotIndex) => dot.addEventListener("click", () => {
+      goTo(dotIndex);
+      start();
+    }));
+    carousel.addEventListener("mouseenter", stop);
+    carousel.addEventListener("mouseleave", start);
+    carousel.addEventListener("focusin", stop);
+    carousel.addEventListener("focusout", start);
+    document.addEventListener("visibilitychange", start);
+    reducedMotion?.addEventListener?.("change", start);
+    start();
+  }
+
   function setupFitDialog() {
     const dialog = $("#para-ti");
     const closeButton = $("#closeFitDialog");
@@ -964,6 +1032,7 @@
   setupFombBuilder();
   setupFitDialog();
   setupHeroLeafMotion();
+  setupTestimonialsCarousel();
   setupMenuIntro();
   populateOptions();
   toggleAddress();

@@ -408,6 +408,20 @@ test("el catálogo separa visualmente cada familia de productos", async ({ page 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test("las reseñas de muestra avanzan automáticamente hacia la izquierda", async ({ page }) => {
+  await openPreview(page);
+  const carousel = page.locator(".testimonials-carousel");
+  const track = page.locator(".testimonials-track");
+  await expect(carousel).toHaveAttribute("aria-roledescription", "carrusel");
+  await expect(track.locator(".quote")).toHaveCount(3);
+  await expect(page.locator(".testimonial-dot")).toHaveCount(2);
+  await expect(page.locator(".testimonials .demo-note")).toContainText("Testimonios de muestra");
+  const initialTransform = await track.evaluate(element => getComputedStyle(element).transform);
+  await page.waitForTimeout(3200);
+  await expect.poll(() => track.evaluate(element => getComputedStyle(element).transform)).not.toBe(initialTransform);
+  await expect(page.locator(".testimonial-dot").nth(1)).toHaveClass(/active/);
+});
+
 test("el carrito usa fondo lila y el checkout toma los sabores automáticamente", async ({ page }, testInfo) => {
   await openPreview(page);
   await page.locator("#cartButton").click();
