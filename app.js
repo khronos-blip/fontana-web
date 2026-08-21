@@ -965,7 +965,7 @@
     const start = () => {
       stop();
       if (reducedMotion?.matches || document.hidden) return;
-      timer = setInterval(() => goTo(index + 1), 3000);
+      timer = setInterval(() => goTo(index + 1), 4000);
     };
 
     renderDots();

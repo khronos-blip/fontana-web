@@ -417,7 +417,7 @@ test("las reseñas de muestra avanzan automáticamente hacia la izquierda", asyn
   await expect(page.locator(".testimonial-dot")).toHaveCount(2);
   await expect(page.locator(".testimonials .demo-note")).toContainText("Testimonios de muestra");
   const initialTransform = await track.evaluate(element => getComputedStyle(element).transform);
-  await page.waitForTimeout(3200);
+  await page.waitForTimeout(4200);
   await expect.poll(() => track.evaluate(element => getComputedStyle(element).transform)).not.toBe(initialTransform);
   await expect(page.locator(".testimonial-dot").nth(1)).toHaveClass(/active/);
 });
