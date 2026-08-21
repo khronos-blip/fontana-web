@@ -163,6 +163,7 @@ test("la torta de pistacho mantiene el producto centrado en su tarjeta", async (
   const image = page.locator('[data-id="pistacho-clasico"] .product-media img');
   await expect(image).toHaveAttribute("src", "assets/pistacho-fontana-v4.png");
   await expect(image).toHaveCSS("object-position", "50% 50%");
+  await expect(image).toHaveCSS("transform", "matrix(1.25, 0, 0, 1.25, 0, 0)");
 });
 
 test("los tres sellos alimentarios son compactos y simétricos", async ({ page }, testInfo) => {

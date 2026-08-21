@@ -177,8 +177,9 @@
     .product.hidden{display:none}
     .product-media{aspect-ratio:1.05;overflow:hidden;background:var(--lilac-soft);position:relative}
     .product-media img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;transition:.5s ease}
-    .product[data-id="pistacho-clasico"] .product-media img{object-position:50% 50%}
+    .product[data-id="pistacho-clasico"] .product-media img{object-position:50% 50%;transform:scale(1.25)}
     .product:hover .product-media img{transform:scale(1.045)}
+    .product[data-id="pistacho-clasico"]:hover .product-media img{transform:scale(1.3)}
     .product-tag{position:absolute;left:15px;top:15px;background:rgba(255,255,255,.92);border-radius:999px;padding:6px 10px;font-size:.67rem;font-weight:800;color:var(--plum);backdrop-filter:blur(8px)}
     .product-tags{position:absolute;left:15px;right:15px;top:15px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}.product-tags .product-tag{position:static;display:block}.product-tags .product-tag.secondary{background:rgba(255,255,255,.9);color:var(--plum)}
     .product-body{padding:22px}
