@@ -522,6 +522,13 @@
     .story-copy>p{color:rgba(255,250,242,.75)}
     .story .eyebrow{color:var(--lilac)}
     .story .check span{background:rgba(255,255,255,.1);color:var(--acid)}
+    .founder-note{display:grid;grid-template-columns:142px minmax(0,1fr);align-items:center;gap:24px;width:min(610px,100%);margin:54px 0 0 auto;padding:22px 0 0;border-top:1px solid rgba(255,250,242,.2)}
+    .founder-portrait{position:relative;aspect-ratio:3/4;overflow:hidden;border-radius:72px 72px 22px 22px;background:rgba(217,174,220,.18);box-shadow:0 16px 40px rgba(24,6,25,.24)}
+    .founder-portrait:after{content:"";position:absolute;inset:0;border:1px solid rgba(255,250,242,.22);border-radius:inherit;pointer-events:none}
+    .founder-portrait img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 22%;filter:saturate(.94) contrast(1.02)}
+    .founder-copy .eyebrow{color:var(--accent)}
+    .founder-copy h3{margin:9px 0 8px;color:var(--cream);font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:clamp(1.65rem,3vw,2.2rem);font-weight:400;letter-spacing:.02em;text-transform:uppercase}
+    .founder-copy p{max-width:390px;margin:0;color:rgba(255,250,242,.68);font-size:.84rem;line-height:1.65}
     .experience-banner{position:relative;display:grid;grid-template-columns:minmax(0,1.06fr) minmax(280px,.94fr);align-items:center;gap:clamp(22px,4vw,54px);width:min(1020px,100%);min-height:470px;margin:64px auto 0;padding:clamp(18px,3vw,34px);isolation:isolate;overflow:hidden}
     .experience-banner:before{content:"";position:absolute;inset:6% 0;background:radial-gradient(circle at 33% 48%,rgba(217,174,220,.28),transparent 52%);z-index:-1;filter:blur(22px)}
     .experience-photo-wrap{position:relative;min-height:430px;margin:0}
@@ -586,6 +593,10 @@
       .diet{font-size:.58rem}
       .add{width:36px;height:36px;border-radius:11px;font-size:1.15rem}
       .story{padding:78px 0}
+      .founder-note{grid-template-columns:98px minmax(0,1fr);gap:15px;margin-top:38px;padding-top:18px}
+      .founder-portrait{border-radius:50px 50px 16px 16px}
+      .founder-copy h3{font-size:1.45rem}
+      .founder-copy p{font-size:.72rem;line-height:1.5}
       .experience-banner{grid-template-columns:1fr;gap:2px;min-height:0;margin-top:38px;padding:0 4px 12px;text-align:center}
       .experience-banner:before{inset:0;background:radial-gradient(circle at 50% 34%,rgba(217,174,220,.28),transparent 60%)}
       .experience-photo-wrap{min-height:390px}
@@ -742,6 +753,7 @@
 
     <section class="story" id="historia"><div class="container story-grid">
       <div class="story-copy"><span class="eyebrow">La esencia detrás del sabor</span><h2>No aceptamos que “saludable” signifique aburrido.</h2><p>En el taller de Fontana cada receta empieza con una obsesión: lograr una textura increíble y un sabor que haga olvidar todo lo que quitamos. Horneamos en pequeños lotes, cuidando cada ingrediente y cada detalle.</p><div class="checks"><div class="check"><span>✓</span>Harina 100% de almendra</div><div class="check"><span>✓</span>Chocolate vegano</div><div class="check"><span>✓</span>Bajo índice glucémico</div><div class="check"><span>✓</span>Producción artesanal</div></div><a class="btn btn-light" href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Conoce nuestra historia en Instagram</a></div>
+      <aside class="founder-note" aria-label="Dueña y creadora de Fontana"><div class="founder-portrait"><img src="assets/fundadora-fontana-editorial-v1.jpg" alt="Dueña y creadora de Fontana"></div><div class="founder-copy"><span class="eyebrow">El rostro detrás de Fontana</span><h3>Su creadora.</h3><p>La dueña y creadora de Fontana, presente como la firma humana detrás de esta historia.</p></div></aside>
     </div></section>
 
     <section class="location" id="ubicacion"><div class="container"><div class="location-card">

@@ -747,6 +747,11 @@ test("la torta personalizada usa la foto original y la experiencia muestra la ca
   await expect(experience.locator("img")).toHaveAttribute("src", "assets/caja-experiencia-fontana-original.jpg");
   await expect(experience).toContainText("Abre la caja, cierra los ojos y disfruta el verdadero sabor de Fontana");
   await expect(experience.locator("img")).toHaveCSS("mask-image", /radial-gradient/);
+
+  const founder = page.locator(".founder-note");
+  await expect(founder).toContainText("El rostro detrás de Fontana");
+  await expect(founder.locator("img")).toHaveAttribute("src", "assets/fundadora-fontana-editorial-v1.jpg");
+  await expect(founder.locator("img")).toHaveAttribute("alt", "Dueña y creadora de Fontana");
 });
 
 test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }, testInfo) => {
