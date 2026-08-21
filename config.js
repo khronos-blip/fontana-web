@@ -92,6 +92,18 @@ window.FONTANA_CONFIG = {
       status: "available"
     },
     {
+      id: "torta-personalizada",
+      category: "cakes",
+      name: "Torta completa personalizada",
+      price: null,
+      image: "assets/torta-personalizada-fontana-original.jpg",
+      description: "Torta completa personalizada. El sabor y el presupuesto se coordinan directamente por WhatsApp.",
+      ingredients: "",
+      weight: "PERSONALIZADA",
+      availabilityLabel: "SABOR Y PRESUPUESTO POR WHATSAPP",
+      status: "available"
+    },
+    {
       id: "cachito-fit",
       category: "salado",
       name: "Cachito Fit · Paquete de 3",
@@ -231,6 +243,7 @@ window.FONTANA_CONFIG = {
     "brownie-fit": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
     "mini-cake": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
     "layer-cake": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
+    "torta-personalizada": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
     fonkie: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
     "fonkie-mix": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
     "fonkie-box": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },

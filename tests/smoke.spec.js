@@ -207,8 +207,8 @@ test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ pa
   })));
   keyframeRotations.forEach(rotations => {
     const amplitude = Math.max(...rotations) - Math.min(...rotations);
-    expect(amplitude).toBeGreaterThanOrEqual(4);
-    expect(amplitude).toBeLessThanOrEqual(5);
+    expect(amplitude).toBeGreaterThanOrEqual(6.5);
+    expect(amplitude).toBeLessThanOrEqual(7.5);
   });
   const firstTransform = await leaves.evaluateAll(elements => elements.map(element => getComputedStyle(element).transform));
   const firstShapes = await page.locator("path.hero-logo-leaf-art").evaluateAll(elements => elements.map(element => {
@@ -730,6 +730,23 @@ test("Layer Cake se consulta por WhatsApp sin precio inventado ni carrito", asyn
   });
   expect(quoteFitsCard).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("la torta personalizada usa la foto original y la experiencia muestra la caja con bordes fundidos", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await page.getByRole("button", { name: "Foncake · Tortas" }).click();
+  const customCake = page.locator('[data-product-id="torta-personalizada"]');
+  await expect(customCake).toBeVisible();
+  await expect(customCake.getByRole("heading")).toHaveText("Torta completa personalizada");
+  await expect(customCake.locator("img")).toHaveAttribute("src", "assets/torta-personalizada-fontana-original.jpg");
+  await expect(customCake.locator(".price")).toHaveText("Cotizar");
+  await expect(customCake.getByRole("link", { name: "Consultar Torta completa personalizada por WhatsApp" })).toBeVisible();
+
+  const experience = page.locator(".experience-banner");
+  await expect(experience.locator("img")).toHaveAttribute("src", "assets/caja-experiencia-fontana-original.jpg");
+  await expect(experience).toContainText("Abre la caja, cierra los ojos y disfruta el verdadero sabor de Fontana");
+  await expect(experience.locator("img")).toHaveCSS("mask-image", /radial-gradient/);
 });
 
 test("el menú permanece visible y la ubicación solo indica Mañongo", async ({ page }, testInfo) => {

@@ -449,8 +449,8 @@
     .dietary-seal-icon .seal-ring-inner{opacity:.72;stroke-width:1.35}
     .dietary-seal span{min-width:0;font-size:.64rem;font-weight:900;line-height:1.1;letter-spacing:.065em;text-align:center;text-transform:uppercase}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
-    @keyframes leaf-upper-breeze{0%,100%{transform:rotate(-1.7deg) skewX(-.42deg) scaleX(.992)}35%{transform:rotate(3deg) skewX(.68deg) scaleX(1.015)}62%{transform:rotate(.95deg) skewX(.22deg) scaleX(1.005)}84%{transform:rotate(-.85deg) skewX(-.24deg) scaleX(.996)}}
-    @keyframes leaf-lower-breeze{0%,100%{transform:rotate(1.6deg) skewY(.38deg) scaleX(1.006)}40%{transform:rotate(-2.5deg) skewY(-.58deg) scaleX(.987)}70%{transform:rotate(.85deg) skewY(.2deg) scaleX(1.008)}88%{transform:rotate(.25deg) skewY(.06deg) scaleX(1.002)}}
+    @keyframes leaf-upper-breeze{0%,100%{transform:rotate(-2.4deg) skewX(-.7deg) scaleX(.986)}35%{transform:rotate(4.8deg) skewX(1.08deg) scaleX(1.026)}62%{transform:rotate(1.5deg) skewX(.42deg) scaleX(1.011)}84%{transform:rotate(-1.35deg) skewX(-.48deg) scaleX(.993)}}
+    @keyframes leaf-lower-breeze{0%,100%{transform:rotate(3deg) skewY(.68deg) scaleX(1.012)}40%{transform:rotate(-3.6deg) skewY(-.92deg) scaleX(.979)}70%{transform:rotate(1.35deg) skewY(.38deg) scaleX(1.014)}88%{transform:rotate(.35deg) skewY(.1deg) scaleX(1.004)}}
     @keyframes menu-eyebrow-in{to{opacity:1;transform:translateX(0)}}
     @keyframes menu-letter-in{0%{opacity:0;transform:translateY(42px) scale(.78);filter:blur(5px)}65%{opacity:1;transform:translateY(-4px) scale(1.03);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
     @keyframes menu-line-in{to{opacity:1;transform:scaleX(1)}}
@@ -522,6 +522,13 @@
     .story-copy>p{color:rgba(255,250,242,.75)}
     .story .eyebrow{color:var(--lilac)}
     .story .check span{background:rgba(255,255,255,.1);color:var(--acid)}
+    .experience-banner{position:relative;display:grid;grid-template-columns:minmax(0,1.06fr) minmax(280px,.94fr);align-items:center;gap:clamp(22px,4vw,54px);width:min(1020px,100%);min-height:470px;margin:64px auto 0;padding:clamp(18px,3vw,34px);isolation:isolate;overflow:hidden}
+    .experience-banner:before{content:"";position:absolute;inset:6% 0;background:radial-gradient(circle at 33% 48%,rgba(217,174,220,.28),transparent 52%);z-index:-1;filter:blur(22px)}
+    .experience-photo-wrap{position:relative;min-height:430px;margin:0}
+    .experience-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 46%;-webkit-mask-image:radial-gradient(ellipse 54% 54% at 50% 50%,#000 50%,rgba(0,0,0,.92) 65%,rgba(0,0,0,.35) 82%,transparent 100%);mask-image:radial-gradient(ellipse 54% 54% at 50% 50%,#000 50%,rgba(0,0,0,.92) 65%,rgba(0,0,0,.35) 82%,transparent 100%)}
+    .experience-copy{position:relative;z-index:1;color:var(--cream)}
+    .experience-copy .eyebrow{color:var(--accent)}
+    .experience-copy blockquote{max-width:430px;margin:18px 0 0;font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:clamp(2.7rem,4.7vw,4.8rem);font-weight:400;line-height:.94;letter-spacing:.015em;text-transform:uppercase}
     .footer-logo{width:min(230px,70vw)!important;height:auto!important;max-height:none!important;border-radius:0!important;object-fit:contain!important;box-shadow:none!important}
     body,main,.menu-section,.story,.location,.testimonials,.final,footer{background:#441945}
     .location-card,.quote{background:var(--lilac);color:var(--plum-dark)}
@@ -579,6 +586,11 @@
       .diet{font-size:.58rem}
       .add{width:36px;height:36px;border-radius:11px;font-size:1.15rem}
       .story{padding:78px 0}
+      .experience-banner{grid-template-columns:1fr;gap:2px;min-height:0;margin-top:38px;padding:0 4px 12px;text-align:center}
+      .experience-banner:before{inset:0;background:radial-gradient(circle at 50% 34%,rgba(217,174,220,.28),transparent 60%)}
+      .experience-photo-wrap{min-height:390px}
+      .experience-copy{margin-top:-12px;padding:0 14px}
+      .experience-copy blockquote{margin:12px auto 0;font-size:clamp(2.4rem,11vw,3.25rem)}
       .filters{display:flex;flex-wrap:nowrap;overflow-x:auto;margin-right:-13px;padding:0 13px 8px 0;scrollbar-width:none;scroll-snap-type:x proximity}
       .filters::-webkit-scrollbar{display:none}.filter{flex:0 0 auto;scroll-snap-align:start}
       .empty-filter-state{min-height:240px;padding:38px 18px}
@@ -628,12 +640,12 @@
             <svg class="hero-logo-leaves" viewBox="0 0 1080 1080" aria-hidden="true" focusable="false">
               <g class="hero-logo-leaf hero-logo-leaf-upper">
                 <path class="hero-logo-leaf-art" d="M712 276C681 274 654 293 643 318C636 335 638 359 644 371C658 363 671 346 676 326C678 341 671 360 656 373C684 367 706 350 715 327C721 310 722 291 712 276Z">
-                  <animate class="hero-logo-leaf-wave" attributeName="d" dur="6.6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.28;.58;.82;1" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1;.42 0 .58 1" values="M712 276C681 274 654 293 643 318C636 335 638 359 644 371C658 363 671 346 676 326C678 341 671 360 656 373C684 367 706 350 715 327C721 310 722 291 712 276Z;M723 290C690 268 658 287 643 318C637 335 639 357 644 371C659 361 673 341 679 322C685 338 677 359 656 373C689 370 713 355 722 332C727 314 729 299 723 290Z;M701 263C675 282 650 301 643 318C635 336 637 360 644 371C656 366 668 351 673 331C672 346 666 363 656 373C678 362 697 343 709 320C715 300 713 278 701 263Z;M718 282C686 274 656 291 643 318C636 335 638 358 644 371C659 362 672 344 678 324C682 339 674 359 656 373C687 369 710 353 719 329C725 311 725 293 718 282Z;M712 276C681 274 654 293 643 318C636 335 638 359 644 371C658 363 671 346 676 326C678 341 671 360 656 373C684 367 706 350 715 327C721 310 722 291 712 276Z" />
+                  <animate class="hero-logo-leaf-wave" attributeName="d" dur="6.6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.28;.58;.82;1" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1;.42 0 .58 1" values="M712 276C681 274 654 293 643 318C636 335 638 359 644 371C658 363 671 346 676 326C678 341 671 360 656 373C684 367 706 350 715 327C721 310 722 291 712 276Z;M731 294C696 264 659 283 643 318C637 335 639 357 644 371C660 359 675 337 681 318C689 337 679 360 656 373C692 372 720 357 729 333C735 314 737 301 731 294Z;M694 256C671 284 648 303 643 318C635 337 637 361 644 371C655 368 666 353 671 334C669 350 664 365 656 373C675 359 693 338 705 314C712 294 708 271 694 256Z;M722 284C688 271 655 289 643 318C636 335 638 358 644 371C660 361 674 341 680 321C685 339 676 360 656 373C690 371 716 354 725 329C730 309 729 292 722 284Z;M712 276C681 274 654 293 643 318C636 335 638 359 644 371C658 363 671 346 676 326C678 341 671 360 656 373C684 367 706 350 715 327C721 310 722 291 712 276Z" />
                 </path>
               </g>
               <g class="hero-logo-leaf hero-logo-leaf-lower">
                 <path class="hero-logo-leaf-art" d="M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z">
-                  <animate class="hero-logo-leaf-wave" attributeName="d" begin="-1.8s" dur="7.1s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.3;.6;.84;1" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1;.42 0 .58 1" values="M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z;M639 392C652 399 666 401 681 398C668 406 653 408 641 401C655 418 673 426 689 426C710 428 730 421 740 405C731 390 715 380 696 376C675 374 654 380 639 392Z;M639 392C648 405 660 411 673 413C662 413 650 408 641 401C651 422 667 436 682 441C701 445 717 438 725 429C723 409 709 390 692 381C673 373 653 379 639 392Z;M639 392C651 401 665 404 679 402C667 408 653 408 641 401C654 419 671 429 687 430C707 432 726 424 737 412C730 395 714 382 695 377C675 373 654 380 639 392Z;M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z" />
+                  <animate class="hero-logo-leaf-wave" attributeName="d" begin="-1.8s" dur="7.1s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.3;.6;.84;1" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1;.42 0 .58 1" values="M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z;M639 392C654 397 669 397 685 393C670 404 654 409 641 401C657 417 676 423 693 423C716 425 737 416 747 399C735 386 717 378 698 375C675 373 653 380 639 392Z;M639 392C646 408 657 415 670 419C660 417 649 410 641 401C649 424 665 441 680 447C700 452 715 445 721 436C722 413 708 391 690 382C671 373 651 379 639 392Z;M639 392C652 400 667 402 682 399C668 408 653 409 641 401C655 419 674 428 691 428C713 430 733 421 744 408C735 391 716 380 696 376C674 373 653 380 639 392Z;M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z" />
                 </path>
               </g>
             </svg>
@@ -721,6 +733,10 @@
           <div class="empty-filter-state" id="emptyFilterState" hidden><div><span id="emptyFilterEyebrow">Actualización diaria</span><h3 id="emptyFilterTitle">Muy pronto</h3><p id="emptyFilterMessage"></p></div></div>
         </div>
         <p class="demo-note">Precios expresados en USD. Disponibilidad y pedidos especiales sujetos a confirmación por WhatsApp.</p>
+        <figure class="experience-banner">
+          <div class="experience-photo-wrap"><img class="experience-photo" src="assets/caja-experiencia-fontana-original.jpg" alt="Caja de regalo Fontana con torta, Fonkie y bombones"></div>
+          <figcaption class="experience-copy"><span class="eyebrow">Una experiencia Fontana</span><blockquote>“Abre la caja, cierra los ojos y disfruta el verdadero sabor de Fontana.”</blockquote></figcaption>
+        </figure>
       </div>
     </section>
 
