@@ -207,8 +207,8 @@ test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ pa
   })));
   keyframeRotations.forEach(rotations => {
     const amplitude = Math.max(...rotations) - Math.min(...rotations);
-    expect(amplitude).toBeGreaterThanOrEqual(6.5);
-    expect(amplitude).toBeLessThanOrEqual(7.5);
+    expect(amplitude).toBeGreaterThanOrEqual(12);
+    expect(amplitude).toBeLessThanOrEqual(12.5);
   });
   const firstTransform = await leaves.evaluateAll(elements => elements.map(element => getComputedStyle(element).transform));
   const firstShapes = await page.locator("path.hero-logo-leaf-art").evaluateAll(elements => elements.map(element => {
