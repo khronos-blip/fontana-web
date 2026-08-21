@@ -425,6 +425,25 @@ test("las reseñas reales avanzan automáticamente hacia la izquierda", async ({
   await page.waitForTimeout(4200);
   await expect.poll(() => track.evaluate(element => getComputedStyle(element).transform)).not.toBe(initialTransform);
   await expect(page.locator(".testimonial-dot").nth(1)).toHaveClass(/active/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const sectionGaps = await page.evaluate(() => {
+    const locationCard = document.querySelector("#ubicacion .location-card").getBoundingClientRect();
+    const reviewHeading = document.querySelector("#resenas .section-head").getBoundingClientRect();
+    const reviewDots = document.querySelector("#resenas .testimonial-dots").getBoundingClientRect();
+    const finalContent = document.querySelector(".final-inner").getBoundingClientRect();
+    const footerDivider = getComputedStyle(document.querySelector("main + footer"), "::before");
+    return {
+      locationToReviews: reviewHeading.top - locationCard.bottom,
+      reviewsToFinal: finalContent.top - reviewDots.bottom,
+      footerDividerColor: footerDivider.backgroundColor,
+      footerDividerHeight: footerDivider.height
+    };
+  });
+  expect(sectionGaps.locationToReviews).toBeLessThan(70);
+  expect(sectionGaps.reviewsToFinal).toBeLessThan(80);
+  expect(sectionGaps.footerDividerColor).toBe("rgba(217, 174, 220, 0.22)");
+  expect(sectionGaps.footerDividerHeight).toBe("1px");
+  await expect(page.locator("main + footer")).toHaveCSS("position", "relative");
 });
 
 test("el carrito usa fondo lila y el checkout toma los sabores automáticamente", async ({ page }, testInfo) => {

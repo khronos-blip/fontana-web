@@ -559,6 +559,8 @@
     .location-copy .eyebrow:before{background:var(--plum)}
     .quote small{color:#705e70}
     .final{color:var(--cream)}.final p{color:rgba(255,250,242,.72)}
+    main+footer{position:relative}
+    main+footer:before{content:"";position:absolute;top:0;left:50%;width:min(760px,calc(100% - 52px));height:1px;background:rgba(217,174,220,.22);transform:translateX(-50%)}
     .diet{color:var(--plum-dark)}
     .footer-brand{grid-column:1/-1;display:grid;justify-items:center;text-align:center}
     .footer-brand p{margin-left:auto;margin-right:auto}
@@ -624,6 +626,10 @@
       .add{width:36px;height:36px;border-radius:11px;font-size:1.15rem}
       .menu-section{padding-bottom:56px}
       .story{padding:58px 0 78px}
+      .location{padding:26px 0 20px}
+      .testimonials{padding:34px 0 26px}
+      .final{padding:42px 0 32px}
+      main+footer{padding-top:42px}
       .founder-note{grid-template-columns:148px minmax(0,1fr);gap:16px;margin-top:38px;padding-top:18px}
       .founder-portrait{border-radius:50px 50px 16px 16px}
       .founder-copy h3{font-size:1.45rem}
