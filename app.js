@@ -866,6 +866,15 @@
     observer.observe(intro);
   }
 
+  function setupHeroLeafMotion() {
+    const leaves = $(".hero-logo-leaves");
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!leaves || !reducedMotion || typeof leaves.pauseAnimations !== "function") return;
+    const syncMotion = () => reducedMotion.matches ? leaves.pauseAnimations() : leaves.unpauseAnimations();
+    syncMotion();
+    reducedMotion.addEventListener?.("change", syncMotion);
+  }
+
   function setupFitDialog() {
     const dialog = $("#para-ti");
     const closeButton = $("#closeFitDialog");
@@ -915,6 +924,7 @@
   setupFonkieBuilder();
   setupFombBuilder();
   setupFitDialog();
+  setupHeroLeafMotion();
   setupMenuIntro();
   populateOptions();
   toggleAddress();

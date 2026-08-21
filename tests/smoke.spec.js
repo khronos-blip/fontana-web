@@ -200,6 +200,7 @@ test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ pa
   await expect(page.locator("path.hero-logo-leaf-art")).toHaveCount(2);
   await expect(page.locator("image.hero-logo-leaf-art")).toHaveCount(0);
   await expect(page.locator("feDisplacementMap")).toHaveCount(0);
+  await expect(page.locator('animate[attributeName="d"]')).toHaveCount(2);
   const keyframeRotations = await leaves.evaluateAll(elements => elements.map(element => element.getAnimations()[0].effect.getKeyframes().map(frame => {
     const match = String(frame.transform).match(/rotate\((-?[\d.]+)deg\)/);
     return match ? Number(match[1]) : 0;
@@ -210,16 +211,34 @@ test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ pa
     expect(amplitude).toBeLessThanOrEqual(4);
   });
   const firstTransform = await leaves.evaluateAll(elements => elements.map(element => getComputedStyle(element).transform));
+  const firstShapes = await page.locator("path.hero-logo-leaf-art").evaluateAll(elements => elements.map(element => {
+    const box = element.getBBox();
+    return { x:box.x, y:box.y, width:box.width, height:box.height };
+  }));
   await page.waitForTimeout(1200);
   const secondTransform = await leaves.evaluateAll(elements => elements.map(element => getComputedStyle(element).transform));
+  const secondShapes = await page.locator("path.hero-logo-leaf-art").evaluateAll(elements => elements.map(element => {
+    const box = element.getBBox();
+    return { x:box.x, y:box.y, width:box.width, height:box.height };
+  }));
   expect(secondTransform).not.toEqual(firstTransform);
   expect(secondTransform[0]).not.toBe(secondTransform[1]);
+  expect(secondShapes).not.toEqual(firstShapes);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(leaves.first()).toHaveCSS("animation-name", "none");
   await expect(leaves.last()).toHaveCSS("animation-name", "none");
   await expect(leaves.first()).toHaveCSS("transform", "none");
   await expect(leaves.last()).toHaveCSS("transform", "none");
+  const reducedShape = await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {
+    const box = element.getBBox();
+    return { x:box.x, y:box.y, width:box.width, height:box.height };
+  });
+  await page.waitForTimeout(500);
+  expect(await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {
+    const box = element.getBBox();
+    return { x:box.x, y:box.y, width:box.width, height:box.height };
+  })).toEqual(reducedShape);
 });
 
 test("¿Es para ti? abre una vista propia con el mensaje, los sellos y el acceso al menú", async ({ page }, testInfo) => {
