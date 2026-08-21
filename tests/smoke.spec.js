@@ -678,6 +678,18 @@ test("el bloque negro fue eliminado y el footer centra la marca", async ({ page 
   expect(brokenImages).toEqual([]);
 });
 
+test("WhatsApp queda próximo y alineado con el menú en móvil", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const whatsapp = page.locator("#whatsappChatLink");
+  const menu = page.locator("#cartButton");
+  const [whatsappBox, menuBox] = await Promise.all([whatsapp.boundingBox(), menu.boundingBox()]);
+  expect(whatsappBox).not.toBeNull();
+  expect(menuBox).not.toBeNull();
+  expect(menuBox.x - (whatsappBox.x + whatsappBox.width)).toBeLessThanOrEqual(3);
+  expect(Math.abs((whatsappBox.y + whatsappBox.height / 2) - (menuBox.y + menuBox.height / 2))).toBeLessThanOrEqual(1);
+});
+
 test("Layer Cake se consulta por WhatsApp sin precio inventado ni carrito", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
