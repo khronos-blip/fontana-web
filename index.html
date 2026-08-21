@@ -402,7 +402,9 @@
     .hero-copy{display:grid;place-items:center;width:100%;max-width:none}
     .hero-logo-mark{position:relative;width:clamp(250px,29vw,360px);animation:logo-in .8s ease-out both}
     .hero-logo{display:block;width:100%;height:auto}
-    .hero-logo-leaves{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;transform-origin:63.5% 34%;animation:leaves-breeze 4.8s ease-in-out infinite}
+    .hero-logo-leaf{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;will-change:transform}
+    .hero-logo-leaf-upper{transform-origin:59.2% 34.6%;animation:leaf-upper-breeze 5.6s ease-in-out infinite}
+    .hero-logo-leaf-lower{transform-origin:59.2% 36.2%;animation:leaf-lower-breeze 4.9s ease-in-out -.9s infinite}
     .hero-scroll{position:absolute;left:50%;bottom:18px;z-index:5;transform:translateX(-50%);width:34px;height:34px;border:1px solid rgba(255,250,242,.42);border-radius:50%;display:grid;place-items:center;color:var(--cream);font-size:1rem}
     .hero-scroll:hover{border-color:var(--green);color:var(--green)}
     .fit-dialog{width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:var(--lilac);color:var(--plum-dark);overflow:auto}
@@ -444,11 +446,12 @@
     .dietary-seal-icon .seal-ring-inner{opacity:.72;stroke-width:1.35}
     .dietary-seal span{min-width:0;font-size:.64rem;font-weight:900;line-height:1.1;letter-spacing:.065em;text-align:center;text-transform:uppercase}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
-    @keyframes leaves-breeze{0%,100%{transform:translate3d(0,1px,0) rotate(-.35deg)}50%{transform:translate3d(0,-5px,0) rotate(.55deg)}}
+    @keyframes leaf-upper-breeze{0%,100%{transform:rotate(-1.1deg) skewX(-.5deg) scaleX(.995)}32%{transform:rotate(2deg) skewX(1deg) scaleX(1.012)}68%{transform:rotate(-.35deg) skewX(-.2deg) scaleX(1.003)}}
+    @keyframes leaf-lower-breeze{0%,100%{transform:rotate(.8deg) skewY(.35deg) scaleX(1.004)}38%{transform:rotate(-1.7deg) skewY(-.8deg) scaleX(.99)}72%{transform:rotate(.25deg) skewY(.15deg) scaleX(1.01)}}
     @keyframes menu-eyebrow-in{to{opacity:1;transform:translateX(0)}}
     @keyframes menu-letter-in{0%{opacity:0;transform:translateY(42px) scale(.78);filter:blur(5px)}65%{opacity:1;transform:translateY(-4px) scale(1.03);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
     @keyframes menu-line-in{to{opacity:1;transform:scaleX(1)}}
-    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaves{animation:none;transform:none}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
+    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf{animation:none;transform:none}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
 
     .allergy-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
     .allergy-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
@@ -617,7 +620,8 @@
           <h1 class="sr-only">Fontana sin gluten: postres y comidas fit en Carabobo</h1>
           <div class="hero-logo-mark">
             <img class="hero-logo" src="assets/fontana-logo-official-reverse-base.png" alt="Fontana">
-            <img class="hero-logo-leaves" src="assets/fontana-logo-leaves.png" alt="" aria-hidden="true">
+            <img class="hero-logo-leaf hero-logo-leaf-upper" src="assets/fontana-logo-leaf-upper.png" alt="" aria-hidden="true">
+            <img class="hero-logo-leaf hero-logo-leaf-lower" src="assets/fontana-logo-leaf-lower.png" alt="" aria-hidden="true">
           </div>
         </div>
       </div>
