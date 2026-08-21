@@ -357,8 +357,8 @@ test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y ext
 test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el producto centrado", async ({ page }, testInfo) => {
   await openPreview(page);
   const galleries = [
-    { filter: "Fonkies · Galletas", selector: ".fonkie-gallery", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card", screenshot: "galeria-fonkies-movil.png" },
-    { filter: "Fomb · Bombones", selector: ".builder-gallery", track: ".builder-gallery-track", card: ".builder-gallery-card", screenshot: "galeria-fomb-movil.png" }
+    { filter: "Fonkies · Galletas", selector: ".fonkie-gallery", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card", heading: "Galería de Fonkies", screenshot: "galeria-fonkies-movil.png" },
+    { filter: "Fomb · Bombones", selector: ".builder-gallery", track: ".builder-gallery-track", card: ".builder-gallery-card", heading: "Galería Fomb", screenshot: "galeria-fomb-movil.png" }
   ];
   for (const item of galleries) {
     await page.getByRole("button", { name: item.filter }).click();
@@ -367,6 +367,7 @@ test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el produc
     const track = gallery.locator(item.track);
     const card = track.locator(item.card).first();
     const image = card.locator("img");
+    await expect(gallery.locator("summary")).toContainText(item.heading);
     await expect(track).toBeVisible();
     await expect(gallery.locator(".gallery-swipe-cue")).toContainText("Desliza para ver más");
     await expect(image).toHaveCSS("object-fit", "cover");
