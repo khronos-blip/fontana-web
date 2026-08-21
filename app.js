@@ -391,6 +391,7 @@
       cart.push({
         id,
         productId: card.dataset.productId || id,
+        category: card.dataset.category || "",
         name: card.dataset.name,
         price: selectedPrice,
         image: card.dataset.image,
@@ -639,6 +640,7 @@
     drawerTitle.textContent = "Datos del pedido";
     renderAllergyItemNotes();
     setupRequestedDate();
+    toggleBirthdayCandleOption();
     toggleAllergyDetails();
     $("#customerName").focus();
   }
@@ -697,6 +699,22 @@
 
   }
 
+  function cartHasCake() {
+    const cakeIds = new Set($$('[data-category="cakes"]').flatMap(card => [card.dataset.id, card.dataset.productId].filter(Boolean)));
+    return cart.some(item => item.category === "cakes" || cakeIds.has(item.id) || cakeIds.has(item.productId));
+  }
+
+  function toggleBirthdayCandleOption() {
+    const panel = $("#birthdayCandlePanel");
+    const inputs = $$('input[name="birthdayCandle"]', panel);
+    const hasCake = cartHasCake();
+    panel.hidden = !hasCake;
+    inputs.forEach(input => {
+      input.required = hasCake;
+      if (!hasCake) input.checked = false;
+    });
+  }
+
   function renderAllergyItemNotes() {
     $("#allergyItemNotes").innerHTML = cart.map(item => {
       const fieldId = `allergyNote-${item.id.replace(/[^a-z0-9_-]/gi, "-")}`;
@@ -718,6 +736,8 @@
   function buildMessage(form) {
     const data = new FormData(form);
     const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const hasCake = cartHasCake();
+    const birthdayCandle = data.get("birthdayCandle");
     const hasAllergies = data.get("hasAllergies") === "yes";
     const allergyList = data.getAll("allergens");
     const otherAllergy = String(data.get("otherAllergy") || "").trim();
@@ -749,6 +769,7 @@
       `• Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
       `• Forma de pago: ${data.get("payment")}`,
       "• Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
+      hasCake ? `• Vela de cumpleaños: ${birthdayCandle === "yes" ? "Sí" : "No"}` : null,
       `• Condiciones, alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
       hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : null,
       ...itemAllergyLines,

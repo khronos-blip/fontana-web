@@ -377,7 +377,7 @@
     .testimonials{background:var(--surface)}.quote{background:var(--night);border-color:var(--night-line);border-radius:18px}.quote.featured{background:var(--accent);color:var(--night)}.person span{background:var(--surface-2);color:var(--accent)}
     .final{background:var(--night)}.final h2{font-size:clamp(4.5rem,9vw,8rem);line-height:.8;text-transform:uppercase}.final p{color:rgba(248,241,245,.55)}
     footer{background:#050405;border-top:1px solid var(--night-line)}
-    .drawer{background:linear-gradient(180deg,#633768 0%,#4f2655 100%);color:var(--paper)}.drawer-head,.drawer-foot{border-color:rgba(255,255,255,.18)}.drawer-foot{background:#6f4774}.close{background:rgba(255,255,255,.12);color:#f5dff6}.cart-item{border-color:rgba(255,255,255,.18)}.cart-item small,.cart-choices,.remove{color:rgba(255,255,255,.7)}.qty button,.back{background:rgba(255,255,255,.13);color:#f5dff6}.field label{color:var(--paper)}.field input,.field select,.field textarea{background:rgba(42,15,45,.38);border-color:rgba(255,255,255,.18);color:var(--paper)}.checkout-intro,.checkout-help,.drawer-foot small,.schedule-note{color:rgba(255,255,255,.7)}.drawer .allergy-panel{background:rgba(42,15,45,.28);border-color:rgba(255,255,255,.18)}
+    .drawer{background:linear-gradient(180deg,#633768 0%,#4f2655 100%);color:var(--paper)}.drawer-head,.drawer-foot{border-color:rgba(255,255,255,.18)}.drawer-foot{background:#6f4774}.close{background:rgba(255,255,255,.12);color:#f5dff6}.cart-item{border-color:rgba(255,255,255,.18)}.cart-item small,.cart-choices,.remove{color:rgba(255,255,255,.7)}.qty button,.back{background:rgba(255,255,255,.13);color:#f5dff6}.field label{color:var(--paper)}.field input,.field select,.field textarea{background:rgba(42,15,45,.38);border-color:rgba(255,255,255,.18);color:var(--paper)}.checkout-intro,.checkout-help,.drawer-foot small,.schedule-note{color:rgba(255,255,255,.7)}.drawer .allergy-panel,.drawer .checkout-option-panel{background:rgba(42,15,45,.28);border-color:rgba(255,255,255,.18)}
 
     @media(max-width:960px){
       .hero h1{font-size:clamp(5rem,15vw,8rem)}
@@ -456,8 +456,8 @@
     @keyframes menu-line-in{to{opacity:1;transform:scaleX(1)}}
     @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf{animation:none;transform:none}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
 
-    .allergy-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
-    .allergy-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
+    .allergy-panel,.checkout-option-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
+    .allergy-panel legend,.checkout-option-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
     .choice-row,.allergen-grid{display:flex;flex-wrap:wrap;gap:10px 16px}
     .choice{display:flex;align-items:center;gap:7px;color:rgba(248,241,245,.78);font-size:.79rem}
     .choice input{accent-color:var(--accent)}
@@ -812,6 +812,10 @@
         <div class="field" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
         <div class="field"><label id="requestedDateLabel" for="requestedDate">Fecha deseada</label><input id="requestedDate" name="requestedDate" type="date" required><p class="schedule-note" id="requestedDateNotice"></p></div>
         <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select><p class="schedule-note" id="paymentNotice">Los datos se envían por WhatsApp. Se requiere el 100% del pago por adelantado.</p></div>
+        <fieldset class="checkout-option-panel" id="birthdayCandlePanel" hidden>
+          <legend>¿Necesitas vela de cumpleaños?</legend>
+          <div class="choice-row"><label class="choice"><input type="radio" name="birthdayCandle" value="no"> No</label><label class="choice"><input type="radio" name="birthdayCandle" value="yes"> Sí</label></div>
+        </fieldset>
         <fieldset class="allergy-panel">
           <legend>¿Tienes alguna condición, alergia o intolerancia alimentaria?</legend>
           <div class="choice-row"><label class="choice"><input type="radio" name="hasAllergies" value="no" required> No</label><label class="choice"><input type="radio" name="hasAllergies" value="yes" required> Sí</label></div>

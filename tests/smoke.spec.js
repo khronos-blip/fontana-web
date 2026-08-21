@@ -16,7 +16,7 @@ async function openFlavorChoice(page, builderSelector) {
   await expect(panel).toHaveAttribute("open", "");
 }
 
-async function fillCheckout(page, { allergies = false } = {}) {
+async function fillCheckout(page, { allergies = false, birthdayCandle = false } = {}) {
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await page.locator("#customerName").fill("Andrea Pérez");
@@ -24,6 +24,9 @@ async function fillCheckout(page, { allergies = false } = {}) {
   const minimumDate = await page.locator("#requestedDate").getAttribute("min");
   await page.locator("#requestedDate").fill(minimumDate);
   await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
+  if (await page.locator("#birthdayCandlePanel").isVisible()) {
+    await page.locator(`input[name="birthdayCandle"][value="${birthdayCandle ? "yes" : "no"}"]`).check();
+  }
   await page.locator(`input[name="hasAllergies"][value="${allergies ? "yes" : "no"}"]`).check();
   if (allergies) {
     await page.locator('input[name="allergens"][value="Frutos secos"]').check();
@@ -48,9 +51,30 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   expect(message).toContain("• Fecha deseada para Pickup en Mañongo (detalles por WhatsApp):");
   expect(message).toContain("• Forma de pago: Pago Móvil");
   expect(message).toContain("• Condición de pago: 100% por adelantado; los datos se envían por WhatsApp");
+  expect(message).toContain("• Vela de cumpleaños: No");
   expect(message).toContain("• Condiciones, alergias o intolerancias: No indica");
   expect(message).toContain("• Estado: pendiente de confirmación\nEnviaré el comprobante por este chat.");
   expect(message).toMatch(/\*El pedido se confirma únicamente cuando Fontana valide disponibilidad, pago y, si aplica, las condiciones, alergias o intolerancias indicadas\.\*$/);
+});
+
+test("checkout ofrece vela de cumpleaños solo cuando el pedido incluye una torta", async ({ page }) => {
+  await openPreview(page);
+  await page.locator('[data-id="pistacho"] .add').click();
+  await fillCheckout(page, { birthdayCandle: true });
+  await expect(page.locator("#birthdayCandlePanel")).toBeVisible();
+  await expect(page.locator('input[name="birthdayCandle"]')).toHaveCount(2);
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  expect(await page.evaluate(() => window.__copiedOrder)).toContain("• Vela de cumpleaños: Sí");
+
+  await page.reload();
+  await page.evaluate(() => localStorage.removeItem("fontana-cart-v1"));
+  await page.reload();
+  await page.getByRole("button", { name: "Bebida" }).click();
+  await page.locator('[data-product-id="agua-minalba-600"] .add').click();
+  await fillCheckout(page);
+  await expect(page.locator("#birthdayCandlePanel")).toBeHidden();
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  expect(await page.evaluate(() => window.__copiedOrder)).not.toContain("Vela de cumpleaños");
 });
 
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
