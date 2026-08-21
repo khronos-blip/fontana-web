@@ -746,7 +746,7 @@ test("la torta personalizada usa la foto original y la experiencia muestra la ca
   const experience = page.locator(".experience-banner");
   await expect(experience.locator("img")).toHaveAttribute("src", "assets/caja-experiencia-fontana-original.jpg");
   await expect(experience).toContainText("Abre la caja, cierra los ojos y disfruta el verdadero sabor de Fontana");
-  await expect(experience.locator("img")).toHaveCSS("mask-image", /radial-gradient/);
+  await expect(experience.locator("img")).toHaveCSS("mask-image", /radial-gradient\(48% 47%/);
 
   const founder = page.locator(".founder-note");
   await expect(founder).toContainText("El rostro detrás de Fontana");
