@@ -418,6 +418,9 @@ test("las reseñas reales avanzan automáticamente hacia la izquierda", async ({
   await expect(page.locator(".testimonial-dot")).toHaveCount(6);
   await expect(track.locator(".review-source")).toHaveCount(7);
   await expect(page.locator(".testimonials .demo-note")).toHaveCount(0);
+  await expect(track.locator("blockquote").nth(1)).toContainText("¡Qué delicia todo!");
+  await expect(track.locator("blockquote").nth(4)).toContainText("¡Estos panzerotti");
+  await expect(track.locator("blockquote").nth(5)).toContainText("le encantaron");
   const initialTransform = await track.evaluate(element => getComputedStyle(element).transform);
   await page.waitForTimeout(4200);
   await expect.poll(() => track.evaluate(element => getComputedStyle(element).transform)).not.toBe(initialTransform);
@@ -841,6 +844,11 @@ test("el menú permanece visible y la ubicación solo indica Mañongo", async ({
   await expect(page.locator("#ubicacion .location-copy p")).toHaveCSS("color", "rgb(79, 22, 81)");
   await expect(page.locator("#ubicacion .hours b").first()).toHaveCSS("color", "rgb(79, 22, 81)");
   await expect(page.locator("#ubicacion .hours span").first()).toHaveCSS("color", "rgb(79, 22, 81)");
+  if (testInfo.project.name === "mobile") {
+    const locationCard = page.locator("#ubicacion .location-card");
+    await expect(locationCard).toHaveCSS("min-height", "0px");
+    expect((await locationCard.boundingBox()).height).toBeLessThan(620);
+  }
   await fitLink.click();
   await expect(page.locator("#para-ti")).toHaveAttribute("open", "");
   await expect(page.locator("#para-ti h2")).toBeVisible();
