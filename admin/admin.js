@@ -73,6 +73,10 @@
     const next = source && Array.isArray(source.products) && source.builders ? clone(source) : {};
     next.version = 2;
     next.updatedAt ||= null;
+    next.settings = {
+      ...(next.settings || {}),
+      stockTodayOpen: next.settings?.stockTodayOpen !== false
+    };
     const sourceProducts = next.products || clone(originalProducts);
     const sourceIds = new Set(sourceProducts.map(product => product.id));
     const productsWithNewDefaults = [
@@ -108,7 +112,7 @@
   }
 
   function defaultState() {
-    return normalizeState({ version:2, updatedAt:null, products:clone(originalProducts), builders:clone(originalBuilders) });
+    return normalizeState({ version:2, updatedAt:null, settings:{stockTodayOpen:true}, products:clone(originalProducts), builders:clone(originalBuilders) });
   }
 
   function readState() {
@@ -130,6 +134,7 @@
   let inventorySummary = {tracked:0,available:0,reserved:0,soldOut:0};
   let orders = [];
   let orderSummary = {reserved:0,confirmed:0,expired:0};
+  let activityItems = [];
 
   async function apiFetch(path, options = {}) {
     if (!apiBase) throw new Error("API_NOT_CONFIGURED");
@@ -160,7 +165,7 @@
     $("#loginView").hidden = true;
     $("#adminApp").hidden = false;
     renderAll();
-    await Promise.all([loadSales(), loadInventory(), loadOrders()]);
+    await Promise.all([loadSales(), loadInventory(), loadOrders(), loadActivity()]);
   }
 
   function base64UrlToBytes(value) {
@@ -247,6 +252,7 @@
     try {
       if (localMode) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        activityItems.unshift({username:currentSession?.username || "revision-local",action:"catalog_save",details:"Catálogo actualizado",createdAt:state.updatedAt});
       } else {
         const payload = await apiFetch("/v1/admin/catalog", {method:"PUT", body:JSON.stringify({state, expectedRevision:remoteRevision})});
         remoteRevision = Number(payload?.revision || remoteRevision + 1);
@@ -254,6 +260,7 @@
       dirty = false;
       $("#saveStatus").textContent = localMode ? "Borrador local guardado" : "Publicado para todos";
       renderAll();
+      if (!localMode) await loadActivity();
       toast(localMode ? "Cambios guardados en este navegador" : "Cambios publicados en la tienda");
     } catch (error) {
       if (error.status === 409) toast("El catálogo cambió en otro dispositivo. Recarga antes de guardar.");
@@ -269,6 +276,7 @@
     if (name === "sales") loadSales();
     if (name === "inventory") loadInventory();
     if (name === "orders") loadOrders();
+    if (name === "activity-log") loadActivity();
     closeAdminMenu();
     window.scrollTo({top:0,behavior:"smooth"});
   }
@@ -291,6 +299,93 @@
     return money(Number(value || 0) / 100);
   }
 
+  function activityMeta(action) {
+    const groups = {
+      catalog_save:["Catálogo publicado","catalog"], image_upload:["Imagen subida","catalog"],
+      inventory_adjust:["Inventario ajustado","inventory"], order_confirm:["Pedido confirmado","orders"], order_cancel:["Pedido cancelado","orders"],
+      sale_create:["Venta registrada","sales"], sale_update:["Venta actualizada","sales"], sale_delete:["Venta eliminada","sales"],
+      login:["Inicio de sesión","security"], passkey_login:["Acceso con Face ID","security"], passkey_add:["Face ID activado","security"], passkey_delete:["Face ID eliminado","security"], user_create:["Usuario creado","security"], user_deactivate:["Usuario desactivado","security"], setup:["Panel configurado","security"]
+    };
+    return groups[action] || [String(action || "Cambio").replaceAll("_"," "),"other"];
+  }
+
+  async function loadActivity() {
+    try {
+      if (localMode) {
+        if (!activityItems.length && state.updatedAt) activityItems = [{username:currentSession?.username || "revision-local",action:"catalog_save",details:"Catálogo local actualizado",createdAt:state.updatedAt}];
+      } else {
+        const payload = await apiFetch("/v1/admin/activity");
+        activityItems = payload.items || [];
+      }
+      renderActivity();
+      renderRecentActivity();
+    } catch (error) {
+      if (error.status === 401) showLogin("Tu sesión venció.");
+      else toast("No se pudo cargar el historial.");
+    }
+  }
+
+  function filteredActivity() {
+    const query = String($("#activitySearch")?.value || "").trim().toLowerCase();
+    const type = $("#activityTypeFilter")?.value || "all";
+    return activityItems.filter(item => {
+      const [label,group] = activityMeta(item.action);
+      const matchesSearch = !query || `${item.username} ${label} ${item.details}`.toLowerCase().includes(query);
+      return matchesSearch && (type === "all" || type === group);
+    });
+  }
+
+  function activityRow(item, compact = false) {
+    const [label,group] = activityMeta(item.action);
+    const dateOptions = compact ? {timeStyle:"short"} : {dateStyle:"medium",timeStyle:"short"};
+    const date = item.createdAt ? new Date(item.createdAt).toLocaleString("es-VE",dateOptions) : "Fecha no disponible";
+    return `<article class="activity-row ${compact ? "compact-activity" : ""}"><span class="activity-dot ${escapeHtml(group)}"></span><div><h3>${escapeHtml(label)}</h3><p>${escapeHtml(item.details || "Sin detalle")}</p><small>${escapeHtml(item.username || "sistema")} · ${escapeHtml(date)}</small></div></article>`;
+  }
+
+  function renderActivity() {
+    if (!$("#activityList")) return;
+    const items = filteredActivity();
+    $("#activityList").innerHTML = items.length ? items.map(item => activityRow(item)).join("") : '<div class="empty-list">No hay cambios que coincidan con estos filtros.</div>';
+  }
+
+  function renderRecentActivity() {
+    if (!$("#activity")) return;
+    const items = activityItems.slice(0,3);
+    $("#activity").innerHTML = items.length ? items.map(item => activityRow(item,true)).join("") : `<div><b>${state.updatedAt ? new Date(state.updatedAt).toLocaleString("es-VE") : "Catálogo inicial"}</b><p>Aún no hay cambios registrados.</p></div>`;
+  }
+
+  function renderDashboardOperations() {
+    if (!$("#attentionGrid")) return;
+    const lowStock = inventory.filter(item => item.trackStock && item.available > 0 && item.available <= 3).length;
+    const soldOut = inventory.filter(item => item.trackStock && item.available === 0).length;
+    const reserved = Number(orderSummary.reserved || 0);
+    const pending = Number(salesSummary.pendingCount || 0);
+    const cards = [
+      [lowStock,"Stock bajo","Reponer ahora","low-stock"],
+      [soldOut,"Agotados","Revisar inventario","sold-out"],
+      [reserved,"Reservas activas","Gestionar pedidos","reservations"],
+      [pending,"Pendientes de cobro","Revisar ventas","pending-sales"]
+    ];
+    $("#attentionGrid").innerHTML = cards.map(([value,label,copy,action]) => `<button type="button" class="attention-card ${Number(value)>0?"needs-attention":"is-clear"}" data-attention-action="${action}"><b>${Number(value)}</b><span>${label}</span><small>${Number(value)>0?copy:"Todo al día"} →</small></button>`).join("");
+    const open = state.settings?.stockTodayOpen !== false;
+    $("#stockDayToggle").className = `day-toggle ${open ? "is-open" : "is-closed"}`;
+    $("#stockDayToggle").innerHTML = `<span>${open ? "● Abierto" : "● Cerrado"}</span><b>${open ? "Cerrar Stock de hoy" : "Abrir Stock de hoy"}</b>`;
+    const today = new Date().toISOString().slice(0,10);
+    const todaySales = sales.filter(item => item.status === "confirmed" && item.soldAt === today);
+    $("#todaySummary").innerHTML = `<div><span>Resumen de hoy</span><b>${escapeHtml(centsMoney(salesSummary.todayCents))}</b><small>Ingresos confirmados</small></div><div><b>${todaySales.length}</b><small>Ventas confirmadas</small></div><div><b>${reserved}</b><small>Pedidos por confirmar</small></div><button type="button" data-view-link="sales">Ver ventas →</button>`;
+    $("#todaySummary [data-view-link]").addEventListener("click",()=>showView("sales"));
+  }
+
+  async function toggleStockDay() {
+    const willOpen = state.settings?.stockTodayOpen === false;
+    state.settings ||= {};
+    state.settings.stockTodayOpen = willOpen;
+    markDirty();
+    renderDashboardOperations();
+    await saveState();
+    toast(willOpen ? "Stock de hoy abierto en la tienda." : "Stock de hoy cerrado hasta que vuelvas a abrirlo.");
+  }
+
   function localInventoryItems() {
     const rows = state.products.filter(product => !product.deleted).map(product => ({sku:`product:${product.id}:base:base`,kind:"product",label:product.name,optionSummary:"",onHand:Number(product.stockQuantity || 0),reserved:0,available:Number(product.stockQuantity || 0),trackStock:product.stockQuantity !== null}));
     ["fonkies","fomb"].forEach(kind => state.builders[kind].flavors.forEach(flavor => rows.push({sku:`builder:${kind}:${flavor.name.toLowerCase().replace(/[^a-z0-9]+/g,"-")}`,kind,label:flavor.name,optionSummary:kind === "fonkies" ? "Fonkies" : "Fomb",onHand:Number(flavor.stockQuantity || 0),reserved:0,available:Number(flavor.stockQuantity || 0),trackStock:flavor.stockQuantity !== null})));
@@ -309,6 +404,7 @@
         inventorySummary = payload.summary || inventorySummary;
       }
       renderInventory();
+      renderDashboardOperations();
     } catch (error) { if (error.status === 401) showLogin("Tu sesión venció."); else toast("No se pudo cargar el inventario."); }
   }
 
@@ -316,9 +412,13 @@
     if (!$("#inventoryList")) return;
     const query = String($("#inventorySearch")?.value || "").toLowerCase();
     const kind = $("#inventoryKindFilter")?.value || "all";
-    const items = inventory.filter(item => (!query || `${item.label} ${item.optionSummary}`.toLowerCase().includes(query)) && (kind === "all" || item.kind === kind));
+    const level = $("#inventoryStateFilter")?.value || "all";
+    const items = inventory.filter(item => {
+      const levelMatch = level === "all" || (level === "low" && item.trackStock && item.available > 0 && item.available <= 3) || (level === "soldout" && item.trackStock && item.available === 0) || (level === "reserved" && item.reserved > 0);
+      return (!query || `${item.label} ${item.optionSummary}`.toLowerCase().includes(query)) && (kind === "all" || item.kind === kind) && levelMatch;
+    });
     $("#inventoryStats").innerHTML = [[inventorySummary.available,"Disponibles"],[inventorySummary.reserved,"Reservadas"],[inventorySummary.tracked,"Artículos controlados"],[inventorySummary.soldOut,"Agotados"]].map(([value,label])=>`<article class="stat"><b>${Number(value||0)}</b><span>${label}</span></article>`).join("");
-    $("#inventoryList").innerHTML = items.length ? items.map(item => `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy"><span class="eyebrow">${escapeHtml(item.optionSummary || item.kind)}</span><h3>${escapeHtml(item.label)}</h3><p>${item.trackStock ? `${item.available} disponible${item.available===1?"":"s"} · ${item.reserved} reservada${item.reserved===1?"":"s"}` : "Sin control numérico"}</p></div><label>Cantidad total<input data-stock-value type="number" min="${Number(item.reserved||0)}" step="1" value="${Number(item.onHand||0)}"></label><label class="switch"><input data-track-stock type="checkbox" ${item.trackStock?"checked":""}><span>Control activo</span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`).join("") : '<div class="empty-list">No hay artículos que coincidan.</div>';
+    $("#inventoryList").innerHTML = items.length ? items.map(item => `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy"><span class="eyebrow">${escapeHtml(item.optionSummary || item.kind)}</span><h3>${escapeHtml(item.label)}</h3><p>${item.trackStock ? `${item.available} disponible${item.available===1?"":"s"} · ${item.reserved} reservada${item.reserved===1?"":"s"}` : "Sin control numérico"}</p></div><label>Cantidad total<input data-stock-value type="number" min="${Number(item.reserved||0)}" step="1" value="${Number(item.onHand||0)}"></label><div class="restock-buttons" aria-label="Reposición rápida"><button type="button" data-stock-delta="1">+1</button><button type="button" data-stock-delta="5">+5</button></div><label class="switch"><input data-track-stock type="checkbox" ${item.trackStock?"checked":""}><span>Control activo</span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`).join("") : '<div class="empty-list">No hay artículos que coincidan.</div>';
   }
 
   async function loadOrders() {
@@ -326,6 +426,7 @@
       if (localMode) { orders=[]; orderSummary={reserved:0,confirmed:0,expired:0}; }
       else { const payload=await apiFetch("/v1/admin/orders"); orders=payload.items||[]; orderSummary=payload.summary||orderSummary; }
       renderOrders();
+      renderDashboardOperations();
     } catch (error) { if (error.status===401) showLogin("Tu sesión venció."); else toast("No se pudieron cargar los pedidos."); }
   }
 
@@ -372,6 +473,7 @@
       }
       renderSales();
       renderSalesSnapshot();
+      renderDashboardOperations();
     } catch (error) {
       if (error.status === 401) showLogin("Tu sesión venció. Inicia sesión nuevamente.");
       else toast("No se pudo cargar el registro de ventas.");
@@ -429,7 +531,8 @@
       [products.filter(product => product.immediate).length,"Stock de hoy","immediate"]
     ];
     $("#stats").innerHTML = stats.map(([value,label,filter]) => `<button type="button" class="stat stat-link" data-dashboard-filter="${filter}" aria-label="Ver ${label.toLowerCase()}"><b>${value}</b><span>${label}</span><i aria-hidden="true">Ver →</i></button>`).join("");
-    $("#activity").innerHTML = state.updatedAt ? `<div><b>${new Date(state.updatedAt).toLocaleString("es-VE")}</b><p>${localMode ? "El borrador local está actualizado." : "La tienda pública está actualizada."}</p></div>` : `<div><b>Catálogo inicial</b><p>Guarda el primer cambio para publicarlo.</p></div>`;
+    renderRecentActivity();
+    renderDashboardOperations();
   }
 
   function openProductFilter(status = "all") {
@@ -708,26 +811,47 @@
   $("#productFilterSummary").addEventListener("click", event => {
     if (event.target.closest("[data-clear-product-filter]")) openProductFilter("all");
   });
+  $("#attentionGrid").addEventListener("click", event => {
+    const button = event.target.closest("[data-attention-action]");
+    if (!button) return;
+    const action = button.dataset.attentionAction;
+    if (action === "reservations") showView("orders");
+    else if (action === "pending-sales") { $("#saleStatusFilter").value = "pending"; showView("sales"); }
+    else {
+      $("#inventorySearch").value = "";
+      $("#inventoryKindFilter").value = "all";
+      $("#inventoryStateFilter").value = action === "low-stock" ? "low" : "soldout";
+      showView("inventory");
+    }
+  });
+  $("#stockDayToggle").addEventListener("click", toggleStockDay);
   $$('[data-action="new-product"]').forEach(button => button.addEventListener("click", () => openProduct()));
   $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => button.closest("dialog")?.close()));
   $("#saveAll").addEventListener("click", () => saveState());
   ["#productSearch","#categoryFilter","#statusFilter"].forEach(selector => $(selector).addEventListener("input", renderProducts));
   ["#saleSearch","#saleStatusFilter","#salePeriodFilter"].forEach(selector => $(selector).addEventListener("input", renderSales));
-  ["#inventorySearch","#inventoryKindFilter"].forEach(selector => $(selector).addEventListener("input", renderInventory));
+  ["#inventorySearch","#inventoryKindFilter","#inventoryStateFilter"].forEach(selector => $(selector).addEventListener("input", renderInventory));
   ["#orderSearch","#orderStatusFilter"].forEach(selector => $(selector).addEventListener("input", renderOrders));
+  ["#activitySearch","#activityTypeFilter"].forEach(selector => $(selector).addEventListener("input", renderActivity));
   $("#refreshInventoryButton").addEventListener("click", loadInventory);
   $("#refreshOrdersButton").addEventListener("click", loadOrders);
+  $("#refreshActivityButton").addEventListener("click", loadActivity);
   $("#inventoryList").addEventListener("click", async event => {
-    const button=event.target.closest("[data-save-stock]");
+    const deltaButton=event.target.closest("[data-stock-delta]");
+    const button=event.target.closest("[data-save-stock]") || deltaButton;
     if (!button) return;
     const row=button.closest("[data-sku]");
+    const input=$("[data-stock-value]",row);
+    if(deltaButton) input.value=String(Math.max(Number(input.min||0),Number(input.value||0)+Number(deltaButton.dataset.stockDelta||0)));
     const payload={onHand:Number($("[data-stock-value]",row).value),trackStock:$("[data-track-stock]",row).checked};
     button.disabled=true;
     try {
-      if (localMode) toast("Vista local: publica el panel para compartir el inventario.");
-      else await apiFetch(`/v1/admin/inventory/${encodeURIComponent(row.dataset.sku)}`,{method:"PUT",body:JSON.stringify(payload)});
-      toast("Cantidad actualizada para todos los clientes.");
-      await loadInventory();
+      if (localMode) {
+        const item=inventory.find(entry=>entry.sku===row.dataset.sku);
+        if(item){item.onHand=payload.onHand;item.available=Math.max(0,payload.onHand-Number(item.reserved||0));item.trackStock=payload.trackStock;}
+      } else await apiFetch(`/v1/admin/inventory/${encodeURIComponent(row.dataset.sku)}`,{method:"PUT",body:JSON.stringify({...payload,note:deltaButton?`Reposición rápida +${deltaButton.dataset.stockDelta}`:"Ajuste manual desde el panel"})});
+      toast(deltaButton?`Se agregaron ${deltaButton.dataset.stockDelta} unidades.`:"Cantidad actualizada para todos los clientes.");
+      if(localMode){renderInventory();renderDashboardOperations();}else await Promise.all([loadInventory(),loadActivity()]);
     } catch(error){toast(error.message||"No se pudo actualizar la cantidad.");}
     finally{button.disabled=false;}
   });
@@ -737,7 +861,7 @@
     const action=button.dataset.orderAction;
     if(action!=="extend"&&!confirm(action==="confirm"?"¿Confirmar el pago y descontar definitivamente este stock?":"¿Cancelar el pedido y devolver el stock?"))return;
     button.disabled=true;
-    try{await apiFetch(`/v1/admin/orders/${encodeURIComponent(button.dataset.orderId)}/${action}`,{method:"POST",body:"{}"});toast(action==="confirm"?"Pedido confirmado, stock descontado y venta registrada.":action==="cancel"?"Reserva cancelada y stock devuelto.":"Reserva extendida 30 minutos.");await Promise.all([loadOrders(),loadInventory(),loadSales()]);}
+    try{await apiFetch(`/v1/admin/orders/${encodeURIComponent(button.dataset.orderId)}/${action}`,{method:"POST",body:"{}"});toast(action==="confirm"?"Pedido confirmado, stock descontado y venta registrada.":action==="cancel"?"Reserva cancelada y stock devuelto.":"Reserva extendida 30 minutos.");await Promise.all([loadOrders(),loadInventory(),loadSales(),loadActivity()]);}
     catch(error){toast(error.message||"No se pudo procesar el pedido.");}
     finally{button.disabled=false;}
   });
@@ -756,7 +880,7 @@
         await apiFetch(`/v1/admin/sales/${encodeURIComponent(remove.dataset.deleteSale)}`, {method:"DELETE",body:"{}"});
       }
       toast("Venta eliminada del registro.");
-      await loadSales();
+      await Promise.all([loadSales(),loadActivity()]);
     } catch (error) { toast(error.message || "No se pudo eliminar la venta."); }
   });
 
@@ -781,7 +905,7 @@
       }
       $("#saleDialog").close();
       toast(id ? "Venta actualizada." : "Venta registrada.");
-      await loadSales();
+      await Promise.all([loadSales(),loadActivity()]);
     } catch (error) { toast(error.message || "No se pudo guardar la venta."); }
     finally { submit.disabled = false; }
   });

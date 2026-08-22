@@ -6,6 +6,7 @@
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
   const adminStorageKey = "fontana-admin-catalog-v1";
   const adminState = await readAdminState();
+  const stockTodayOpen = adminState?.settings?.stockTodayOpen !== false;
   const drawer = $("#drawer");
   const backdrop = $("#backdrop");
   const toast = $("#toast");
@@ -174,7 +175,7 @@
   function renderBuilderTags(element, builder) {
     $(".builder-admin-tags", element)?.remove();
     const soldOut = builder.status === "sold-out" || builder.stockQuantity === 0;
-    const labels = [soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", builder.immediate ? "STOCK DE HOY" : ""].filter(Boolean);
+    const labels = [soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", stockTodayOpen && builder.immediate ? "STOCK DE HOY" : ""].filter(Boolean);
     if (!labels.length) return;
     const tags = document.createElement("div");
     tags.className = "builder-admin-tags";
@@ -188,7 +189,7 @@
     const fonkieBuilder = $(".fonkie-builder");
     if (fonkies && fonkieBuilder) {
       fonkieBuilder.dataset.promo = String(Boolean(fonkies.promo));
-      fonkieBuilder.dataset.immediate = String(Boolean(fonkies.immediate));
+      fonkieBuilder.dataset.immediate = String(stockTodayOpen && Boolean(fonkies.immediate));
       fonkieBuilder.dataset.new = String(Boolean(fonkies.isNew));
       fonkieBuilder.dataset.preorder = String(Boolean(fonkies.allowPreorder));
       fonkieBuilder.dataset.glutenFree = String(fonkies.glutenFree !== false);
@@ -214,7 +215,7 @@
     const fombBuilder = $(".fomb-builder");
     if (fomb && fombBuilder) {
       fombBuilder.dataset.promo = String(Boolean(fomb.promo));
-      fombBuilder.dataset.immediate = String(Boolean(fomb.immediate));
+      fombBuilder.dataset.immediate = String(stockTodayOpen && Boolean(fomb.immediate));
       fombBuilder.dataset.new = String(Boolean(fomb.isNew));
       fombBuilder.dataset.preorder = String(Boolean(fomb.allowPreorder));
       fombBuilder.dataset.glutenFree = String(fomb.glutenFree !== false);
@@ -291,7 +292,7 @@
       if (preorder) badges.push("PRE-ORDER");
       if (product.isNew) badges.push("NUEVO");
       if (product.promo) badges.push("PROMOCIÓN DEL DÍA");
-      if (product.immediate) badges.push("STOCK DE HOY");
+      if (stockTodayOpen && product.immediate) badges.push("STOCK DE HOY");
       (Array.isArray(product.customLabels) ? product.customLabels : []).forEach(label => { if (label) badges.push(String(label).slice(0,40)); });
       if (!badges.length && category === "beverages") badges.push("BEBIDA");
       const image = product.image
@@ -319,7 +320,7 @@
         ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">Consultar por WhatsApp</a>`
         : "";
       const footerCopy = product.weight || product.availabilityLabel;
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${Boolean(product.immediate)}" data-sold-out="${soldOut}" data-preorder="${preorder}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : quoteButton}</div></div></article>`;
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${stockTodayOpen && Boolean(product.immediate)}" data-sold-out="${soldOut}" data-preorder="${preorder}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }

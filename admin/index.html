@@ -42,6 +42,7 @@
       <div class="top-actions"><span class="save-status" id="saveStatus">Sin cambios pendientes</span><button class="primary compact" id="saveAll" type="button" aria-label="Guardar cambios">Guardar y publicar</button><button class="admin-menu-button" id="adminMenuButton" type="button" aria-label="Abrir menú de configuración" aria-expanded="false" aria-controls="adminMenu"><span></span><span></span><span></span></button></div>
       <div class="admin-menu" id="adminMenu" hidden>
         <span class="eyebrow">Configuración</span>
+        <button type="button" data-menu-view="activity-log">Historial de cambios</button>
         <button type="button" data-menu-view="security">Acceso, usuarios y Face ID</button>
         <button type="button" data-menu-view="backup">Copias y publicación</button>
         <a href="../" target="_blank" rel="noopener">Ver tienda ↗</a>
@@ -66,9 +67,14 @@
           <div class="page-head"><div><span class="eyebrow">Centro de control</span><h1>Buenos días, Fontana</h1><p>Todo lo necesario para mantener el menú claro y actualizado.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>
           <div class="stats" id="stats"></div>
           <div class="sales-snapshot" id="salesSnapshot"><span>Cargando ventas…</span></div>
+          <section class="attention-center" aria-labelledby="attentionTitle">
+            <div class="attention-head"><div><span class="eyebrow">Atención de hoy</span><h2 id="attentionTitle">Lo que necesita una revisión</h2></div><button class="day-toggle" id="stockDayToggle" type="button"></button></div>
+            <div class="attention-grid" id="attentionGrid"></div>
+          </section>
+          <div class="today-summary" id="todaySummary"></div>
           <div class="panel-grid">
             <article class="panel"><div class="panel-head"><div><span class="eyebrow">Acciones rápidas</span><h2>Actualiza el día</h2></div></div><div class="quick-actions"><button data-quick="promo">Administrar promociones</button><button data-view-link="inventory">Actualizar cantidades</button><button data-view-link="orders">Confirmar pedidos</button><button data-view-link="fonkies">Editar sabores Fonkies</button><button data-view-link="fomb">Editar sabores Fomb</button><button data-view-link="sales">Registrar una venta</button></div></article>
-            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Actividad publicada</span><h2>Último guardado</h2></div></div><div class="activity" id="activity"></div></article>
+            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Actividad reciente</span><h2>Últimos cambios</h2></div><button class="text-link" type="button" data-view-link="activity-log">Ver historial</button></div><div class="activity" id="activity"></div></article>
           </div>
         </section>
 
@@ -92,7 +98,7 @@
         <section class="view" data-panel="inventory">
           <div class="page-head"><div><span class="eyebrow">Inventario central</span><h1>Stock de hoy</h1><p>Las cantidades son privadas. La tienda solo muestra Disponible o Agotado.</p></div><button class="ghost" id="refreshInventoryButton" type="button">Actualizar</button></div>
           <div class="stats" id="inventoryStats"></div>
-          <div class="toolbar inventory-toolbar"><input id="inventorySearch" type="search" placeholder="Buscar producto, sabor o presentación"><select id="inventoryKindFilter"><option value="all">Todo el inventario</option><option value="product">Productos</option><option value="fonkies">Sabores Fonkies</option><option value="fomb">Sabores Fomb</option></select></div>
+          <div class="toolbar inventory-toolbar"><input id="inventorySearch" type="search" placeholder="Buscar producto, sabor o presentación"><select id="inventoryKindFilter"><option value="all">Todo el inventario</option><option value="product">Productos</option><option value="fonkies">Sabores Fonkies</option><option value="fomb">Sabores Fomb</option></select><select id="inventoryStateFilter"><option value="all">Todos los niveles</option><option value="low">Stock bajo</option><option value="soldout">Agotados</option><option value="reserved">Con reservas</option></select></div>
           <div class="inventory-list" id="inventoryList"></div>
         </section>
 
@@ -144,6 +150,12 @@
             <article class="panel"><h2>Publicación global</h2><p>La base de datos comparte los cambios con todos los móviles. Al enviar WhatsApp se reserva el stock por 30 minutos; al confirmar el pedido se descuenta y se registra la venta.</p><span class="status-pill">Base de datos conectada</span></article>
             <article class="panel"><h2>Recuperar catálogo inicial</h2><p>Carga de nuevo el catálogo incluido en la web. Debes guardar para publicarlo.</p><button class="danger" id="resetButton">Cargar catálogo inicial</button></article>
           </div>
+        </section>
+
+        <section class="view" data-panel="activity-log">
+          <div class="page-head"><div><span class="eyebrow">Trazabilidad</span><h1>Historial de cambios</h1><p>Consulta quién modificó el catálogo, el inventario, los pedidos, las ventas o los accesos.</p></div><button class="ghost" id="refreshActivityButton" type="button">Actualizar</button></div>
+          <div class="toolbar activity-toolbar"><input id="activitySearch" type="search" placeholder="Buscar usuario, acción o detalle"><select id="activityTypeFilter"><option value="all">Todas las acciones</option><option value="catalog">Catálogo</option><option value="inventory">Inventario</option><option value="orders">Pedidos</option><option value="sales">Ventas</option><option value="security">Seguridad</option></select></div>
+          <div class="activity-list" id="activityList"></div>
         </section>
       </main>
     </div>

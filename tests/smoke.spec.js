@@ -1085,3 +1085,47 @@ test("el inventario usa reservas transaccionales, vencimiento y contabilidad aut
   expect(checkout).toContain('/v1/orders/reserve');
   expect(checkout).toContain('Stock reservado hasta:');
 });
+
+test("el centro de control abre y cierra Stock de hoy, repone rápido y conserva trazabilidad", async ({ page }, testInfo) => {
+  const consoleErrors = [];
+  page.on("pageerror", error => consoleErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+
+  await expect(page.getByRole("heading", { name: "Lo que necesita una revisión" })).toBeVisible();
+  await expect(page.locator("#attentionGrid .attention-card")).toHaveCount(4);
+  await expect(page.locator("#todaySummary")).toContainText("Resumen de hoy");
+  await expect(page.locator("#stockDayToggle")).toContainText("Cerrar Stock de hoy");
+  await page.locator("#stockDayToggle").click();
+  await expect(page.locator("#stockDayToggle")).toContainText("Abrir Stock de hoy");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-admin-catalog-v1")).settings.stockTodayOpen)).toBe(false);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Stock de hoy" }).click();
+  await expect(page.locator("#emptyFilterState")).toBeVisible();
+  await expect(page.locator("#emptyFilterTitle")).toHaveText("Stock de hoy");
+
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Stock de hoy", exact: true }).click();
+  const firstRow = page.locator("#inventoryList .inventory-row").first();
+  const before = Number(await firstRow.locator("[data-stock-value]").inputValue());
+  await firstRow.getByRole("button", { name: "+5" }).click();
+  await expect(firstRow.locator("[data-stock-value]")).toHaveValue(String(before + 5));
+
+  await page.getByRole("button", { name: "Abrir menú de configuración" }).click();
+  await page.getByRole("button", { name: "Historial de cambios" }).click();
+  await expect(page.getByRole("heading", { name: "Historial de cambios" })).toBeVisible();
+  await expect(page.locator("#activityList .activity-row")).not.toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("centro-control-operativo-movil.png"), fullPage: false });
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.getByRole("button", { name: "Resumen", exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath("centro-control-operativo-escritorio.png"), fullPage: false });
+  expect(consoleErrors).toEqual([]);
+});
