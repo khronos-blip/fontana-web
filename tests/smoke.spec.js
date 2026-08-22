@@ -1133,3 +1133,62 @@ test("el centro de control abre y cierra Stock de hoy, repone rápido y conserva
   await page.screenshot({ path: testInfo.outputPath("centro-control-operativo-escritorio.png"), fullPage: false });
   expect(consoleErrors).toEqual([]);
 });
+
+test("el panel controla la electricidad, persiste el estado y registra la dependencia por producto", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+
+  const control = page.locator("#electricityControl");
+  const toggle = page.locator("#electricityToggle");
+  await expect(control).toBeVisible();
+  await expect(page.locator("#electricityTitle")).toHaveText("Producción con electricidad");
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+
+  page.once("dialog", dialog => dialog.accept());
+  await toggle.click();
+  await expect(page.locator("#electricityTitle")).toHaveText("Producción sin electricidad");
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-admin-catalog-v1")).settings.productionWithElectricity)).toBe(false);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await expect(page.locator("#electricityToggle")).toHaveAttribute("aria-checked", "false");
+  await page.getByRole("button", { name: "Fonkies", exact: true }).click();
+  await expect(page.locator('[data-builder="fonkies"] [data-builder-field="requiresElectricity"]')).toBeChecked();
+  await page.getByRole("button", { name: "Fomb", exact: true }).click();
+  await expect(page.locator('[data-builder="fomb"] [data-builder-field="requiresElectricity"]')).not.toBeChecked();
+  await page.getByRole("button", { name: "Productos", exact: true }).click();
+  await page.locator('[data-product-id="ballerine"] [data-edit="ballerine"]').click();
+  await expect(page.locator('#productForm [name="requiresElectricity"]')).not.toBeChecked();
+});
+
+test("sin electricidad pausa Fonkies y bloquea un carrito existente sin eliminarlo", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await openFlavorChoice(page, ".fonkie-builder");
+  const firstPlus = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="1"]');
+  for (let index = 0; index < 4; index += 1) await firstPlus.click();
+  await page.locator("#addFonkieBox").click();
+  await expect(page.locator("#cartCount")).toHaveText("1");
+
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  page.once("dialog", dialog => dialog.accept());
+  await page.locator("#electricityToggle").click();
+
+  await page.goto("/");
+  await expect(page.locator("#electricityNotice")).toHaveText("Producción de Fonkies temporalmente pausada. El resto del catálogo sigue disponible.");
+  await expect(page.locator(".fonkie-builder")).toContainText("Temporalmente no disponible");
+  await expect(page.locator("#addFonkieBox")).toBeDisabled();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item")).toContainText("Temporalmente no disponible");
+  await expect(page.locator("#continueCheckout")).toBeDisabled();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1")).length)).toBe(1);
+  await page.locator(".remove").click();
+  await expect(page.locator("#cartCount")).toHaveText("0");
+
+  await page.locator("#closeCart").click();
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await expect(page.locator(".fomb-builder")).not.toContainText("Temporalmente no disponible");
+});

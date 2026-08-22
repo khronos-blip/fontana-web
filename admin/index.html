@@ -63,6 +63,10 @@
       </aside>
 
       <main class="content">
+        <section class="electricity-control" id="electricityControl" aria-labelledby="electricityTitle">
+          <div><span class="eyebrow">Estado de producción</span><h2 id="electricityTitle">Producción con electricidad</h2><p id="electricityDescription">Los productos que requieren electricidad siguen su disponibilidad normal.</p><small id="electricityMeta"></small></div>
+          <button class="electricity-switch" id="electricityToggle" type="button" role="switch" aria-checked="true"><span aria-hidden="true"></span><b>Con electricidad</b></button>
+        </section>
         <section class="view active" data-panel="dashboard">
           <div class="page-head"><div><span class="eyebrow">Centro de control</span><h1>Buenos días, Fontana</h1><p>Todo lo necesario para mantener el menú claro y actualizado.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>
           <div class="stats" id="stats"></div>
@@ -192,6 +196,7 @@
         <label class="switch"><input name="promo" type="checkbox"><span>Promoción del día</span></label>
         <label class="switch"><input name="immediate" type="checkbox"><span>Stock de hoy</span></label>
         <label class="switch"><input name="allowPreorder" type="checkbox"><span>Permitir pre-order si está agotado</span></label>
+        <label class="switch"><input name="requiresElectricity" type="checkbox"><span>Requiere electricidad para producirse</span></label>
         <label class="wide">Etiquetas personalizadas<textarea name="customLabels" rows="2" placeholder="Una por línea"></textarea></label>
         <label class="wide">Variantes o sabores<textarea name="variants" rows="3" placeholder="Una por línea: Nombre | available | cantidad"></textarea><small>Usa <b>sold-out</b> para marcar una opción agotada; la cantidad es opcional.</small></label>
         <label class="wide">Presentaciones y precios<textarea name="sizes" rows="3" placeholder="Una por línea: 180 g | 15 | available | cantidad"></textarea></label>

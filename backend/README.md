@@ -53,6 +53,15 @@ Después de crear el primer administrador, el endpoint rechaza cualquier segunda
 - El acceso biométrico usa WebAuthn/passkeys. Face ID y los datos biométricos nunca salen del iPhone; D1 conserva únicamente la clave pública necesaria para verificar el acceso.
 - La contraseña continúa disponible como recuperación. Una passkey puede eliminarse desde el mismo apartado de seguridad.
 
+## Estado operativo de electricidad
+
+- `GET /v1/admin/operations` devuelve el estado central, quién lo cambió, la fecha y la cantidad de referencias afectadas. Requiere una sesión administrativa válida.
+- `PUT /v1/admin/operations/electricity` acepta `{ "electricityEnabled": true|false }`. Requiere sesión, actualiza D1 y escribe el cambio anterior y nuevo en `audit_log`.
+- `GET /v1/catalog` expone únicamente el booleano operativo verificado y la disponibilidad temporal resultante; nunca publica existencias privadas.
+- Cada producto o constructor usa `requiresElectricity`. Fonkies se considera dependiente por defecto para conservar el comportamiento en catálogos anteriores; Fomb, tortas, salados y bebidas parten como independientes.
+- El estado operativo no cambia inventario, reservas, precios ni pedidos existentes. La reserva se revalida contra D1 justo antes de crear el pedido; si una referencia quedó pausada responde `409` con `code: "temporarily_unavailable"`.
+- Si D1 no puede confirmar el estado, el catálogo no se publica y la tienda bloquea de forma segura las referencias dependientes.
+
 ## Desarrollo local
 
 ```bash

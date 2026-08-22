@@ -49,6 +49,8 @@ export default {
       else if (url.pathname.startsWith("/v1/admin/users/") && request.method === "DELETE") response = await deactivateUser(request, env, url);
       else if (url.pathname === "/v1/admin/catalog" && request.method === "GET") response = await getAdminCatalog(request, env);
       else if (url.pathname === "/v1/admin/catalog" && request.method === "PUT") response = await putCatalog(request, env);
+      else if (url.pathname === "/v1/admin/operations" && request.method === "GET") response = await getAdminOperations(request, env);
+      else if (url.pathname === "/v1/admin/operations/electricity" && request.method === "PUT") response = await putElectricityState(request, env);
       else if (url.pathname === "/v1/admin/inventory" && request.method === "GET") response = await getInventory(request, env);
       else if (url.pathname.startsWith("/v1/admin/inventory/") && request.method === "PUT") response = await updateInventory(request, env, url);
       else if (url.pathname === "/v1/admin/orders" && request.method === "GET") response = await listOrders(request, env);
@@ -98,14 +100,50 @@ async function getCatalog(request, env) {
   const state = JSON.parse(row.state_json);
   await syncInventoryDefinitions(env, state);
   const inventory = await loadInventoryMap(env);
-  const publicState = applyPublicAvailability(state, inventory);
+  const operations = await readOperationalState(env);
+  const publicState = applyPublicAvailability(state, inventory, operations);
   const inventoryVersion = [...inventory.values()].reduce((latest, item) => item.updatedAt > latest ? item.updatedAt : latest, "");
-  const etag = `\"fontana-${row.revision}-${await shortHash(inventoryVersion)}\"`;
+  const etag = `\"fontana-${row.revision}-${await shortHash(`${inventoryVersion}:${operations.updatedAt}:${operations.electricityEnabled}`)}\"`;
   if (request.headers.get("If-None-Match") === etag) return new Response(null, { status: 304, headers: { ETag: etag } });
   return json({ configured: true, state: publicState, revision: row.revision, updatedAt: row.updated_at }, 200, {
     "Cache-Control": "no-cache, must-revalidate",
     ETag: etag
   });
+}
+
+async function readOperationalState(env) {
+  const row = await env.DB.prepare("SELECT electricity_enabled AS electricityEnabled, updated_by AS updatedBy, updated_at AS updatedAt FROM operational_state WHERE id = 'production'").first();
+  if (!row) throw new Error("operational_state_missing");
+  return { electricityEnabled: Boolean(row.electricityEnabled), updatedBy: row.updatedBy, updatedAt: row.updatedAt };
+}
+
+function electricityAffectedCount(state) {
+  const products = (state?.products || []).filter(item => !item.deleted && item.visible !== false && item.requiresElectricity === true).length;
+  const builders = ["fonkies", "fomb"].filter(kind => state?.builders?.[kind]?.visible !== false && state?.builders?.[kind]?.requiresElectricity === true).length;
+  return products + builders;
+}
+
+async function getAdminOperations(request, env) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  const state = await readOperationalState(env);
+  const catalog = await publishedState(env);
+  return json({ ok: true, ...state, affectedCount: electricityAffectedCount(catalog) }, 200, { "Cache-Control": "no-store" });
+}
+
+async function putElectricityState(request, env) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await request.json().catch(() => ({}));
+  if (typeof body.electricityEnabled !== "boolean") return json({ error: "Estado operativo inválido" }, 400);
+  const previous = await readOperationalState(env);
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE operational_state SET electricity_enabled = ?, updated_by = ?, updated_at = ? WHERE id = 'production'").bind(body.electricityEnabled ? 1 : 0, session.username, now),
+    env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'electricity_state', ?, ?)").bind(session.username, `Electricidad: ${previous.electricityEnabled ? "activa" : "inactiva"} -> ${body.electricityEnabled ? "activa" : "inactiva"}`, now)
+  ]);
+  const catalog = await publishedState(env);
+  return json({ ok: true, electricityEnabled: body.electricityEnabled, updatedBy: session.username, updatedAt: now, affectedCount: electricityAffectedCount(catalog) });
 }
 
 function stockSlug(value) {
@@ -166,8 +204,9 @@ async function loadInventoryMap(env) {
   return new Map((result.results || []).map(item => [item.sku, {...item, onHand:Number(item.onHand),reserved:Number(item.reserved),trackStock:Boolean(item.trackStock),available:Math.max(0,Number(item.onHand)-Number(item.reserved))}]));
 }
 
-function applyPublicAvailability(state, inventory) {
+function applyPublicAvailability(state, inventory, operations = { electricityEnabled: true, updatedAt: null }) {
   const publicState = JSON.parse(JSON.stringify(state));
+  publicState.operations = { electricityEnabled: Boolean(operations.electricityEnabled), verified: true, updatedAt: operations.updatedAt };
   const definitions = deriveInventoryDefinitions(publicState);
   const byProduct = new Map();
   for (const definition of definitions) {
@@ -181,6 +220,8 @@ function applyPublicAvailability(state, inventory) {
     return rows.some(row => row.available > 0);
   };
   for (const product of publicState.products || []) {
+    product.requiresElectricity = product.requiresElectricity === true;
+    product.temporarilyUnavailable = !operations.electricityEnabled && product.requiresElectricity;
     const candidates = byProduct.get(product.id) || [];
     const productAvailable = resolved(candidates);
     if (productAvailable !== null) product.status = productAvailable ? "available" : "sold-out";
@@ -199,6 +240,8 @@ function applyPublicAvailability(state, inventory) {
   for (const kind of ["fonkies", "fomb"]) {
     const builder = publicState.builders?.[kind];
     if (!builder) continue;
+    builder.requiresElectricity = builder.requiresElectricity === true || (kind === "fonkies" && !Object.prototype.hasOwnProperty.call(builder, "requiresElectricity"));
+    builder.temporarilyUnavailable = !operations.electricityEnabled && builder.requiresElectricity;
     const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
     const candidates = byProduct.get(productId) || [];
     const builderAvailable = resolved(candidates);
@@ -234,7 +277,7 @@ function parsePositiveInteger(value, maximum = MAX_ITEM_QUANTITY) {
   return Number.isInteger(number) && number > 0 && number <= maximum ? number : 0;
 }
 
-function resolveReservationCart(state, requestedItems) {
+function resolveReservationCart(state, requestedItems, operations) {
   if (!Array.isArray(requestedItems) || !requestedItems.length || requestedItems.length > MAX_ORDER_ITEMS) throw new Error("invalid_cart");
   const definitions = deriveInventoryDefinitions(state);
   const definitionMap = new Map(definitions.map(item => [item.sku, item]));
@@ -254,6 +297,7 @@ function resolveReservationCart(state, requestedItems) {
     if (kind === "product") {
       const product = products.get(String(requested.productId || ""));
       if (!product || product.price === null || product.price === undefined) throw new Error("invalid_product");
+      if (!operations.electricityEnabled && product.requiresElectricity === true) throw new Error("temporarily_unavailable");
       const sizeName = String(requested.size || "");
       const variantName = String(requested.variant || "");
       const size = (product.sizes || []).find(option => option.name === sizeName) || null;
@@ -276,6 +320,8 @@ function resolveReservationCart(state, requestedItems) {
     if (kind !== "fonkies" && kind !== "fomb") throw new Error("invalid_product");
     const builder = state.builders?.[kind];
     if (!builder || builder.visible === false) throw new Error("invalid_product");
+    const requiresElectricity = builder.requiresElectricity === true || (kind === "fonkies" && !Object.prototype.hasOwnProperty.call(builder, "requiresElectricity"));
+    if (!operations.electricityEnabled && requiresElectricity) throw new Error("temporarily_unavailable");
     const requestedFlavors = Array.isArray(requested.flavors) ? requested.flavors : [];
     const flavors = requestedFlavors.map(item => ({name:String(item.name || ""),quantity:parsePositiveInteger(item.quantity)}));
     if (!flavors.length || flavors.some(item => !item.quantity || !(builder.flavors || []).some(flavor => flavor.name === item.name))) throw new Error("invalid_option");
@@ -324,9 +370,10 @@ async function reserveOrder(request, env) {
   if (!state) return json({error:"El catálogo todavía no está preparado para reservar stock."},503);
   const definitions = await syncInventoryDefinitions(env,state);
   const inventory = await loadInventoryMap(env);
+  const operations = await readOperationalState(env);
   let cart;
-  try { cart = resolveReservationCart(state, body.items); }
-  catch (error) { return json({error:"El carrito cambió o contiene una opción no disponible. Actualiza la página e inténtalo de nuevo.",code:error.message},409); }
+  try { cart = resolveReservationCart(state, body.items, operations); }
+  catch (error) { return json({error:error.message === "temporarily_unavailable" ? "La producción de uno de los productos del carrito está temporalmente pausada. Retíralo para continuar; no lo eliminamos automáticamente." : "El carrito cambió o contiene una opción no disponible. Actualiza la página e inténtalo de nuevo.",code:error.message},409); }
   const trackedDemands = cart.demands.filter(item => inventory.get(item.definition.sku)?.trackStock);
   const clientHash = await sha256(`${request.headers.get("CF-Connecting-IP") || "local"}:${request.headers.get("User-Agent") || ""}`);
   const active = await env.DB.prepare("SELECT COUNT(*) AS count FROM stock_orders WHERE client_hash = ? AND status = 'reserved' AND expires_at > ?").bind(clientHash,Math.floor(Date.now()/1000)).first();

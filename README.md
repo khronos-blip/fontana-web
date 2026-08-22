@@ -51,6 +51,8 @@ Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo es
 
 Los datos de WhatsApp, modalidades de entrega, formas de pago y reglas comerciales también se administran desde `config.js`. No se deben inventar datos que la clienta no haya confirmado.
 
+El panel incluye un interruptor central **Producción con electricidad / Producción sin electricidad**. Cada producto y cada constructor puede marcarse como «Requiere electricidad para producirse»; Fonkies queda marcado inicialmente y el resto permanece independiente. Al activar «sin electricidad», la tienda muestra un aviso, bloquea únicamente esas referencias y vuelve a validarlas antes de reservar o abrir WhatsApp. El cambio no modifica precios, existencias, reservas ni pedidos existentes, y queda registrado en el historial. Si el estado operativo no puede verificarse en producción, la tienda falla de forma segura y no permite pedir referencias dependientes de electricidad.
+
 La configuración y operación del backend está documentada en `backend/README.md`. Al pulsar «Enviar pedido por WhatsApp», el Worker reserva durante 30 minutos únicamente las referencias cuyo control de stock esté activado. Las cantidades nunca se exponen al público. Desde «Pedidos», la dueña confirma la venta para descontar existencias y crear el asiento contable, cancela para devolverlas o amplía la reserva. Un proceso programado libera automáticamente las reservas vencidas. Antes de activar el control de una referencia, la dueña debe cargar su cantidad real; las referencias sin control continúan vendiéndose sujetas a confirmación para no inventar inventario.
 
 ## Despliegue

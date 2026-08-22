@@ -75,7 +75,8 @@
     next.updatedAt ||= null;
     next.settings = {
       ...(next.settings || {}),
-      stockTodayOpen: next.settings?.stockTodayOpen !== false
+      stockTodayOpen: next.settings?.stockTodayOpen !== false,
+      productionWithElectricity: next.settings?.productionWithElectricity !== false
     };
     const sourceProducts = next.products || clone(originalProducts);
     const sourceIds = new Set(sourceProducts.map(product => product.id));
@@ -89,6 +90,7 @@
       status: product.status === "sold-out" ? "sold-out" : "available",
       stockQuantity: product.stockQuantity === null || product.stockQuantity === "" || product.stockQuantity === undefined ? null : Math.max(0, Number(product.stockQuantity)),
       isNew: Boolean(product.isNew), promo: Boolean(product.promo), immediate: Boolean(product.immediate),
+      requiresElectricity: product.requiresElectricity === true,
       allowPreorder: Boolean(product.allowPreorder), customLabels: Array.isArray(product.customLabels) ? product.customLabels : [],
       variants: (product.variants || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))})),
       sizes: (product.sizes || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))}))
@@ -105,6 +107,7 @@
         visible: builder.visible !== false, status: builder.status === "sold-out" ? "sold-out" : "available",
         stockQuantity: builder.stockQuantity === null || builder.stockQuantity === "" || builder.stockQuantity === undefined ? null : Math.max(0, Number(builder.stockQuantity)),
         isNew: Boolean(builder.isNew), promo: Boolean(builder.promo), immediate: Boolean(builder.immediate), allowPreorder: Boolean(builder.allowPreorder),
+        requiresElectricity: Object.prototype.hasOwnProperty.call(builder, "requiresElectricity") ? Boolean(builder.requiresElectricity) : kind === "fonkies",
         flavors: (builder.flavors || []).map(flavor => ({...flavor, stockQuantity: flavor.stockQuantity === null || flavor.stockQuantity === "" || flavor.stockQuantity === undefined ? null : Math.max(0, Number(flavor.stockQuantity))}))
       };
     });
@@ -135,6 +138,7 @@
   let orders = [];
   let orderSummary = {reserved:0,confirmed:0,expired:0};
   let activityItems = [];
+  let operations = { electricityEnabled: true, updatedAt: null, updatedBy: "system", affectedCount: 1 };
 
   async function apiFetch(path, options = {}) {
     if (!apiBase) throw new Error("API_NOT_CONFIGURED");
@@ -160,10 +164,21 @@
     remoteRevision = Number(payload?.revision || 0);
   }
 
+  async function loadOperations() {
+    if (localMode) {
+      operations = { electricityEnabled: state.settings?.productionWithElectricity !== false, updatedAt: state.updatedAt, updatedBy: currentSession?.username || "local", affectedCount: affectedElectricityCount() };
+      renderElectricityControl();
+      return;
+    }
+    operations = await apiFetch("/v1/admin/operations");
+    renderElectricityControl();
+  }
+
   async function enterPanel() {
     if (!currentSession?.ok && !localMode) throw new Error("La autenticación todavía no fue confirmada.");
     $("#loginView").hidden = true;
     $("#adminApp").hidden = false;
+    await loadOperations();
     renderAll();
     await Promise.all([loadSales(), loadInventory(), loadOrders(), loadActivity()]);
   }
@@ -304,7 +319,7 @@
       catalog_save:["Catálogo publicado","catalog"], image_upload:["Imagen subida","catalog"],
       inventory_adjust:["Inventario ajustado","inventory"], order_confirm:["Pedido confirmado","orders"], order_cancel:["Pedido cancelado","orders"],
       sale_create:["Venta registrada","sales"], sale_update:["Venta actualizada","sales"], sale_delete:["Venta eliminada","sales"],
-      login:["Inicio de sesión","security"], passkey_login:["Acceso con Face ID","security"], passkey_add:["Face ID activado","security"], passkey_delete:["Face ID eliminado","security"], user_create:["Usuario creado","security"], user_deactivate:["Usuario desactivado","security"], setup:["Panel configurado","security"]
+      login:["Inicio de sesión","security"], passkey_login:["Acceso con Face ID","security"], passkey_add:["Face ID activado","security"], passkey_delete:["Face ID eliminado","security"], user_create:["Usuario creado","security"], user_deactivate:["Usuario desactivado","security"], setup:["Panel configurado","security"], electricity_state:["Estado de electricidad","catalog"]
     };
     return groups[action] || [String(action || "Cambio").replaceAll("_"," "),"other"];
   }
@@ -384,6 +399,48 @@
     renderDashboardOperations();
     await saveState();
     toast(willOpen ? "Stock de hoy vuelve a estar visible." : "Stock de hoy quedó pausado. Los productos y las cantidades siguen guardados.");
+  }
+
+  function affectedElectricityCount() {
+    const products = state.products.filter(item => !item.deleted && item.visible !== false && item.requiresElectricity === true).length;
+    const builders = ["fonkies", "fomb"].filter(kind => state.builders?.[kind]?.visible !== false && state.builders?.[kind]?.requiresElectricity === true).length;
+    return products + builders;
+  }
+
+  function renderElectricityControl() {
+    const enabled = operations.electricityEnabled !== false;
+    const count = Number(operations.affectedCount ?? affectedElectricityCount());
+    $("#electricityControl")?.classList.toggle("is-paused", !enabled);
+    $("#electricityTitle").textContent = enabled ? "Producción con electricidad" : "Producción sin electricidad";
+    $("#electricityDescription").textContent = enabled ? "Los productos que requieren electricidad siguen su disponibilidad normal." : `${count} ${count === 1 ? "producto queda" : "productos quedan"} temporalmente no disponible. El resto del catálogo sigue activo.`;
+    $("#electricityMeta").textContent = operations.updatedAt ? `Último cambio: ${new Date(operations.updatedAt).toLocaleString("es-VE")} · ${operations.updatedBy || "sistema"}` : "Estado central de producción";
+    $("#electricityToggle").setAttribute("aria-checked", String(enabled));
+    $("#electricityToggle").innerHTML = `<span aria-hidden="true"></span><b>${enabled ? "Con electricidad" : "Sin electricidad"}</b>`;
+  }
+
+  async function toggleElectricity() {
+    const nextEnabled = operations.electricityEnabled === false;
+    const affectedCount = affectedElectricityCount();
+    if (!nextEnabled && !confirm(`Se pausará temporalmente ${affectedCount} ${affectedCount === 1 ? "producto" : "productos"} que ${affectedCount === 1 ? "requiere" : "requieren"} electricidad. El stock y las reservas no cambiarán. ¿Continuar?`)) return;
+    const button = $("#electricityToggle");
+    button.disabled = true;
+    try {
+      if (localMode) {
+        state.settings ||= {};
+        state.settings.productionWithElectricity = nextEnabled;
+        state.updatedAt = new Date().toISOString();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        operations = {electricityEnabled:nextEnabled,updatedAt:state.updatedAt,updatedBy:currentSession?.username || "local",affectedCount};
+      } else {
+        operations = await apiFetch("/v1/admin/operations/electricity", {method:"PUT",body:JSON.stringify({electricityEnabled:nextEnabled})});
+        await loadActivity();
+      }
+      renderElectricityControl();
+      toast(nextEnabled ? "Producción con electricidad activada." : "Producción sin electricidad activada. Fonkies quedó temporalmente pausado.");
+    } catch (error) {
+      if (error.status === 401) showLogin("Tu sesión venció.");
+      else toast("No se pudo cambiar el estado. Inténtalo de nuevo.");
+    } finally { button.disabled = false; }
   }
 
   function localInventoryItems() {
@@ -593,7 +650,7 @@
   }
 
   function openProduct(id) {
-    const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:false,allowPreorder:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
+    const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:false,allowPreorder:false,requiresElectricity:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
     if (!product) return;
     const form = $("#productForm");
     $("#dialogTitle").textContent = id ? "Editar producto" : "Nuevo producto";
@@ -607,6 +664,7 @@
     form.elements.promo.checked = Boolean(product.promo);
     form.elements.immediate.checked = Boolean(product.immediate);
     form.elements.allowPreorder.checked = Boolean(product.allowPreorder);
+    form.elements.requiresElectricity.checked = Boolean(product.requiresElectricity);
     form.elements.glutenFree.checked = Boolean(product.glutenFree);
     form.elements.sugarFree.checked = Boolean(product.sugarFree);
     form.elements.lactoseFree.checked = Boolean(product.lactoseFree);
@@ -648,7 +706,7 @@
       ? `<label>Precio 4 iguales<input data-builder-field="singlePrice" type="number" min="0" step=".01" value="${builder.singlePrice}"></label><label>Precio 4 mixtas<input data-builder-field="mixedPrice" type="number" min="0" step=".01" value="${builder.mixedPrice}"></label><label>Precio extra<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label><label>Mínimo<input data-builder-field="minimumQuantity" type="number" min="1" value="${builder.minimumQuantity}"></label>`
       : `<label>Precio caja de 4<input data-builder-size="0" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[0]?.price ?? 15}"></label><label>Precio caja de 12<input data-builder-size="1" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[1]?.price ?? 30}"></label><label>Precio extra<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label>`;
     $(`#${kind}Editor`).innerHTML = `<article class="builder-card" data-builder="${kind}"><div class="builder-form">${pricing}<label>Estado<select data-builder-field="status"><option value="available" ${builder.status !== "sold-out" ? "selected" : ""}>Disponible</option><option value="sold-out" ${builder.status === "sold-out" ? "selected" : ""}>Agotado</option></select></label><label>Cantidad administrada<input data-builder-field="stockQuantity" type="number" min="0" step="1" value="${builder.stockQuantity ?? ""}" placeholder="Sin control numérico"></label><label class="switch"><input data-builder-field="visible" type="checkbox" ${builder.visible !== false ? "checked" : ""}><span>Visible en la tienda</span></label><label class="switch"><input data-builder-field="isNew" type="checkbox" ${builder.isNew ? "checked" : ""}><span>Etiqueta Nuevo</span></label><label class="switch"><input data-builder-field="promo" type="checkbox" ${builder.promo ? "checked" : ""}><span>Promoción del día</span></label><label class="switch"><input data-builder-field="immediate" type="checkbox" ${builder.immediate ? "checked" : ""}><span>Stock de hoy</span></label><label class="switch"><input data-builder-field="allowPreorder" type="checkbox" ${builder.allowPreorder ? "checked" : ""}><span>Permitir pre-order agotado</span></label><label class="switch"><input data-builder-field="glutenFree" type="checkbox" ${builder.glutenFree ? "checked" : ""}><span>Mostrar sello Sin gluten</span></label><label class="switch"><input data-builder-field="sugarFree" type="checkbox" ${builder.sugarFree ? "checked" : ""}><span>Mostrar sello Sin azúcar</span></label><label class="switch"><input data-builder-field="lactoseFree" type="checkbox" ${builder.lactoseFree ? "checked" : ""}><span>Mostrar sello Sin lactosa</span></label></div><div class="panel-head"><div><span class="eyebrow">${builder.flavors.length} sabores</span><h2>Sabores de ${title}</h2></div><button class="ghost" data-add-flavor="${kind}">+ Agregar sabor</button></div><div class="flavor-admin-list">${builder.flavors.map((flavor,index) => `<div class="flavor-row"><img src="${escapeHtml(absoluteImage(flavor.image))}" alt=""><div><h3>${escapeHtml(flavor.name)}</h3><p>${escapeHtml(flavor.ingredients)}</p></div><span class="badge ${flavor.status === "sold-out" || flavor.stockQuantity === 0 ? "red" : "green"}">${flavor.status === "sold-out" || flavor.stockQuantity === 0 ? "Agotado" : "Disponible"}${flavor.stockQuantity === null || flavor.stockQuantity === undefined ? "" : ` · ${flavor.stockQuantity}`}</span><div class="row-actions"><button data-edit-flavor="${kind}:${index}" aria-label="Editar sabor">✎</button><button data-delete-flavor="${kind}:${index}" aria-label="Eliminar sabor">×</button></div></div>`).join("")}</div><div class="builder-actions"><button class="primary" data-save-builder="${kind}" aria-label="Guardar ${title}">Guardar y publicar ${title}</button></div></article>`;
-    $(".builder-form", $(`#${kind}Editor`)).insertAdjacentHTML("beforeend", `<label class="switch"><input data-builder-field="eggFree" type="checkbox" ${builder.eggFree ? "checked" : ""}><span>Mostrar sello Sin huevo</span></label>`);
+    $(".builder-form", $(`#${kind}Editor`)).insertAdjacentHTML("beforeend", `<label class="switch"><input data-builder-field="eggFree" type="checkbox" ${builder.eggFree ? "checked" : ""}><span>Mostrar sello Sin huevo</span></label><label class="switch"><input data-builder-field="requiresElectricity" type="checkbox" ${builder.requiresElectricity ? "checked" : ""}><span>Requiere electricidad para producirse</span></label>`);
   }
 
   function openFlavor(kind,index) {
@@ -731,6 +789,7 @@
   }
 
   function renderAll() {
+    renderElectricityControl();
     renderStats();
     renderProducts();
     renderBuilder("fonkies");
@@ -825,6 +884,7 @@
     }
   });
   $("#stockDayToggle").addEventListener("click", toggleStockDay);
+  $("#electricityToggle").addEventListener("click", toggleElectricity);
   $$('[data-action="new-product"]').forEach(button => button.addEventListener("click", () => openProduct()));
   $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => button.closest("dialog")?.close()));
   $("#saveAll").addEventListener("click", () => saveState());
@@ -941,7 +1001,7 @@
     const duplicate = state.products.some(product => product.id === id && product.id !== originalId && !product.deleted);
     if (duplicate) return toast("Ya existe un producto con ese identificador");
     const product = {
-      id,name:String(data.get("name")).trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:String(data.get("weight")).trim(),availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
+      id,name:String(data.get("name")).trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:String(data.get("weight")).trim(),availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
     };
     const index = state.products.findIndex(item => item.id === originalId);
     if (index >= 0) state.products[index] = product; else state.products.push(product);
