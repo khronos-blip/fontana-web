@@ -56,6 +56,8 @@
         <button class="nav-item" data-view="products">Productos</button>
         <button class="nav-item" data-view="fonkies">Fonkies</button>
         <button class="nav-item" data-view="fomb">Fomb</button>
+        <button class="nav-item" data-view="inventory">Stock de hoy</button>
+        <button class="nav-item" data-view="orders">Pedidos</button>
         <button class="nav-item" data-view="sales">Ventas</button>
       </aside>
 
@@ -65,7 +67,7 @@
           <div class="stats" id="stats"></div>
           <div class="sales-snapshot" id="salesSnapshot"><span>Cargando ventas…</span></div>
           <div class="panel-grid">
-            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Acciones rápidas</span><h2>Actualiza el día</h2></div></div><div class="quick-actions"><button data-quick="promo">Administrar promociones</button><button data-quick="immediate">Actualizar stock de hoy</button><button data-view-link="fonkies">Editar sabores Fonkies</button><button data-view-link="fomb">Editar sabores Fomb</button><button data-view-link="sales">Registrar una venta</button></div></article>
+            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Acciones rápidas</span><h2>Actualiza el día</h2></div></div><div class="quick-actions"><button data-quick="promo">Administrar promociones</button><button data-view-link="inventory">Actualizar cantidades</button><button data-view-link="orders">Confirmar pedidos</button><button data-view-link="fonkies">Editar sabores Fonkies</button><button data-view-link="fomb">Editar sabores Fomb</button><button data-view-link="sales">Registrar una venta</button></div></article>
             <article class="panel"><div class="panel-head"><div><span class="eyebrow">Actividad publicada</span><h2>Último guardado</h2></div></div><div class="activity" id="activity"></div></article>
           </div>
         </section>
@@ -84,6 +86,20 @@
         <section class="view" data-panel="fomb">
           <div class="page-head"><div><span class="eyebrow">Constructor especial</span><h1>Fomb</h1><p>Administra sabores, cajas, extras y disponibilidad de bombones.</p></div></div>
           <div id="fombEditor"></div>
+        </section>
+
+        <section class="view" data-panel="inventory">
+          <div class="page-head"><div><span class="eyebrow">Inventario central</span><h1>Stock de hoy</h1><p>Las cantidades son privadas. La tienda solo muestra Disponible o Agotado.</p></div><button class="ghost" id="refreshInventoryButton" type="button">Actualizar</button></div>
+          <div class="stats" id="inventoryStats"></div>
+          <div class="toolbar inventory-toolbar"><input id="inventorySearch" type="search" placeholder="Buscar producto, sabor o presentación"><select id="inventoryKindFilter"><option value="all">Todo el inventario</option><option value="product">Productos</option><option value="fonkies">Sabores Fonkies</option><option value="fomb">Sabores Fomb</option></select></div>
+          <div class="inventory-list" id="inventoryList"></div>
+        </section>
+
+        <section class="view" data-panel="orders">
+          <div class="page-head"><div><span class="eyebrow">Reservas de 30 minutos</span><h1>Pedidos</h1><p>Confirma los pagados, cancela los abandonados o amplía una reserva si el cliente necesita tiempo.</p></div><button class="ghost" id="refreshOrdersButton" type="button">Actualizar</button></div>
+          <div class="stats" id="orderStats"></div>
+          <div class="toolbar orders-toolbar"><input id="orderSearch" type="search" placeholder="Buscar código, cliente o teléfono"><select id="orderStatusFilter"><option value="active">Reservados activos</option><option value="all">Todos</option><option value="confirmed">Confirmados</option><option value="cancelled">Cancelados</option><option value="expired">Vencidos</option></select></div>
+          <div class="orders-list" id="ordersList"></div>
         </section>
 
         <section class="view" data-panel="sales">
@@ -124,7 +140,7 @@
           <div class="panel-grid">
             <article class="panel"><h2>Exportar copia</h2><p>Descarga todos los productos y ajustes publicados en un archivo JSON.</p><button class="primary" id="exportButton">Descargar copia</button></article>
             <article class="panel"><h2>Restaurar copia</h2><p>Importa una copia, revísala y publícala con Guardar.</p><label class="file-button">Seleccionar archivo<input id="importInput" type="file" accept="application/json"></label></article>
-            <article class="panel"><h2>Publicación global</h2><p>La base de datos comparte los cambios con todos los móviles y computadoras. Las ventas por WhatsApp no descuentan stock automáticamente hasta que Fontana confirme el pedido.</p><span class="status-pill">Base de datos conectada</span></article>
+            <article class="panel"><h2>Publicación global</h2><p>La base de datos comparte los cambios con todos los móviles. Al enviar WhatsApp se reserva el stock por 30 minutos; al confirmar el pedido se descuenta y se registra la venta.</p><span class="status-pill">Base de datos conectada</span></article>
             <article class="panel"><h2>Recuperar catálogo inicial</h2><p>Carga de nuevo el catálogo incluido en la web. Debes guardar para publicarlo.</p><button class="danger" id="resetButton">Cargar catálogo inicial</button></article>
           </div>
         </section>

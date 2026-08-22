@@ -1,8 +1,18 @@
 # API privada de Fontana
 
-Backend gratuito basado en Cloudflare Workers + D1. Mantiene el catálogo publicado, cuentas administrativas separadas, sesiones, passkeys para Face ID, imágenes optimizadas, un registro básico de actividad y el historial manual de ventas del panel.
+Backend gratuito basado en Cloudflare Workers + D1. Mantiene el catálogo publicado, cuentas administrativas separadas, sesiones, passkeys para Face ID, imágenes optimizadas, inventario central, reservas temporales, un registro de actividad y el historial de ventas del panel.
 
 El módulo de ventas registra fecha, importe, estado, canal, forma de pago, productos vendidos, cliente opcional y notas. Sus totales cuentan únicamente las ventas confirmadas. Es un control operativo de ingresos; no sustituye una contabilidad fiscal ni calcula automáticamente costos o utilidad.
+
+## Inventario y reservas
+
+- Cada presentación de producto tiene un SKU independiente. Fonkies y Fomb se controlan por sabor; bebidas por unidad; salados y tortas por su presentación o variante.
+- Las cantidades reales y reservadas solo están disponibles tras iniciar sesión en `/admin/`; `/v1/catalog` publica únicamente disponible o agotado.
+- El control comienza desactivado para cualquier referencia sin una cantidad comercial confirmada. La dueña carga el inventario real en **Stock de hoy** y activa **Controlar existencias**.
+- `POST /v1/orders/reserve` recalcula el carrito con el catálogo del servidor y reserva las unidades durante 30 minutos antes de abrir WhatsApp.
+- El trigger `inventory_balance_guard` impide que las reservas superen las existencias, incluso si dos clientes intentan comprar la última unidad al mismo tiempo.
+- En **Pedidos**, confirmar descuenta existencias y crea una venta confirmada; cancelar devuelve la reserva; ampliar concede 30 minutos nuevos.
+- El cron del Worker revisa cada minuto y libera automáticamente las reservas vencidas.
 
 No usa R2 ni un servicio de pago: las imágenes optimizadas (máximo 1,5 MB cada una) se guardan en D1 junto con el catálogo. El nivel gratuito es suficiente para este catálogo mientras se respeten los límites de Cloudflare.
 

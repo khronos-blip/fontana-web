@@ -10,7 +10,7 @@ Este archivo es el contexto operativo obligatorio para cualquier sesión de Code
 - Cada `push` a `main` debe activar un despliegue automático en Cloudflare Pages.
 - No usar servidores del Mac mini, LaunchAgents ni Cloudflare Tunnel para alojar esta web.
 - Dominio de producción: `https://fontanasingluten.com` (Cloudflare Registrar + Pages).
-- La tienda es estática: HTML, CSS y JavaScript, sin backend ni secretos.
+- La tienda pública es estática (HTML, CSS y JavaScript). El catálogo, acceso privado, inventario, reservas y ventas usan el Worker + D1 documentado en `backend/README.md`; los secretos viven únicamente en Cloudflare.
 
 ## Cambios frecuentes
 
@@ -24,7 +24,7 @@ Este archivo es el contexto operativo obligatorio para cualquier sesión de Code
 1. Leer `README.md`, `AGENTS.md` y `config.js` antes de editar.
 2. Revisar `git status` y conservar cualquier cambio existente que no pertenezca a la tarea.
 3. Crear una rama con nombre descriptivo para cambios grandes; los ajustes pequeños aprobados pueden ir directamente a `main`.
-4. Implementar el cambio sin introducir servicios pagados, backend o dependencias innecesarias.
+4. Implementar el cambio sin introducir servicios pagados ni dependencias innecesarias. Los cambios de datos compartidos deben extender el Worker + D1 existente.
 5. Ejecutar `npm ci` si faltan dependencias, `npm run build` y después `npm test`.
 6. Revisar visualmente móvil y escritorio cuando cambie diseño, carrito o checkout.
 7. Hacer commit claro, subir la rama o `main` y verificar el despliegue de Cloudflare Pages.

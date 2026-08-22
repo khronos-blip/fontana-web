@@ -14,6 +14,9 @@
     "ALLOWED_ORIGINS": "https://fontanasingluten.com,http://127.0.0.1:4173,http://localhost:4173",
     "WEBAUTHN_RP_ID": "fontanasingluten.com"
   },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

@@ -1013,3 +1013,44 @@ test("los accesos de iPhone diferencian la tienda del panel", async ({ page }) =
   await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute("content", "Panel Fontana");
   expect(existsSync("assets/fontana-admin-icon.png")).toBe(true);
 });
+
+test("el panel centraliza cantidades privadas y pedidos reservados en móvil y escritorio", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Stock de hoy", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Stock de hoy", exact: true })).toBeVisible();
+  expect(await page.locator("#inventoryList .inventory-row").count()).toBeGreaterThan(10);
+  await expect(page.locator("#inventoryList")).toContainText("Control activo");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("inventario-central-movil.png"), fullPage: false });
+
+  await page.getByRole("button", { name: "Pedidos", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Pedidos", exact: true })).toBeVisible();
+  await expect(page.locator("#ordersList")).toContainText("No hay pedidos en este estado");
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.getByRole("button", { name: "Stock de hoy", exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath("inventario-central-escritorio.png"), fullPage: false });
+});
+
+test("el inventario usa reservas transaccionales, vencimiento y contabilidad automática", async () => {
+  const worker = readFileSync("backend/src/worker.js", "utf8");
+  const migration = readFileSync("backend/migrations/0004_central_inventory.sql", "utf8");
+  const wrangler = readFileSync("backend/wrangler.jsonc", "utf8");
+  const checkout = readFileSync("app.js", "utf8");
+
+  expect(migration).toContain("CREATE TRIGGER IF NOT EXISTS inventory_balance_guard");
+  expect(migration).toContain("NEW.reserved > NEW.on_hand");
+  expect(migration).toContain("CREATE TABLE IF NOT EXISTS stock_orders");
+  expect(migration).toContain("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_order_id");
+  expect(worker).toContain('/v1/orders/reserve');
+  expect(worker).toContain('/v1/admin/inventory');
+  expect(worker).toContain('/v1/admin/orders');
+  expect(worker).toContain("await expireReservations(env)");
+  expect(worker).toContain("'sale'");
+  expect(wrangler).toContain('"* * * * *"');
+  expect(checkout).toContain('textContent = "Reservando stock…"');
+  expect(checkout).toContain('/v1/orders/reserve');
+  expect(checkout).toContain('Stock reservado hasta:');
+});

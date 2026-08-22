@@ -59,7 +59,15 @@
   function readCart() {
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      return Array.isArray(stored) ? stored : [];
+      if (!Array.isArray(stored)) return [];
+      // Los carritos anteriores al inventario central no contienen SKU ni
+      // opciones estructuradas. Empezar uno nuevo evita descontar una
+      // presentación o un sabor equivocado.
+      if (stored.length && !stored.every(item => item?.inventory?.kind)) {
+        localStorage.removeItem(storageKey);
+        return [];
+      }
+      return stored;
     } catch {
       return [];
     }
@@ -166,7 +174,7 @@
   function renderBuilderTags(element, builder) {
     $(".builder-admin-tags", element)?.remove();
     const soldOut = builder.status === "sold-out" || builder.stockQuantity === 0;
-    const labels = [soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", builder.immediate ? "ENTREGA INMEDIATA" : ""].filter(Boolean);
+    const labels = [soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", builder.immediate ? "STOCK DE HOY" : ""].filter(Boolean);
     if (!labels.length) return;
     const tags = document.createElement("div");
     tags.className = "builder-admin-tags";
@@ -283,7 +291,7 @@
       if (preorder) badges.push("PRE-ORDER");
       if (product.isNew) badges.push("NUEVO");
       if (product.promo) badges.push("PROMOCIÓN DEL DÍA");
-      if (product.immediate) badges.push("ENTREGA INMEDIATA");
+      if (product.immediate) badges.push("STOCK DE HOY");
       (Array.isArray(product.customLabels) ? product.customLabels : []).forEach(label => { if (label) badges.push(String(label).slice(0,40)); });
       if (!badges.length && category === "beverages") badges.push("BEBIDA");
       const image = product.image
@@ -415,6 +423,7 @@
         image: card.dataset.image,
         ingredients: productIngredients(card.dataset.id),
         choices: selectedChoices.join(" · ") || undefined,
+        inventory: { kind:"product", productId:card.dataset.productId || card.dataset.id, size:selectedSize, variant:selectedVariant, preorder },
         qty: 1
       });
     }
@@ -501,6 +510,7 @@
           image: builder.dataset.image,
           ingredients: productIngredients("fonkie-box"),
           choices,
+          inventory: { kind:"fonkies", flavors:selected, preorder },
           qty: 1
         });
       }
@@ -604,6 +614,7 @@
           image: builder.dataset.image,
           ingredients: builder.dataset.ingredients,
           choices,
+          inventory: { kind:"fomb", flavors:current.flavors, boxSize:current.size, extraCount:extras, preorder },
           qty: 1
         });
       }
@@ -751,7 +762,16 @@
     return `${config.orderPrefix || "FNT"}-${date}-${suffix}`;
   }
 
-  function buildMessage(form) {
+  function allergySummary(form) {
+    const data = new FormData(form);
+    if (data.get("hasAllergies") !== "yes") return "No indica";
+    const list = data.getAll("allergens");
+    const other = String(data.get("otherAllergy") || "").trim();
+    if (other) list.push(other);
+    return list.join(", ");
+  }
+
+  function buildMessage(form, reservation = {}) {
     const data = new FormData(form);
     const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
     const hasCake = cartHasCake();
@@ -770,7 +790,7 @@
       ? (config.deliveryLabel || "Delivery")
       : (config.pickupLabel || "Pickup");
     const lines = cart.map(item => `• ${item.qty}× ${item.name} — ${money(item.price * item.qty)}${item.choices ? `\n  Sabores: ${item.choices}` : ""}`);
-    const orderId = createOrderId();
+    const orderId = reservation.orderCode || createOrderId();
     const message = [
       `Hola ${config.businessName || "Fontana"} 💜 Quiero hacer este pedido:`,
       "",
@@ -779,6 +799,7 @@
       ...lines,
       "",
       `*Total estimado: ${money(total)}*`,
+      reservation.reservedUntil ? `*Stock reservado hasta: ${new Date(reservation.reservedUntil).toLocaleTimeString("es-VE", {hour:"2-digit",minute:"2-digit"})}*` : null,
       "",
       `• Nombre: ${data.get("name")}`,
       `• Teléfono: ${data.get("phone")}`,
@@ -808,10 +829,10 @@
       $("#otherAllergy").focus();
       return;
     }
-    const { message, orderId } = buildMessage(checkoutForm);
     const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
 
     if (config.previewMode || !whatsappNumber) {
+      const { message, orderId } = buildMessage(checkoutForm);
       window.__copiedOrder = message;
       try {
         await navigator.clipboard.writeText(message);
@@ -821,8 +842,52 @@
       }
       return;
     }
-
-    window.location.href = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+    const submit = checkoutForm.querySelector('[type="submit"]');
+    const previousLabel = submit.textContent;
+    submit.disabled = true;
+    submit.textContent = "Reservando stock…";
+    try {
+      const data = new FormData(checkoutForm);
+      const clientKey = checkoutForm.dataset.reservationKey || crypto.randomUUID();
+      checkoutForm.dataset.reservationKey = clientKey;
+      const payload = {
+        clientKey,
+        items: cart.map(item => ({
+          quantity:item.qty,
+          kind:item.inventory?.kind || "product",
+          productId:item.inventory?.productId || item.productId,
+          size:item.inventory?.size || "",
+          variant:item.inventory?.variant || "",
+          flavors:item.inventory?.flavors || [],
+          boxSize:item.inventory?.boxSize,
+          extraCount:item.inventory?.extraCount,
+          preorder:Boolean(item.inventory?.preorder)
+        })),
+        customer: {
+          name:String(data.get("name") || ""), phone:String(data.get("phone") || ""),
+          fulfillment:data.get("fulfillment") === "delivery" ? (config.deliveryLabel || "Delivery") : (config.pickupLabel || "Pickup"),
+          requestedDate:String(data.get("requestedDate") || ""), paymentMethod:String(data.get("payment") || ""),
+          address:String(data.get("address") || ""), allergySummary:allergySummary(checkoutForm),
+          birthdayCandle:String(data.get("birthdayCandle") || ""), notes:String(data.get("notes") || "")
+        }
+      };
+      const response = await fetch(`${String(config.adminApiBase || "").replace(/\/$/, "")}/v1/orders/reserve`, {
+        method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+      });
+      const reservation = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 409) throw new Error("Ese stock acaba de agotarse. Actualiza el menú para ver la disponibilidad.");
+        throw new Error(reservation.error || "No pudimos reservar el stock. Inténtalo otra vez.");
+      }
+      const { message } = buildMessage(checkoutForm, reservation);
+      window.__lastWhatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+      window.location.href = window.__lastWhatsappUrl;
+    } catch (error) {
+      say(error.message || "No pudimos reservar el stock.");
+    } finally {
+      submit.disabled = false;
+      submit.textContent = previousLabel;
+    }
   }
 
   function filterProducts(filter) {

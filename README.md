@@ -28,7 +28,7 @@ Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a G
 
 ## Gestión del catálogo
 
-El panel administrativo vive en `/admin/`. Incluye acceso privado con cuentas individuales y passkeys (Face ID en iPhone), CRUD de productos, cantidades, visibilidad, nuevo, promoción, stock inmediato, agotado, pre-order, etiquetas personalizadas, variantes, presentaciones, anticipación, carga optimizada de imágenes, constructores de Fonkies y Fomb, exportación/importación de copias JSON y un registro manual de ventas con resumen diario, mensual, anual y acumulado. Las ventas pendientes o anuladas se conservan en el historial, pero no se suman a los ingresos confirmados.
+El panel administrativo vive en `/admin/`. Incluye acceso privado con cuentas individuales y passkeys (Face ID en iPhone), CRUD de productos, inventario centralizado, visibilidad, nuevo, promoción, Stock de hoy, agotado, pre-order, etiquetas personalizadas, variantes, presentaciones, anticipación, carga optimizada de imágenes, constructores de Fonkies y Fomb, exportación/importación de copias JSON y contabilidad manual o automática. Las ventas pendientes o anuladas se conservan en el historial, pero no se suman a los ingresos confirmados.
 
 En producción, el panel guarda en D1 y los cambios se reflejan para todos los visitantes. Las contraseñas se derivan con PBKDF2, las sesiones usan cookies seguras y los secretos no forman parte del JavaScript público. Face ID se implementa con WebAuthn: la biometría permanece en el dispositivo y el servidor solo almacena la clave pública de cada passkey. En `localhost` se conserva un modo de revisión con `localStorage` para pruebas automáticas, nunca para producción.
 
@@ -38,7 +38,7 @@ En producción, el panel guarda en D1 y los cambios se reflejan para todos los v
 2. Para productos con varias presentaciones, añadir `sizes` con `name`, `price` y `status`; el carrito y WhatsApp tomarán automáticamente la presentación, el precio y el relleno elegidos.
 3. Usar `status: "available"` para publicarlo o `status: "sold-out"` para mostrarlo agotado.
 4. Activar `promo: true` para incluirlo en «Promoción del día».
-5. Activar `immediate: true` para incluirlo en «Entrega inmediata».
+5. Activar `immediate: true` para incluirlo en «Stock de hoy».
 6. Usar `price: null` cuando el precio aún no esté confirmado; la web mostrará «Por confirmar» y no permitirá añadirlo al carrito.
 7. Guardar las nuevas fotografías dentro de `assets/` y asignar su ruta en `image`.
 8. Para productos con sabores, usar `variants` y cambiar el `status` de cada sabor entre `available` y `sold-out`. Los sabores disponibles no muestran etiqueta; los no disponibles aparecen como «Agotado» y no pueden seleccionarse.
@@ -51,7 +51,7 @@ Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo es
 
 Los datos de WhatsApp, modalidades de entrega, formas de pago y reglas comerciales también se administran desde `config.js`. No se deben inventar datos que la clienta no haya confirmado.
 
-La configuración y operación del backend está documentada en `backend/README.md`. Un pedido enviado a WhatsApp no descuenta stock automáticamente porque todavía no es una venta confirmada; la dueña actualiza la cantidad cuando confirma el pedido.
+La configuración y operación del backend está documentada en `backend/README.md`. Al pulsar «Enviar pedido por WhatsApp», el Worker reserva durante 30 minutos únicamente las referencias cuyo control de stock esté activado. Las cantidades nunca se exponen al público. Desde «Pedidos», la dueña confirma la venta para descontar existencias y crear el asiento contable, cancela para devolverlas o amplía la reserva. Un proceso programado libera automáticamente las reservas vencidas. Antes de activar el control de una referencia, la dueña debe cargar su cantidad real; las referencias sin control continúan vendiéndose sujetas a confirmación para no inventar inventario.
 
 ## Despliegue
 

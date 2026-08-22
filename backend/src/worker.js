@@ -12,6 +12,9 @@ const PASSWORD_ITERATIONS = 100000;
 const MAX_CATALOG_BYTES = 1_500_000;
 const MAX_IMAGE_BYTES = 1_500_000;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const RESERVATION_TTL_SECONDS = 30 * 60;
+const MAX_ORDER_ITEMS = 40;
+const MAX_ITEM_QUANTITY = 100;
 
 const encoder = new TextEncoder();
 
@@ -30,6 +33,7 @@ export default {
       if (url.pathname === "/v1/health" && request.method === "GET") response = json({ ok: true });
       else if (url.pathname === "/v1/catalog" && request.method === "GET") response = await getCatalog(request, env);
       else if (url.pathname.startsWith("/v1/images/") && request.method === "GET") response = await getImage(url, env);
+      else if (url.pathname === "/v1/orders/reserve" && request.method === "POST") response = await reserveOrder(request, env);
       else if (url.pathname === "/v1/setup" && request.method === "POST") response = await setupAdmin(request, env);
       else if (url.pathname === "/v1/auth/login" && request.method === "POST") response = await login(request, env);
       else if (url.pathname === "/v1/auth/passkey/options" && request.method === "POST") response = await passkeyLoginOptions(request, env);
@@ -45,6 +49,10 @@ export default {
       else if (url.pathname.startsWith("/v1/admin/users/") && request.method === "DELETE") response = await deactivateUser(request, env, url);
       else if (url.pathname === "/v1/admin/catalog" && request.method === "GET") response = await getAdminCatalog(request, env);
       else if (url.pathname === "/v1/admin/catalog" && request.method === "PUT") response = await putCatalog(request, env);
+      else if (url.pathname === "/v1/admin/inventory" && request.method === "GET") response = await getInventory(request, env);
+      else if (url.pathname.startsWith("/v1/admin/inventory/") && request.method === "PUT") response = await updateInventory(request, env, url);
+      else if (url.pathname === "/v1/admin/orders" && request.method === "GET") response = await listOrders(request, env);
+      else if (url.pathname.startsWith("/v1/admin/orders/") && request.method === "POST") response = await changeOrderStatus(request, env, url);
       else if (url.pathname === "/v1/admin/sales" && request.method === "GET") response = await listSales(request, env);
       else if (url.pathname === "/v1/admin/sales" && request.method === "POST") response = await createSale(request, env);
       else if (url.pathname.startsWith("/v1/admin/sales/") && request.method === "PUT") response = await updateSale(request, env, url);
@@ -57,6 +65,9 @@ export default {
       console.error(error);
       return withCors(json({ error: "Error interno del servicio" }, 500), origin, allowedOrigins);
     }
+  },
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(expireReservations(env));
   }
 };
 
@@ -84,12 +95,267 @@ function withCors(response, origin, allowedOrigins) {
 async function getCatalog(request, env) {
   const row = await env.DB.prepare("SELECT state_json, revision, updated_at FROM catalog_state WHERE id = 'published'").first();
   if (!row) return json({ configured: false, state: null, revision: 0 }, 200, { "Cache-Control": "no-store" });
-  const etag = `\"fontana-${row.revision}\"`;
+  const state = JSON.parse(row.state_json);
+  await syncInventoryDefinitions(env, state);
+  const inventory = await loadInventoryMap(env);
+  const publicState = applyPublicAvailability(state, inventory);
+  const inventoryVersion = [...inventory.values()].reduce((latest, item) => item.updatedAt > latest ? item.updatedAt : latest, "");
+  const etag = `\"fontana-${row.revision}-${await shortHash(inventoryVersion)}\"`;
   if (request.headers.get("If-None-Match") === etag) return new Response(null, { status: 304, headers: { ETag: etag } });
-  return json({ configured: true, state: JSON.parse(row.state_json), revision: row.revision, updatedAt: row.updated_at }, 200, {
+  return json({ configured: true, state: publicState, revision: row.revision, updatedAt: row.updated_at }, 200, {
     "Cache-Control": "no-cache, must-revalidate",
     ETag: etag
   });
+}
+
+function stockSlug(value) {
+  return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 70) || "base";
+}
+
+function deriveInventoryDefinitions(state) {
+  const definitions = [];
+  for (const product of state?.products || []) {
+    if (!product?.id || product.deleted || product.visible === false) continue;
+    const sizes = Array.isArray(product.sizes) && product.sizes.length ? product.sizes : [null];
+    const variants = Array.isArray(product.variants) && product.variants.length ? product.variants : [null];
+    for (const size of sizes) for (const variant of variants) {
+      const optionParts = [size?.name, variant?.name].filter(Boolean);
+      const skuParts = ["product", product.id, size ? stockSlug(size.name) : "base", variant ? stockSlug(variant.name) : "base"];
+      const sourceQuantity = variant?.stockQuantity ?? size?.stockQuantity ?? product.stockQuantity;
+      definitions.push({
+        sku: skuParts.join(":"), productId: product.id, kind: "product", label: product.name,
+        optionSummary: optionParts.join(" · "), sizeName: size?.name || "", variantName: variant?.name || "",
+        sourceQuantity: sourceQuantity === null || sourceQuantity === undefined || sourceQuantity === "" ? null : (Number.isFinite(Number(sourceQuantity)) ? Math.max(0, Math.floor(Number(sourceQuantity))) : null)
+      });
+    }
+  }
+  for (const kind of ["fonkies", "fomb"]) {
+    const builder = state?.builders?.[kind];
+    if (!builder || builder.visible === false) continue;
+    for (const flavor of builder.flavors || []) {
+      const sourceQuantity = flavor.stockQuantity === null || flavor.stockQuantity === undefined || flavor.stockQuantity === "" ? null : (Number.isFinite(Number(flavor.stockQuantity)) ? Math.max(0, Math.floor(Number(flavor.stockQuantity))) : null);
+      definitions.push({
+        sku: `builder:${kind}:${stockSlug(flavor.name)}`, productId: kind === "fonkies" ? "fonkie-box" : "fomb-box",
+        kind, label: kind === "fonkies" ? "Fonkies" : "Fomb", optionSummary: flavor.name,
+        flavorName: flavor.name, sourceQuantity
+      });
+    }
+  }
+  return definitions;
+}
+
+async function syncInventoryDefinitions(env, state, actor = "system") {
+  const definitions = deriveInventoryDefinitions(state);
+  if (!definitions.length) return definitions;
+  const now = new Date().toISOString();
+  const statements = definitions.flatMap(definition => [
+    env.DB.prepare("INSERT OR IGNORE INTO inventory_items (sku, product_id, kind, label, option_summary, on_hand, reserved, track_stock, active, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)")
+      .bind(definition.sku, definition.productId, definition.kind, definition.label, definition.optionSummary, definition.sourceQuantity ?? 0, definition.sourceQuantity === null ? 0 : 1, actor, now),
+    env.DB.prepare("UPDATE inventory_items SET product_id = ?, kind = ?, label = ?, option_summary = ?, active = 1 WHERE sku = ?")
+      .bind(definition.productId, definition.kind, definition.label, definition.optionSummary, definition.sku)
+  ]);
+  const activeSkus = new Set(definitions.map(item => item.sku));
+  const existing = await env.DB.prepare("SELECT sku FROM inventory_items WHERE active = 1").all();
+  for (const row of existing.results || []) if (!activeSkus.has(row.sku)) statements.push(env.DB.prepare("UPDATE inventory_items SET active = 0 WHERE sku = ? AND reserved = 0").bind(row.sku));
+  for (let index = 0; index < statements.length; index += 80) await env.DB.batch(statements.slice(index, index + 80));
+  return definitions;
+}
+
+async function loadInventoryMap(env) {
+  const result = await env.DB.prepare("SELECT sku, product_id AS productId, kind, label, option_summary AS optionSummary, on_hand AS onHand, reserved, track_stock AS trackStock, active, updated_at AS updatedAt FROM inventory_items WHERE active = 1").all();
+  return new Map((result.results || []).map(item => [item.sku, {...item, onHand:Number(item.onHand),reserved:Number(item.reserved),trackStock:Boolean(item.trackStock),available:Math.max(0,Number(item.onHand)-Number(item.reserved))}]));
+}
+
+function applyPublicAvailability(state, inventory) {
+  const publicState = JSON.parse(JSON.stringify(state));
+  const definitions = deriveInventoryDefinitions(publicState);
+  const byProduct = new Map();
+  for (const definition of definitions) {
+    if (!byProduct.has(definition.productId)) byProduct.set(definition.productId, []);
+    byProduct.get(definition.productId).push(definition);
+  }
+  const resolved = candidates => {
+    if (!candidates.length) return null;
+    const rows = candidates.map(item => inventory.get(item.sku));
+    if (rows.some(row => !row?.trackStock)) return null;
+    return rows.some(row => row.available > 0);
+  };
+  for (const product of publicState.products || []) {
+    const candidates = byProduct.get(product.id) || [];
+    const productAvailable = resolved(candidates);
+    if (productAvailable !== null) product.status = productAvailable ? "available" : "sold-out";
+    for (const variant of product.variants || []) {
+      const available = resolved(candidates.filter(item => item.variantName === variant.name));
+      if (available !== null) variant.status = available ? "available" : "sold-out";
+      delete variant.stockQuantity;
+    }
+    for (const size of product.sizes || []) {
+      const available = resolved(candidates.filter(item => item.sizeName === size.name));
+      if (available !== null) size.status = available ? "available" : "sold-out";
+      delete size.stockQuantity;
+    }
+    delete product.stockQuantity;
+  }
+  for (const kind of ["fonkies", "fomb"]) {
+    const builder = publicState.builders?.[kind];
+    if (!builder) continue;
+    const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
+    const candidates = byProduct.get(productId) || [];
+    const builderAvailable = resolved(candidates);
+    if (builderAvailable !== null) builder.status = builderAvailable ? "available" : "sold-out";
+    for (const flavor of builder.flavors || []) {
+      const available = resolved(candidates.filter(item => item.flavorName === flavor.name));
+      if (available !== null) flavor.status = available ? "available" : "sold-out";
+      delete flavor.stockQuantity;
+    }
+    delete builder.stockQuantity;
+  }
+  return publicState;
+}
+
+async function shortHash(value) {
+  if (!value) return "0";
+  return (await sha256(value)).slice(0, 10);
+}
+
+async function publishedState(env) {
+  const row = await env.DB.prepare("SELECT state_json FROM catalog_state WHERE id = 'published'").first();
+  return row ? JSON.parse(row.state_json) : null;
+}
+
+function reservationOrderCode(prefix = "FNT") {
+  const now = new Date();
+  const date = `${String(now.getUTCFullYear()).slice(-2)}${String(now.getUTCMonth()+1).padStart(2,"0")}${String(now.getUTCDate()).padStart(2,"0")}`;
+  return `${String(prefix || "FNT").replace(/[^A-Z0-9]/gi, "").slice(0, 8) || "FNT"}-${date}-${randomToken(4).slice(0, 5).toUpperCase()}`;
+}
+
+function parsePositiveInteger(value, maximum = MAX_ITEM_QUANTITY) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 && number <= maximum ? number : 0;
+}
+
+function resolveReservationCart(state, requestedItems) {
+  if (!Array.isArray(requestedItems) || !requestedItems.length || requestedItems.length > MAX_ORDER_ITEMS) throw new Error("invalid_cart");
+  const definitions = deriveInventoryDefinitions(state);
+  const definitionMap = new Map(definitions.map(item => [item.sku, item]));
+  const products = new Map((state.products || []).filter(item => !item.deleted && item.visible !== false).map(item => [item.id, item]));
+  const snapshotItems = [];
+  const demands = new Map();
+  const addDemand = (definition, quantity) => {
+    const existing = demands.get(definition.sku);
+    if (existing) existing.quantity += quantity;
+    else demands.set(definition.sku, {definition, quantity});
+  };
+
+  for (const requested of requestedItems) {
+    const quantity = parsePositiveInteger(requested.quantity);
+    if (!quantity) throw new Error("invalid_quantity");
+    const kind = String(requested.kind || "product");
+    if (kind === "product") {
+      const product = products.get(String(requested.productId || ""));
+      if (!product || product.price === null || product.price === undefined) throw new Error("invalid_product");
+      const sizeName = String(requested.size || "");
+      const variantName = String(requested.variant || "");
+      const size = (product.sizes || []).find(option => option.name === sizeName) || null;
+      const variant = (product.variants || []).find(option => option.name === variantName) || null;
+      if ((product.sizes || []).length && !size) throw new Error("invalid_option");
+      if ((product.variants || []).length && !variant) throw new Error("invalid_option");
+      const unavailable = product.status === "sold-out" || size?.status === "sold-out" || variant?.status === "sold-out";
+      const preorder = Boolean(requested.preorder && product.allowPreorder);
+      if (unavailable && !preorder) throw new Error("unavailable_product");
+      const sku = ["product", product.id, size ? stockSlug(size.name) : "base", variant ? stockSlug(variant.name) : "base"].join(":");
+      const definition = definitionMap.get(sku);
+      if (!definition) throw new Error("invalid_product");
+      const unitPriceCents = Math.round(Number(size?.price ?? product.price) * 100);
+      const optionSummary = [size?.name, variant?.name, preorder ? "PRE-ORDER" : ""].filter(Boolean).join(" · ");
+      snapshotItems.push({kind,productId:product.id,name:product.name,quantity,unitPriceCents,optionSummary,size:size?.name||"",variant:variant?.name||"",preorder});
+      if (!preorder) addDemand(definition, quantity);
+      continue;
+    }
+
+    if (kind !== "fonkies" && kind !== "fomb") throw new Error("invalid_product");
+    const builder = state.builders?.[kind];
+    if (!builder || builder.visible === false) throw new Error("invalid_product");
+    const requestedFlavors = Array.isArray(requested.flavors) ? requested.flavors : [];
+    const flavors = requestedFlavors.map(item => ({name:String(item.name || ""),quantity:parsePositiveInteger(item.quantity)}));
+    if (!flavors.length || flavors.some(item => !item.quantity || !(builder.flavors || []).some(flavor => flavor.name === item.name))) throw new Error("invalid_option");
+    const preorder = Boolean(requested.preorder && builder.allowPreorder);
+    if (builder.status === "sold-out" && !preorder) throw new Error("unavailable_product");
+    for (const selected of flavors) {
+      const flavor = builder.flavors.find(item => item.name === selected.name);
+      if (flavor.status === "sold-out" && !preorder) throw new Error("unavailable_product");
+    }
+    const selectedTotal = flavors.reduce((sum,item) => sum + item.quantity, 0);
+    let unitPriceCents;
+    if (kind === "fonkies") {
+      const minimum = Math.max(1, Number(builder.minimumQuantity || 4));
+      if (selectedTotal < minimum) throw new Error("invalid_quantity");
+      const base = flavors.length === 1 ? Number(builder.singlePrice || 15) : Number(builder.mixedPrice || 17);
+      unitPriceCents = Math.round((base + Math.max(0, selectedTotal - minimum) * Number(builder.extraPrice || 3.5)) * 100);
+    } else {
+      const boxSize = parsePositiveInteger(requested.boxSize, 200);
+      const extraCount = Math.max(0, Math.floor(Number(requested.extraCount || 0)));
+      const configuredSize = (builder.sizes || []).find(size => Number(size.quantity) === boxSize);
+      if (!configuredSize || selectedTotal !== boxSize + extraCount || extraCount > 100) throw new Error("invalid_quantity");
+      unitPriceCents = Math.round((Number(configuredSize.price) + extraCount * Number(builder.extraPrice || 3.5)) * 100);
+    }
+    const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
+    const name = `${kind === "fonkies" ? "Caja de Fonkies" : "Caja de Fomb"} · ${selectedTotal} unidades`;
+    const optionSummary = flavors.map(item => `${item.quantity} ${item.name}`).join(", ");
+    snapshotItems.push({kind,productId,name,quantity,unitPriceCents,optionSummary,flavors,boxSize:Number(requested.boxSize || 0),extraCount:Number(requested.extraCount || 0),preorder});
+    if (!preorder) for (const selected of flavors) {
+      const definition = definitionMap.get(`builder:${kind}:${stockSlug(selected.name)}`);
+      if (!definition) throw new Error("invalid_option");
+      addDemand(definition, selected.quantity * quantity);
+    }
+  }
+  const totalCents = snapshotItems.reduce((sum,item) => sum + item.unitPriceCents * item.quantity, 0);
+  return {snapshotItems,demands:[...demands.values()],totalCents};
+}
+
+async function reserveOrder(request, env) {
+  await expireReservations(env);
+  const body = await request.json();
+  const clientKey = String(body.clientKey || "");
+  if (!/^[a-zA-Z0-9_-]{16,100}$/.test(clientKey)) return json({error:"No se pudo identificar la solicitud. Inténtalo de nuevo."},400);
+  const existing = await env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents FROM stock_orders WHERE client_key = ?").bind(clientKey).first();
+  if (existing) return json({ok:true,...existing,reservedUntil:new Date(Number(existing.expiresAt)*1000).toISOString(),reused:true});
+  const state = await publishedState(env);
+  if (!state) return json({error:"El catálogo todavía no está preparado para reservar stock."},503);
+  const definitions = await syncInventoryDefinitions(env,state);
+  const inventory = await loadInventoryMap(env);
+  let cart;
+  try { cart = resolveReservationCart(state, body.items); }
+  catch (error) { return json({error:"El carrito cambió o contiene una opción no disponible. Actualiza la página e inténtalo de nuevo.",code:error.message},409); }
+  const trackedDemands = cart.demands.filter(item => inventory.get(item.definition.sku)?.trackStock);
+  const clientHash = await sha256(`${request.headers.get("CF-Connecting-IP") || "local"}:${request.headers.get("User-Agent") || ""}`);
+  const active = await env.DB.prepare("SELECT COUNT(*) AS count FROM stock_orders WHERE client_hash = ? AND status = 'reserved' AND expires_at > ?").bind(clientHash,Math.floor(Date.now()/1000)).first();
+  if (Number(active?.count || 0) >= 10) return json({error:"Hay demasiadas reservas activas desde este dispositivo. Espera a que finalice alguna."},429);
+  const customer = body.customer || {};
+  const customerName = String(customer.name || "").trim().slice(0,100);
+  const customerPhone = String(customer.phone || "").trim().slice(0,40);
+  const requestedDate = String(customer.requestedDate || "").trim();
+  if (!customerName || !customerPhone || !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) return json({error:"Completa nombre, teléfono y fecha del pedido."},400);
+  const id = crypto.randomUUID();
+  const orderCode = reservationOrderCode(body.orderPrefix);
+  const now = new Date().toISOString();
+  const expiresAt = Math.floor(Date.now()/1000)+RESERVATION_TTL_SECONDS;
+  const snapshot = {items:cart.snapshotItems,customer:{name:customerName,phone:customerPhone,fulfillment:String(customer.fulfillment||"").slice(0,180),requestedDate,paymentMethod:String(customer.paymentMethod||"").slice(0,80),address:String(customer.address||"").slice(0,500),allergySummary:String(customer.allergySummary||"").slice(0,2000),birthdayCandle:String(customer.birthdayCandle||"").slice(0,20),notes:String(customer.notes||"").slice(0,2000)}};
+  const statements = [env.DB.prepare("INSERT INTO stock_orders (id, order_code, client_key, client_hash, status, expires_at, total_cents, currency, customer_name, customer_phone, fulfillment, requested_date, payment_method, address, allergy_summary, birthday_candle, notes, snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, 'reserved', ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(id,orderCode,clientKey,clientHash,expiresAt,cart.totalCents,customerName,customerPhone,snapshot.customer.fulfillment,requestedDate,snapshot.customer.paymentMethod,snapshot.customer.address,snapshot.customer.allergySummary,snapshot.customer.birthdayCandle,snapshot.customer.notes,JSON.stringify(snapshot),now,now)];
+  for (const demand of trackedDemands) {
+    statements.push(env.DB.prepare("UPDATE inventory_items SET reserved = reserved + ?, updated_at = ?, updated_by = 'checkout' WHERE sku = ?").bind(demand.quantity,now,demand.definition.sku));
+    statements.push(env.DB.prepare("INSERT INTO stock_order_items (order_id, sku, product_id, item_name, option_summary, quantity, reserved_quantity, unit_price_cents) VALUES (?, ?, ?, ?, ?, 1, ?, 0)").bind(id,demand.definition.sku,demand.definition.productId,demand.definition.label,demand.definition.optionSummary,demand.quantity));
+    statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku, order_id, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, ?, 'reservation', 0, ?, 'Reserva por 30 minutos', 'checkout', ?)").bind(demand.definition.sku,id,demand.quantity,now));
+  }
+  try { await env.DB.batch(statements); }
+  catch (error) {
+    const message = String(error?.message || error);
+    if (message.includes("inventory_unavailable")) return json({error:"Alguien acaba de reservar la última unidad de uno de estos productos. Actualiza el carrito.",code:"stock_conflict"},409);
+    if (message.includes("UNIQUE")) return json({error:"Esta solicitud ya fue procesada. Revisa tus pedidos."},409);
+    throw error;
+  }
+  return json({ok:true,id,orderCode,totalCents:cart.totalCents,reservedUntil:new Date(expiresAt*1000).toISOString(),expiresAt},201);
 }
 
 async function getImage(url, env) {
@@ -354,6 +620,117 @@ async function getAdminCatalog(request, env) {
   return json({ state: row ? JSON.parse(row.state_json) : null, revision: Number(row?.revision || 0), updatedAt: row?.updated_at || null });
 }
 
+async function getInventory(request, env) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  await expireReservations(env);
+  const state = await publishedState(env);
+  if (!state) return json({items:[],summary:{tracked:0,available:0,reserved:0,soldOut:0}});
+  const definitions = await syncInventoryDefinitions(env,state,session.username);
+  const inventory = await loadInventoryMap(env);
+  const items = definitions.map(definition => {
+    const row = inventory.get(definition.sku);
+    return {...definition,sourceQuantity:undefined,onHand:Number(row?.onHand||0),reserved:Number(row?.reserved||0),available:Math.max(0,Number(row?.onHand||0)-Number(row?.reserved||0)),trackStock:Boolean(row?.trackStock),updatedAt:row?.updatedAt||null};
+  });
+  const tracked = items.filter(item => item.trackStock);
+  return json({items,summary:{tracked:tracked.length,available:tracked.reduce((sum,item)=>sum+item.available,0),reserved:tracked.reduce((sum,item)=>sum+item.reserved,0),soldOut:tracked.filter(item=>item.available===0).length}});
+}
+
+async function updateInventory(request, env, url) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  const sku = decodeURIComponent(url.pathname.slice("/v1/admin/inventory/".length));
+  if (!sku || sku.length > 240) return json({error:"Artículo de inventario inválido"},400);
+  const body = await request.json();
+  const onHand = Number(body.onHand);
+  const trackStock = Boolean(body.trackStock);
+  if (!Number.isInteger(onHand) || onHand < 0 || onHand > 100000) return json({error:"Indica una cantidad válida"},400);
+  const current = await env.DB.prepare("SELECT on_hand AS onHand, reserved, track_stock AS trackStock, label, option_summary AS optionSummary FROM inventory_items WHERE sku = ? AND active = 1").bind(sku).first();
+  if (!current) return json({error:"Artículo de inventario no encontrado"},404);
+  if (onHand < Number(current.reserved||0)) return json({error:`No puedes bajar de ${current.reserved}: esas unidades están reservadas.`},409);
+  if (!trackStock && Number(current.reserved||0)>0) return json({error:"Confirma o cancela las reservas antes de desactivar el control."},409);
+  const now = new Date().toISOString();
+  const note = String(body.note||"Ajuste manual desde el panel").trim().slice(0,300);
+  const delta = onHand-Number(current.onHand||0);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE inventory_items SET on_hand = ?, track_stock = ?, updated_by = ?, updated_at = ? WHERE sku = ?").bind(onHand,trackStock?1:0,session.username,now,sku),
+    env.DB.prepare("INSERT INTO inventory_movements (sku, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, 'adjustment', ?, 0, ?, ?, ?)").bind(sku,delta,note,session.username,now),
+    env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'inventory_adjust', ?, ?)").bind(session.username,`${current.label}${current.optionSummary?` · ${current.optionSummary}`:""}: ${onHand}${trackStock?"":" (sin control)"}`,now)
+  ]);
+  return json({ok:true,sku,onHand,reserved:Number(current.reserved||0),available:onHand-Number(current.reserved||0),trackStock});
+}
+
+async function expireReservations(env) {
+  const nowSeconds = Math.floor(Date.now()/1000);
+  const result = await env.DB.prepare("SELECT id FROM stock_orders WHERE status = 'reserved' AND expires_at <= ? ORDER BY expires_at LIMIT 100").bind(nowSeconds).all();
+  let expired = 0;
+  for (const order of result.results || []) {
+    const lines = await env.DB.prepare("SELECT sku, reserved_quantity AS reservedQuantity FROM stock_order_items WHERE order_id = ? AND sku IS NOT NULL AND reserved_quantity > 0").bind(order.id).all();
+    const now = new Date().toISOString();
+    const statements = [];
+    for (const line of lines.results || []) {
+      statements.push(env.DB.prepare("UPDATE inventory_items SET reserved = reserved - ?, updated_at = ?, updated_by = 'system' WHERE sku = ?").bind(Number(line.reservedQuantity),now,line.sku));
+      statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku, order_id, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, ?, 'release', 0, ?, 'Reserva vencida', 'system', ?)").bind(line.sku,order.id,-Number(line.reservedQuantity),now));
+    }
+    statements.push(env.DB.prepare("UPDATE stock_orders SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'reserved'").bind(now,order.id));
+    try { await env.DB.batch(statements); expired += 1; }
+    catch (error) { if (!String(error?.message||error).includes("UNIQUE")) console.error("No se pudo vencer la reserva",order.id,error); }
+  }
+  return expired;
+}
+
+async function listOrders(request, env) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  await expireReservations(env);
+  const result = await env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, currency, customer_name AS customerName, customer_phone AS customerPhone, fulfillment, requested_date AS requestedDate, payment_method AS paymentMethod, snapshot_json AS snapshotJson, created_at AS createdAt, updated_at AS updatedAt, confirmed_by AS confirmedBy, cancelled_by AS cancelledBy FROM stock_orders ORDER BY created_at DESC LIMIT 500").all();
+  const items = (result.results||[]).map(row=>{let snapshot={};try{snapshot=JSON.parse(row.snapshotJson||"{}");}catch{} const {snapshotJson,...order}=row;return {...order,expiresAt:Number(order.expiresAt),items:snapshot.items||[],customer:snapshot.customer||{}};});
+  return json({items,summary:{reserved:items.filter(item=>item.status==="reserved").length,confirmed:items.filter(item=>item.status==="confirmed").length,expired:items.filter(item=>item.status==="expired").length}});
+}
+
+async function changeOrderStatus(request, env, url) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  const parts = url.pathname.split("/").filter(Boolean);
+  const id = parts[3] || "";
+  const action = parts[4] || "";
+  if (!/^[a-f0-9-]{36}$/.test(id) || !["confirm","cancel","extend"].includes(action)) return json({error:"Acción de pedido inválida"},400);
+  const order = await env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, customer_name AS customerName, payment_method AS paymentMethod, requested_date AS requestedDate, snapshot_json AS snapshotJson FROM stock_orders WHERE id = ?").bind(id).first();
+  if (!order) return json({error:"Pedido no encontrado"},404);
+  if (action === "extend") {
+    if (order.status !== "reserved") return json({error:"Solo se pueden extender reservas activas"},409);
+    const expiresAt = Math.floor(Date.now()/1000)+RESERVATION_TTL_SECONDS;
+    await env.DB.prepare("UPDATE stock_orders SET expires_at = ?, updated_at = ? WHERE id = ? AND status = 'reserved'").bind(expiresAt,new Date().toISOString(),id).run();
+    return json({ok:true,status:"reserved",expiresAt,reservedUntil:new Date(expiresAt*1000).toISOString()});
+  }
+  if (order.status !== "reserved") return json({error:`El pedido ya está ${order.status}.`},409);
+  if (Number(order.expiresAt)<=Math.floor(Date.now()/1000)) { await expireReservations(env); return json({error:"La reserva venció y el stock fue liberado."},409); }
+  const lines = await env.DB.prepare("SELECT sku, reserved_quantity AS reservedQuantity FROM stock_order_items WHERE order_id = ? AND sku IS NOT NULL AND reserved_quantity > 0").bind(id).all();
+  const now = new Date().toISOString();
+  const statements = [];
+  for (const line of lines.results||[]) {
+    const amount = Number(line.reservedQuantity);
+    if (action === "confirm") {
+      statements.push(env.DB.prepare("UPDATE inventory_items SET on_hand = on_hand - ?, reserved = reserved - ?, updated_at = ?, updated_by = ? WHERE sku = ?").bind(amount,amount,now,session.username,line.sku));
+      statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku, order_id, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, ?, 'sale', ?, ?, 'Pedido confirmado', ?, ?)").bind(line.sku,id,-amount,-amount,session.username,now));
+    } else {
+      statements.push(env.DB.prepare("UPDATE inventory_items SET reserved = reserved - ?, updated_at = ?, updated_by = ? WHERE sku = ?").bind(amount,now,session.username,line.sku));
+      statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku, order_id, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, ?, 'release', 0, ?, 'Pedido cancelado', ?, ?)").bind(line.sku,id,-amount,session.username,now));
+    }
+  }
+  if (action === "confirm") {
+    let snapshot={};try{snapshot=JSON.parse(order.snapshotJson||"{}");}catch{}
+    const itemsText=(snapshot.items||[]).map(item=>`${item.quantity}× ${item.name}${item.optionSummary?` · ${item.optionSummary}`:""}`).join("; ")||`Pedido ${order.orderCode}`;
+    statements.push(env.DB.prepare("UPDATE stock_orders SET status = 'confirmed', confirmed_by = ?, updated_at = ? WHERE id = ? AND status = 'reserved'").bind(session.username,now,id));
+    statements.push(env.DB.prepare("INSERT INTO sales (id, sold_at, total_cents, currency, status, channel, payment_method, customer_name, items_text, notes, created_by, created_at, updated_by, updated_at, order_id) VALUES (?, ?, ?, 'USD', 'confirmed', 'WhatsApp', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(),now.slice(0,10),Number(order.totalCents),order.paymentMethod,order.customerName,itemsText,`Pedido ${order.orderCode}`,session.username,now,session.username,now,id));
+  } else statements.push(env.DB.prepare("UPDATE stock_orders SET status = 'cancelled', cancelled_by = ?, updated_at = ? WHERE id = ? AND status = 'reserved'").bind(session.username,now,id));
+  statements.push(env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, ?, ?, ?)").bind(session.username,action==="confirm"?"order_confirm":"order_cancel",order.orderCode,now));
+  try { await env.DB.batch(statements); }
+  catch (error) { if (String(error?.message||error).includes("UNIQUE")) return json({error:"Este pedido ya fue procesado."},409); throw error; }
+  return json({ok:true,status:action==="confirm"?"confirmed":"cancelled"});
+}
+
 async function putCatalog(request, env) {
   const session = await requireSession(request, env);
   if (session instanceof Response) return session;
@@ -381,6 +758,7 @@ async function putCatalog(request, env) {
     }
   }
   if (Number(saved?.meta?.changes || 0) !== 1) return json({ error: "El catálogo cambió en otro dispositivo" }, 409);
+  await syncInventoryDefinitions(env, JSON.parse(stateJson), session.username);
   await env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'catalog_save', ?, ?)").bind(session.username, `Revisión ${revision}`, now).run();
   return json({ ok: true, revision, updatedAt: now, state: JSON.parse(stateJson) });
 }
