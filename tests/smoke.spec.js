@@ -217,8 +217,9 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F", async ({ pag
   const leaves = page.locator(".hero-logo-leaf");
   await expect(wordSlices).toHaveCount(7);
   await expect(wordSlices.first()).toHaveCSS("animation-name", "wordmark-wave-in");
+  await expect(wordSlices.first()).toHaveCSS("animation-duration", "1.15s");
   await expect(wordSlices.first()).toHaveCSS("animation-delay", "0.16s");
-  await expect(wordSlices.last()).toHaveCSS("animation-delay", "0.55s");
+  await expect(wordSlices.last()).toHaveCSS("animation-delay", "0.67s");
   await expect(leafStage).toHaveCSS("animation-name", "leaf-sprout-in");
   await expect(leafStage).toHaveCSS("animation-delay", "1s");
   await expect(leafStage).toHaveCSS("animation-duration", "0.9s");
