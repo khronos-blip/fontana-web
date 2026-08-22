@@ -208,12 +208,17 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#menu");
 });
 
-test("las hojas aparecen detrás de la F y luego se mueven suavemente", async ({ page }, testInfo) => {
+test("el nombre entra en ola y las hojas aparecen detrás de la F", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   const logo = page.locator(".hero-logo");
+  const wordSlices = page.locator(".hero-logo-word-slice");
   const leafStage = page.locator(".hero-logo-leaves-stage");
   const leaves = page.locator(".hero-logo-leaf");
+  await expect(wordSlices).toHaveCount(7);
+  await expect(wordSlices.first()).toHaveCSS("animation-name", "wordmark-wave-in");
+  await expect(wordSlices.first()).toHaveCSS("animation-delay", "0.16s");
+  await expect(wordSlices.last()).toHaveCSS("animation-delay", "0.55s");
   await expect(leafStage).toHaveCSS("animation-name", "leaf-sprout-in");
   await expect(leafStage).toHaveCSS("animation-delay", "1s");
   await expect(leafStage).toHaveCSS("animation-duration", "0.9s");
@@ -257,6 +262,7 @@ test("las hojas aparecen detrás de la F y luego se mueven suavemente", async ({
   expect(secondTransform[0]).not.toBe(secondTransform[1]);
   expect(secondShapes).not.toEqual(firstShapes);
   await page.waitForTimeout(800);
+  await expect(wordSlices.last()).toHaveCSS("opacity", "1");
   await expect(leafStage).toHaveCSS("opacity", "1");
   await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-movil.png"), fullPage: false });
 
@@ -264,6 +270,8 @@ test("las hojas aparecen detrás de la F y luego se mueven suavemente", async ({
   await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-escritorio.png"), fullPage: false });
 
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(wordSlices.first()).toHaveCSS("animation-name", "none");
+  await expect(wordSlices.first()).toHaveCSS("opacity", "1");
   await expect(leafStage).toHaveCSS("animation-name", "none");
   await expect(leafStage).toHaveCSS("opacity", "1");
   await expect(leaves.first()).toHaveCSS("animation-name", "none");

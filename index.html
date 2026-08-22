@@ -419,7 +419,9 @@
     .hero-grid{height:100%;min-height:0;display:grid;grid-template-columns:1fr;place-items:center}
     .hero-copy{display:grid;place-items:center;width:100%;max-width:none}
     .hero-logo-mark{position:relative;width:clamp(250px,29vw,360px);animation:logo-in .8s ease-out both}
-    .hero-logo{position:relative;z-index:2;display:block;width:100%;height:auto}
+    .hero-logo{position:relative;z-index:2;display:block;width:100%;height:auto;clip-path:inset(0 0 27% 0)}
+    .hero-logo-wordmark{position:absolute;z-index:2;inset:0;pointer-events:none}
+    .hero-logo-word-slice{position:absolute;inset:0;background:url('assets/fontana-logo-official-reverse-base.png') center/100% 100% no-repeat;clip-path:inset(73% var(--slice-right) 6% var(--slice-left));opacity:0;will-change:transform,opacity;animation:wordmark-wave-in .78s calc(.16s + var(--wave-index) * .065s) cubic-bezier(.16,.86,.28,1) both}
     .hero-logo-leaves{position:absolute;z-index:1;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
     .hero-logo-leaves-stage{transform-box:fill-box;transform-origin:left center;opacity:0;will-change:transform,opacity;animation:leaf-sprout-in .9s 1s cubic-bezier(.16,.86,.28,1) both}
     .hero-logo-leaf{transform-box:view-box;will-change:transform}
@@ -468,13 +470,14 @@
     .dietary-seal-icon .seal-ring-inner{opacity:.72;stroke-width:1.35}
     .dietary-seal span{min-width:0;font-size:.64rem;font-weight:900;line-height:1.1;letter-spacing:.065em;text-align:center;text-transform:uppercase}
     @keyframes logo-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+    @keyframes wordmark-wave-in{0%{opacity:0;transform:translate3d(0,18px,0) scaleY(.9)}42%{opacity:1;transform:translate3d(0,-8px,0) scaleY(1.04)}72%{opacity:1;transform:translate3d(0,3px,0) scaleY(.985)}100%{opacity:1;transform:translate3d(0,0,0) scaleY(1)}}
     @keyframes leaf-sprout-in{0%{opacity:0;transform:translate3d(-38px,0,0) scale(.2,.72)}52%{opacity:1}72%{transform:translate3d(4px,0,0) scale(1.04,1.02)}100%{opacity:1;transform:translate3d(0,0,0) scale(1)}}
     @keyframes leaf-upper-breeze{0%,100%{transform:translate3d(-2px,1px,0) rotate(-4deg) skewX(-1.1deg) scaleX(.979)}35%{transform:translate3d(5px,-2px,0) rotate(8.2deg) skewX(1.8deg) scaleX(1.041)}62%{transform:translate3d(2px,-1px,0) rotate(3.1deg) skewX(.78deg) scaleX(1.02)}84%{transform:translate3d(-1px,1px,0) rotate(-2.5deg) skewX(-.82deg) scaleX(.988)}}
     @keyframes leaf-lower-breeze{0%,100%{transform:translate3d(2px,-1px,0) rotate(5.5deg) skewY(1.08deg) scaleX(1.021)}40%{transform:translate3d(-5px,2px,0) rotate(-6.8deg) skewY(-1.55deg) scaleX(.966)}70%{transform:translate3d(2px,-1px,0) rotate(2.7deg) skewY(.72deg) scaleX(1.025)}88%{transform:translate3d(1px,0,0) rotate(.65deg) skewY(.2deg) scaleX(1.008)}}
     @keyframes menu-eyebrow-in{to{opacity:1;transform:translateX(0)}}
     @keyframes menu-letter-in{0%{opacity:0;transform:translateY(42px) scale(.78);filter:blur(5px)}65%{opacity:1;transform:translateY(-4px) scale(1.03);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
     @keyframes menu-line-in{to{opacity:1;transform:scaleX(1)}}
-    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf,.hero-logo-leaves-stage{animation:none;transform:none}.hero-logo-leaves-stage{opacity:1}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
+    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf,.hero-logo-leaves-stage,.hero-logo-word-slice{animation:none;transform:none}.hero-logo-leaves-stage,.hero-logo-word-slice{opacity:1}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
 
     .allergy-panel,.checkout-option-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
     .allergy-panel legend,.checkout-option-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
@@ -701,6 +704,15 @@
           <h1 class="sr-only">Fontana sin gluten: postres y comidas fit en Carabobo</h1>
           <div class="hero-logo-mark">
             <img class="hero-logo" src="assets/fontana-logo-official-reverse-base.png" alt="Fontana">
+            <div class="hero-logo-wordmark" aria-hidden="true">
+              <span class="hero-logo-word-slice" style="--slice-left:12%;--slice-right:76%;--wave-index:0"></span>
+              <span class="hero-logo-word-slice" style="--slice-left:24%;--slice-right:64%;--wave-index:1"></span>
+              <span class="hero-logo-word-slice" style="--slice-left:36%;--slice-right:52%;--wave-index:2"></span>
+              <span class="hero-logo-word-slice" style="--slice-left:48%;--slice-right:40%;--wave-index:3"></span>
+              <span class="hero-logo-word-slice" style="--slice-left:60%;--slice-right:28%;--wave-index:4"></span>
+              <span class="hero-logo-word-slice" style="--slice-left:72%;--slice-right:16%;--wave-index:5"></span>
+              <span class="hero-logo-word-slice" style="--slice-left:84%;--slice-right:4%;--wave-index:6"></span>
+            </div>
             <svg class="hero-logo-leaves" viewBox="0 0 1080 1080" aria-hidden="true" focusable="false">
               <g class="hero-logo-leaves-stage">
               <g class="hero-logo-leaf hero-logo-leaf-upper">
