@@ -1,6 +1,6 @@
 # API privada de Fontana
 
-Backend gratuito basado en Cloudflare Workers + D1. Mantiene el catálogo publicado, sesiones administrativas, imágenes optimizadas y un registro básico de actividad.
+Backend gratuito basado en Cloudflare Workers + D1. Mantiene el catálogo publicado, cuentas administrativas separadas, sesiones, passkeys para Face ID, imágenes optimizadas y un registro básico de actividad.
 
 No usa R2 ni un servicio de pago: las imágenes optimizadas (máximo 1,5 MB cada una) se guardan en D1 junto con el catálogo. El nivel gratuito es suficiente para este catálogo mientras se respeten los límites de Cloudflare.
 
@@ -31,7 +31,15 @@ curl -X POST https://api.fontanasingluten.com/v1/setup \
   --data '{"username":"USUARIO_ELEGIDO","password":"CONTRASENA_ELEGIDA"}'
 ```
 
-Después de crear el primer administrador, el endpoint rechaza cualquier segundo alta. Los intentos fallidos de acceso se limitan temporalmente.
+Después de crear el primer administrador, el endpoint rechaza cualquier segunda alta. Esa cuenta queda como propietaria y puede crear las demás cuentas desde **Acceso y Face ID**. Los intentos fallidos de acceso se limitan temporalmente.
+
+## Usuarios y Face ID
+
+- Cada persona utiliza un usuario propio; solo la cuenta propietaria puede crear o desactivar usuarios.
+- La contraseña temporal de una cuenta nueva debe tener al menos 12 caracteres.
+- Después de entrar con su contraseña, cada persona abre **Acceso y Face ID** en su propio iPhone y pulsa **Activar Face ID**.
+- El acceso biométrico usa WebAuthn/passkeys. Face ID y los datos biométricos nunca salen del iPhone; D1 conserva únicamente la clave pública necesaria para verificar el acceso.
+- La contraseña continúa disponible como recuperación. Una passkey puede eliminarse desde el mismo apartado de seguridad.
 
 ## Desarrollo local
 

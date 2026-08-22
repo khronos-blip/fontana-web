@@ -26,6 +26,8 @@
       <label>Usuario<input id="loginUsername" name="username" type="text" autocomplete="username" required></label>
       <label>Contraseña<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label>
       <button class="primary" id="loginButton" type="button">Entrar al panel</button>
+      <div class="login-divider"><span>o</span></div>
+      <button class="passkey-button" id="passkeyLoginButton" type="button"><svg class="face-id-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M9 9v2M15 9v2M9 15c1.5 1.4 4.5 1.4 6 0M12 8v5h2"/></svg> Entrar con Face ID</button>
       <small id="loginStatus">Acceso privado. Los cambios guardados se publican para todos los clientes.</small>
     </div>
   </section>
@@ -43,6 +45,7 @@
         <button class="nav-item" data-view="products">Productos</button>
         <button class="nav-item" data-view="fonkies">Fonkies</button>
         <button class="nav-item" data-view="fomb">Fomb</button>
+        <button class="nav-item" data-view="security">Acceso y Face ID</button>
         <button class="nav-item" data-view="backup">Copias y publicación</button>
       </aside>
 
@@ -70,6 +73,32 @@
         <section class="view" data-panel="fomb">
           <div class="page-head"><div><span class="eyebrow">Constructor especial</span><h1>Fomb</h1><p>Administra sabores, cajas, extras y disponibilidad de bombones.</p></div></div>
           <div id="fombEditor"></div>
+        </section>
+
+        <section class="view" data-panel="security">
+          <div class="page-head"><div><span class="eyebrow">Seguridad privada</span><h1>Acceso y Face ID</h1><p>Cada persona entra con su propio usuario y registra Face ID en su dispositivo.</p></div></div>
+          <div class="security-grid">
+            <article class="panel security-card">
+              <div class="panel-head"><div><span class="eyebrow">Tu dispositivo</span><h2>Mis accesos con Face ID</h2></div><button class="primary compact" id="registerPasskeyButton" type="button">+ Activar Face ID</button></div>
+              <p>Este acceso usa una passkey protegida por Face ID. Fontana nunca recibe ni almacena tus datos biométricos.</p>
+              <div class="credential-list" id="passkeyList"></div>
+            </article>
+            <article class="panel security-card" id="usersPanel">
+              <div class="panel-head"><div><span class="eyebrow">Equipo</span><h2>Usuarios del panel</h2></div></div>
+              <p>La dueña y tú deben usar cuentas distintas. Cada cuenta conserva su propia contraseña y sus propios dispositivos.</p>
+              <div class="user-list" id="userList"></div>
+              <form class="new-user-form" id="newUserForm">
+                <h3>Agregar otro usuario</h3>
+                <div class="form-grid">
+                  <label>Nombre visible<input name="displayName" autocomplete="name" required placeholder="Ej. Gaby"></label>
+                  <label>Usuario<input name="username" autocomplete="off" required pattern="[a-z0-9._-]{3,50}" placeholder="Ej. gaby.fontana"></label>
+                  <label class="wide">Contraseña temporal<input name="password" type="password" autocomplete="new-password" minlength="12" required placeholder="Mínimo 12 caracteres"></label>
+                </div>
+                <button class="primary" type="submit">Crear usuario</button>
+                <small>Comparte la contraseña fuera de la web. Después esa persona entra y activa Face ID desde su propio iPhone.</small>
+              </form>
+            </article>
+          </div>
         </section>
 
         <section class="view" data-panel="backup">

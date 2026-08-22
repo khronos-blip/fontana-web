@@ -122,6 +122,7 @@
   let state = defaultState();
   let remoteRevision = 0;
   let dirty = false;
+  let currentSession = null;
 
   async function apiFetch(path, options = {}) {
     if (!apiBase) throw new Error("API_NOT_CONFIGURED");
@@ -151,6 +152,57 @@
     $("#loginView").hidden = true;
     $("#adminApp").hidden = false;
     renderAll();
+  }
+
+  function base64UrlToBytes(value) {
+    const base64 = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    return Uint8Array.from(atob(padded), character => character.charCodeAt(0));
+  }
+
+  function bytesToBase64Url(value) {
+    const bytes = new Uint8Array(value || []);
+    let binary = "";
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function registrationOptionsForBrowser(options) {
+    return {
+      ...options,
+      challenge: base64UrlToBytes(options.challenge),
+      user: { ...options.user, id: base64UrlToBytes(options.user.id) },
+      excludeCredentials: (options.excludeCredentials || []).map(item => ({ ...item, id: base64UrlToBytes(item.id) }))
+    };
+  }
+
+  function authenticationOptionsForBrowser(options) {
+    return {
+      ...options,
+      challenge: base64UrlToBytes(options.challenge),
+      allowCredentials: (options.allowCredentials || []).map(item => ({ ...item, id: base64UrlToBytes(item.id) }))
+    };
+  }
+
+  function publicKeyCredentialToJSON(credential) {
+    const response = credential.response;
+    const result = {
+      id: credential.id,
+      rawId: bytesToBase64Url(credential.rawId),
+      type: credential.type,
+      authenticatorAttachment: credential.authenticatorAttachment,
+      clientExtensionResults: credential.getClientExtensionResults(),
+      response: { clientDataJSON: bytesToBase64Url(response.clientDataJSON) }
+    };
+    if (response.attestationObject) {
+      result.response.attestationObject = bytesToBase64Url(response.attestationObject);
+      result.response.transports = typeof response.getTransports === "function" ? response.getTransports() : [];
+    } else {
+      result.response.authenticatorData = bytesToBase64Url(response.authenticatorData);
+      result.response.signature = bytesToBase64Url(response.signature);
+      result.response.userHandle = response.userHandle ? bytesToBase64Url(response.userHandle) : undefined;
+    }
+    return result;
   }
 
   function escapeHtml(value) {
@@ -204,6 +256,7 @@
   function showView(name) {
     $$(".view").forEach(view => view.classList.toggle("active", view.dataset.panel === name));
     $$(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.view === name));
+    if (name === "security") loadSecurity();
     window.scrollTo({top:0,behavior:"smooth"});
   }
 
@@ -336,6 +389,71 @@
     $("#flavorDialog").showModal();
   }
 
+  async function loadSecurity() {
+    if (localMode) {
+      $("#passkeyList").innerHTML = '<div class="security-empty">Face ID se configura únicamente en el panel publicado.</div>';
+      $("#userList").innerHTML = '<div class="security-empty">Los usuarios reales se administran desde la base de datos publicada.</div>';
+      $("#newUserForm").hidden = false;
+      return;
+    }
+    try {
+      const [passkeys, users] = await Promise.all([apiFetch("/v1/admin/passkeys"), apiFetch("/v1/admin/users")]);
+      $("#passkeyList").innerHTML = passkeys.items.length ? passkeys.items.map(item => `<div class="credential-row"><div><h3>${escapeHtml(item.label)}</h3><p>Creado ${escapeHtml(new Date(item.createdAt).toLocaleDateString("es-VE"))}${item.lastUsedAt ? ` · Usado ${escapeHtml(new Date(item.lastUsedAt).toLocaleDateString("es-VE"))}` : ""}</p></div><button class="danger compact" type="button" data-delete-passkey="${escapeHtml(item.id)}">Eliminar</button></div>`).join("") : '<div class="security-empty">Todavía no agregaste un acceso con Face ID a tu cuenta.</div>';
+      $("#userList").innerHTML = users.items.map(user => `<div class="user-row"><div><h3>${escapeHtml(user.displayName || user.username)} ${user.username === users.currentUser ? '<span class="badge green">Tú</span>' : ""}</h3><p>@${escapeHtml(user.username)} · ${user.role === "owner" ? "Propietario" : "Administrador"} · ${Number(user.passkeyCount || 0)} ${Number(user.passkeyCount || 0) === 1 ? "acceso" : "accesos"} con Face ID</p></div>${users.canManageUsers && user.username !== users.currentUser && user.role !== "owner" && Number(user.active) === 1 ? `<button class="danger compact" type="button" data-deactivate-user="${escapeHtml(user.username)}">Desactivar</button>` : `<span class="badge ${Number(user.active) === 1 ? "green" : "red"}">${Number(user.active) === 1 ? "Activo" : "Desactivado"}</span>`}</div>`).join("");
+      $("#newUserForm").hidden = !users.canManageUsers;
+      $("#usersPanel").classList.toggle("read-only", !users.canManageUsers);
+    } catch (error) {
+      if (error.status === 401) showLogin("Tu sesión venció. Inicia sesión nuevamente.");
+      else toast("No se pudo cargar la seguridad del panel.");
+    }
+  }
+
+  async function registerPasskey() {
+    if (localMode) return toast("Abre el panel publicado para activar Face ID.");
+    if (!window.PublicKeyCredential || !navigator.credentials) return toast("Este dispositivo no admite Face ID para sitios web.");
+    const button = $("#registerPasskeyButton");
+    button.disabled = true;
+    try {
+      const payload = await apiFetch("/v1/admin/passkeys/options", { method:"POST", body:"{}" });
+      const credential = await navigator.credentials.create({ publicKey: registrationOptionsForBrowser(payload.publicKey) });
+      if (!credential) throw new Error("No se completó Face ID.");
+      await apiFetch("/v1/admin/passkeys/verify", { method:"POST", body:JSON.stringify({ challengeId:payload.challengeId, label:`Face ID · ${navigator.platform || "dispositivo"}`, response:publicKeyCredentialToJSON(credential) }) });
+      toast("Face ID quedó activado para tu usuario.");
+      await loadSecurity();
+    } catch (error) {
+      toast(error.name === "NotAllowedError" ? "Cancelaste Face ID o se agotó el tiempo." : error.message || "No se pudo activar Face ID.");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function loginWithPasskey() {
+    const username = $("#loginUsername").value.trim();
+    if (!username) {
+      $("#loginStatus").textContent = "Escribe tu usuario y luego usa Face ID.";
+      return;
+    }
+    if (!window.PublicKeyCredential || !navigator.credentials) {
+      $("#loginStatus").textContent = "Este navegador no admite Face ID para sitios web.";
+      return;
+    }
+    const button = $("#passkeyLoginButton");
+    button.disabled = true;
+    try {
+      const payload = await apiFetch("/v1/auth/passkey/options", { method:"POST", body:JSON.stringify({username}) });
+      const credential = await navigator.credentials.get({ publicKey:authenticationOptionsForBrowser(payload.publicKey) });
+      if (!credential) throw new Error("No se completó Face ID.");
+      currentSession = await apiFetch("/v1/auth/passkey/verify", { method:"POST", body:JSON.stringify({ username, challengeId:payload.challengeId, response:publicKeyCredentialToJSON(credential) }) });
+      await loadRemoteState();
+      await enterPanel();
+      toast(`Bienvenido, ${currentSession.username}.`);
+    } catch (error) {
+      $("#loginStatus").textContent = error.name === "NotAllowedError" ? "Cancelaste Face ID o se agotó el tiempo." : error.message || "No se pudo iniciar con Face ID.";
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   function renderAll() {
     renderStats();
     renderProducts();
@@ -353,7 +471,7 @@
         const username = $("#loginUsername").value.trim();
         const password = $("#loginPassword").value;
         if (!username || !password) throw new Error("Escribe el usuario y la contraseña.");
-        await apiFetch("/v1/auth/login", {method:"POST",body:JSON.stringify({username,password})});
+        currentSession = await apiFetch("/v1/auth/login", {method:"POST",body:JSON.stringify({username,password})});
         await loadRemoteState();
       }
       await enterPanel();
@@ -361,10 +479,46 @@
       $("#loginStatus").textContent = error.status === 401 ? "Usuario o contraseña incorrectos." : error.message === "API_NOT_CONFIGURED" ? "La API todavía no está configurada." : error.message;
     } finally { button.disabled = false; }
   });
+  $("#passkeyLoginButton").addEventListener("click", loginWithPasskey);
+  $("#registerPasskeyButton").addEventListener("click", registerPasskey);
   ["#loginUsername", "#loginPassword"].forEach(selector => $(selector).addEventListener("keydown", event => { if (event.key === "Enter") $("#loginButton").click(); }));
   $("#logoutButton").addEventListener("click", async () => {
     if (!localMode) await apiFetch("/v1/auth/logout", {method:"POST",body:"{}"}).catch(() => {});
     showLogin("Sesión cerrada.");
+  });
+  $("#newUserForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (localMode) return toast("Crea usuarios desde el panel publicado.");
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      await apiFetch("/v1/admin/users", { method:"POST", body:JSON.stringify({ displayName:data.get("displayName"), username:data.get("username"), password:data.get("password") }) });
+      form.reset();
+      toast("Usuario creado. Ya puede iniciar sesión con su propia cuenta.");
+      await loadSecurity();
+    } catch (error) {
+      toast(error.message || "No se pudo crear el usuario.");
+    } finally { button.disabled = false; }
+  });
+  $("#passkeyList").addEventListener("click", async event => {
+    const button = event.target.closest("[data-delete-passkey]");
+    if (!button || !confirm("¿Eliminar este acceso con Face ID?")) return;
+    try {
+      await apiFetch(`/v1/admin/passkeys/${encodeURIComponent(button.dataset.deletePasskey)}`, { method:"DELETE" });
+      toast("Acceso con Face ID eliminado.");
+      await loadSecurity();
+    } catch (error) { toast(error.message || "No se pudo eliminar."); }
+  });
+  $("#userList").addEventListener("click", async event => {
+    const button = event.target.closest("[data-deactivate-user]");
+    if (!button || !confirm(`¿Desactivar el acceso de ${button.dataset.deactivateUser}?`)) return;
+    try {
+      await apiFetch(`/v1/admin/users/${encodeURIComponent(button.dataset.deactivateUser)}`, { method:"DELETE" });
+      toast("Usuario desactivado y sesiones cerradas.");
+      await loadSecurity();
+    } catch (error) { toast(error.message || "No se pudo desactivar."); }
   });
   $$(".nav-item").forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
   $$('[data-view-link]').forEach(button => button.addEventListener("click", () => showView(button.dataset.viewLink)));
@@ -512,10 +666,12 @@
   async function bootstrap() {
     if (localMode) {
       state = readState();
+      currentSession = { username:"revision-local", displayName:"Revisión local", role:"owner" };
       showLogin("Modo local de revisión: acceso abierto en este dispositivo.");
       return;
     }
     try {
+      currentSession = await apiFetch("/v1/auth/session");
       await loadRemoteState();
       await enterPanel();
     } catch (error) {

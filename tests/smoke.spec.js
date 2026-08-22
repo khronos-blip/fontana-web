@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const { readFileSync } = require("node:fs");
 
 async function openPreview(page) {
   await page.route("**/config.js*", async route => {
@@ -687,6 +688,30 @@ test("el panel móvil cierra sus formularios y evita el zoom automático en camp
   await page.getByRole("button", { name: "+ Nuevo producto" }).first().click();
   await dialog.getByRole("button", { name: "Cancelar" }).click();
   await expect(dialog).not.toBeVisible();
+});
+
+test("el administrador ofrece Face ID y cuentas separadas sin romper la vista móvil", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await expect(page.getByRole("button", { name: "Entrar con Face ID" })).toBeVisible();
+  await page.getByRole("button", { name: "Entrar con Face ID" }).click();
+  await expect(page.locator("#loginStatus")).toHaveText("Escribe tu usuario y luego usa Face ID.");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Acceso y Face ID" }).click();
+  await expect(page.getByRole("heading", { name: "Acceso y Face ID" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ Activar Face ID" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Usuarios del panel" })).toBeVisible();
+  await expect(page.locator('#newUserForm [name="displayName"]')).toHaveCSS("font-size", "16px");
+  await expect(page.locator('#newUserForm [name="username"]')).toHaveAttribute("autocomplete", "off");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  const worker = readFileSync("backend/src/worker.js", "utf8");
+  const migration = readFileSync("backend/migrations/0002_multi_user_passkeys.sql", "utf8");
+  expect(worker).toContain('/v1/auth/passkey/options');
+  expect(worker).toContain('/v1/admin/users');
+  expect(worker).toContain('verifyAuthenticationResponse');
+  expect(migration).toContain('CREATE TABLE IF NOT EXISTS passkey_credentials');
+  expect(migration).toContain("role = 'owner'");
 });
 
 test("el checkout móvil mantiene los campos a tamaño anti-zoom", async ({ page }) => {
