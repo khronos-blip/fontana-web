@@ -208,11 +208,15 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#menu");
 });
 
-test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ page }) => {
+test("las hojas aparecen detrás de la F y luego se mueven suavemente", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   const logo = page.locator(".hero-logo");
+  const leafStage = page.locator(".hero-logo-leaves-stage");
   const leaves = page.locator(".hero-logo-leaf");
+  await expect(leafStage).toHaveCSS("animation-name", "leaf-sprout-in");
+  await expect(leafStage).toHaveCSS("animation-delay", "1s");
+  await expect(leafStage).toHaveCSS("animation-duration", "0.9s");
   await expect(leaves).toHaveCount(2);
   await expect(leaves.first()).toBeVisible();
   await expect(leaves.last()).toBeVisible();
@@ -227,6 +231,7 @@ test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ pa
   await expect(page.locator("image.hero-logo-leaf-art")).toHaveCount(0);
   await expect(page.locator("feDisplacementMap")).toHaveCount(0);
   await expect(page.locator('animate[attributeName="d"]')).toHaveCount(2);
+  await page.screenshot({ path: testInfo.outputPath("hojas-ocultas-al-cargar.png"), fullPage: false });
   const keyframeRotations = await leaves.evaluateAll(elements => elements.map(element => element.getAnimations()[0].effect.getKeyframes().map(frame => {
     const match = String(frame.transform).match(/rotate\((-?[\d.]+)deg\)/);
     return match ? Number(match[1]) : 0;
@@ -247,11 +252,20 @@ test("las hojas del logo se mueven suavemente sin alterar la marca", async ({ pa
     const box = element.getBBox();
     return { x:box.x, y:box.y, width:box.width, height:box.height };
   }));
+  await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-detras-de-la-f.png"), fullPage: false });
   expect(secondTransform).not.toEqual(firstTransform);
   expect(secondTransform[0]).not.toBe(secondTransform[1]);
   expect(secondShapes).not.toEqual(firstShapes);
+  await page.waitForTimeout(800);
+  await expect(leafStage).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-movil.png"), fullPage: false });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-escritorio.png"), fullPage: false });
 
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(leafStage).toHaveCSS("animation-name", "none");
+  await expect(leafStage).toHaveCSS("opacity", "1");
   await expect(leaves.first()).toHaveCSS("animation-name", "none");
   await expect(leaves.last()).toHaveCSS("animation-name", "none");
   await expect(leaves.first()).toHaveCSS("transform", "none");
