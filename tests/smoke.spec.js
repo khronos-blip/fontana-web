@@ -963,3 +963,15 @@ test("SEO público es indexable y mantiene privado el panel", async ({ page, req
   await page.goto("/admin/");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
 });
+
+test("los accesos de iPhone usan el logo oficial de Fontana", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute("href", /fontana-logo-official\.png/);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "manifest.webmanifest");
+  await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute("content", "Fontana");
+
+  await page.goto("/admin/");
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute("href", /fontana-logo-official\.png/);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "manifest.webmanifest");
+  await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute("content", "Panel Fontana");
+});

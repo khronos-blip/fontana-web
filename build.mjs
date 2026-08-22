@@ -13,6 +13,7 @@ await cp("assets", `${outputDirectory}/assets`, { recursive: true });
 await cp("_headers", `${outputDirectory}/_headers`);
 await cp("robots.txt", `${outputDirectory}/robots.txt`);
 await cp("sitemap.xml", `${outputDirectory}/sitemap.xml`);
+await cp("manifest.webmanifest", `${outputDirectory}/manifest.webmanifest`);
 await cp("admin", `${outputDirectory}/admin`, { recursive: true });
 await cp("config.js", `${outputDirectory}/config.js`);
 

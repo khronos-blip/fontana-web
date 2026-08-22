@@ -1,0 +1,18 @@
+{
+  "name": "Panel Fontana",
+  "short_name": "Panel Fontana",
+  "description": "Administración privada de Fontana.",
+  "start_url": "/admin/",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#f5e5f4",
+  "theme_color": "#4b164d",
+  "icons": [
+    {
+      "src": "/assets/fontana-logo-official.png?v=20260822",
+      "sizes": "1080x1080",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
