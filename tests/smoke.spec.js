@@ -712,6 +712,11 @@ test("el administrador ofrece Face ID y cuentas separadas sin romper la vista m�
   expect(worker).toContain('verifyAuthenticationResponse');
   expect(migration).toContain('CREATE TABLE IF NOT EXISTS passkey_credentials');
   expect(migration).toContain("role = 'owner'");
+
+  const adminScript = readFileSync("admin/admin.js", "utf8");
+  expect(adminScript).toContain('await apiFetch("/v1/auth/logout", { method:"POST", body:"{}" })');
+  expect(adminScript).not.toContain('currentSession = await apiFetch("/v1/auth/session")');
+  expect(adminScript).toContain('if (!verifiedSession?.ok || verifiedSession.username !== username)');
 });
 
 test("el checkout móvil mantiene los campos a tamaño anti-zoom", async ({ page }) => {

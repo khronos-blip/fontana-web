@@ -149,6 +149,7 @@
   }
 
   async function enterPanel() {
+    if (!currentSession?.ok && !localMode) throw new Error("La autenticación todavía no fue confirmada.");
     $("#loginView").hidden = true;
     $("#adminApp").hidden = false;
     renderAll();
@@ -443,7 +444,9 @@
       const payload = await apiFetch("/v1/auth/passkey/options", { method:"POST", body:JSON.stringify({username}) });
       const credential = await navigator.credentials.get({ publicKey:authenticationOptionsForBrowser(payload.publicKey) });
       if (!credential) throw new Error("No se completó Face ID.");
-      currentSession = await apiFetch("/v1/auth/passkey/verify", { method:"POST", body:JSON.stringify({ username, challengeId:payload.challengeId, response:publicKeyCredentialToJSON(credential) }) });
+      const verifiedSession = await apiFetch("/v1/auth/passkey/verify", { method:"POST", body:JSON.stringify({ username, challengeId:payload.challengeId, response:publicKeyCredentialToJSON(credential) }) });
+      if (!verifiedSession?.ok || verifiedSession.username !== username) throw new Error("Face ID no pudo verificarse.");
+      currentSession = verifiedSession;
       await loadRemoteState();
       await enterPanel();
       toast(`Bienvenido, ${currentSession.username}.`);
@@ -670,12 +673,15 @@
       showLogin("Modo local de revisión: acceso abierto en este dispositivo.");
       return;
     }
+    currentSession = null;
     try {
-      currentSession = await apiFetch("/v1/auth/session");
-      await loadRemoteState();
-      await enterPanel();
-    } catch (error) {
-      showLogin(error.status === 401 ? "Inicia sesión para administrar Fontana." : "No se pudo conectar con la base de datos.");
+      // Una cookie anterior nunca debe abrir el panel por sí sola. Al cargar la
+      // página cerramos cualquier sesión previa y exigimos una autenticación
+      // nueva mediante contraseña o una passkey confirmada por Face ID.
+      await apiFetch("/v1/auth/logout", { method:"POST", body:"{}" });
+      showLogin("Confirma tu acceso con Face ID o escribe tu contraseña.");
+    } catch {
+      showLogin("No se pudo conectar con la base de datos.");
     }
   }
 
