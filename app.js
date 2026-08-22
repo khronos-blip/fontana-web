@@ -184,11 +184,15 @@
   function renderBuilderTags(element, builder) {
     $(".builder-admin-tags", element)?.remove();
     const soldOut = builder.status === "sold-out" || builder.stockQuantity === 0;
-    const labels = [builder.temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : "", soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", stockTodayOpen && builder.immediate ? "STOCK DE HOY" : ""].filter(Boolean);
+    const temporarilyUnavailable = Boolean(builder.temporarilyUnavailable || element.dataset.temporarilyUnavailable === "true");
+    const labels = [temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : "", soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", stockTodayOpen && builder.immediate ? "STOCK DE HOY" : ""].filter(Boolean);
     if (!labels.length) return;
     const tags = document.createElement("div");
     tags.className = "builder-admin-tags";
-    tags.innerHTML = labels.map(label => `<span>${escapeHtml(label)}</span>`).join("");
+    tags.innerHTML = labels.map(label => {
+      const statusClass = label === "TEMPORALMENTE NO DISPONIBLE" || label === "AGOTADO" ? " status-unavailable" : label === "PRE-ORDER" ? " status-preorder" : "";
+      return `<span class="${statusClass.trim()}">${escapeHtml(label)}</span>`;
+    }).join("");
     element.prepend(tags);
   }
 
@@ -330,7 +334,7 @@
         const unavailable = optionSold && !preorder;
         return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${optionSold ? preorder ? " · Pre-order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
-      const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => `<span class="product-tag${index ? " secondary" : ""}">${escapeHtml(badge)}</span>`).join("")}</div>` : "";
+      const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => { const statusClass = badge === "TEMPORALMENTE NO DISPONIBLE" || badge === "AGOTADO" ? " status-unavailable" : badge === "PRE-ORDER" ? " status-preorder" : ""; return `<span class="product-tag${index ? " secondary" : ""}${statusClass}">${escapeHtml(badge)}</span>`; }).join("")}</div>` : "";
       const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
       const quoteText = `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
       const quoteButton = !hasPrice && whatsappNumber

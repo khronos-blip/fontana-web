@@ -1189,7 +1189,7 @@ test("el panel controla la electricidad, persiste el estado y registra la depend
   await expect(page.locator('#productForm [name="requiresElectricity"]')).not.toBeChecked();
 });
 
-test("sin electricidad pausa Fonkies y bloquea un carrito existente sin eliminarlo", async ({ page }) => {
+test("sin electricidad pausa Fonkies, muestra rojo y bloquea un carrito existente sin eliminarlo", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await openFlavorChoice(page, ".fonkie-builder");
@@ -1206,6 +1206,11 @@ test("sin electricidad pausa Fonkies y bloquea un carrito existente sin eliminar
   await page.goto("/");
   await expect(page.locator("#electricityNotice")).toHaveText("Producción de Fonkies temporalmente pausada. El resto del catálogo sigue disponible.");
   await expect(page.locator(".fonkie-builder")).toContainText("Temporalmente no disponible");
+  const unavailableTag = page.locator(".fonkie-builder .builder-admin-tags .status-unavailable").first();
+  await expect(unavailableTag).toHaveCSS("background-color", "rgb(180, 56, 56)");
+  await expect(unavailableTag).toHaveCSS("color", "rgb(255, 255, 255)");
+  await unavailableTag.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("fonkies-temporalmente-no-disponible-rojo.png"), fullPage: false });
   await expect(page.locator("#addFonkieBox")).toBeDisabled();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item")).toContainText("Temporalmente no disponible");
