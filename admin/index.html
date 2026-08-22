@@ -39,7 +39,14 @@
   <div class="app" id="adminApp" hidden>
     <header class="topbar">
       <a class="admin-brand" href="../" aria-label="Ir a Fontana"><img src="../assets/fontana-seal-transparent.png" alt=""><span>fontana</span></a>
-      <div class="top-actions"><span class="save-status" id="saveStatus">Sin cambios pendientes</span><a class="ghost" href="../" target="_blank">Ver tienda ↗</a><button class="ghost compact" id="logoutButton" type="button">Salir</button><button class="primary compact" id="saveAll" type="button" aria-label="Guardar cambios">Guardar y publicar</button></div>
+      <div class="top-actions"><span class="save-status" id="saveStatus">Sin cambios pendientes</span><button class="primary compact" id="saveAll" type="button" aria-label="Guardar cambios">Guardar y publicar</button><button class="admin-menu-button" id="adminMenuButton" type="button" aria-label="Abrir menú de configuración" aria-expanded="false" aria-controls="adminMenu"><span></span><span></span><span></span></button></div>
+      <div class="admin-menu" id="adminMenu" hidden>
+        <span class="eyebrow">Configuración</span>
+        <button type="button" data-menu-view="security">Acceso, usuarios y Face ID</button>
+        <button type="button" data-menu-view="backup">Copias y publicación</button>
+        <a href="../" target="_blank" rel="noopener">Ver tienda ↗</a>
+        <button class="admin-menu-logout" id="logoutButton" type="button">Cerrar sesión</button>
+      </div>
     </header>
 
     <div class="layout">
@@ -49,16 +56,16 @@
         <button class="nav-item" data-view="products">Productos</button>
         <button class="nav-item" data-view="fonkies">Fonkies</button>
         <button class="nav-item" data-view="fomb">Fomb</button>
-        <button class="nav-item" data-view="security">Acceso y Face ID</button>
-        <button class="nav-item" data-view="backup">Copias y publicación</button>
+        <button class="nav-item" data-view="sales">Ventas</button>
       </aside>
 
       <main class="content">
         <section class="view active" data-panel="dashboard">
           <div class="page-head"><div><span class="eyebrow">Centro de control</span><h1>Buenos días, Fontana</h1><p>Todo lo necesario para mantener el menú claro y actualizado.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>
           <div class="stats" id="stats"></div>
+          <div class="sales-snapshot" id="salesSnapshot"><span>Cargando ventas…</span></div>
           <div class="panel-grid">
-            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Acciones rápidas</span><h2>Actualiza el día</h2></div></div><div class="quick-actions"><button data-quick="promo">Administrar promociones</button><button data-quick="immediate">Actualizar stock de hoy</button><button data-view-link="fonkies">Editar sabores Fonkies</button><button data-view-link="fomb">Editar sabores Fomb</button></div></article>
+            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Acciones rápidas</span><h2>Actualiza el día</h2></div></div><div class="quick-actions"><button data-quick="promo">Administrar promociones</button><button data-quick="immediate">Actualizar stock de hoy</button><button data-view-link="fonkies">Editar sabores Fonkies</button><button data-view-link="fomb">Editar sabores Fomb</button><button data-view-link="sales">Registrar una venta</button></div></article>
             <article class="panel"><div class="panel-head"><div><span class="eyebrow">Actividad publicada</span><h2>Último guardado</h2></div></div><div class="activity" id="activity"></div></article>
           </div>
         </section>
@@ -77,6 +84,13 @@
         <section class="view" data-panel="fomb">
           <div class="page-head"><div><span class="eyebrow">Constructor especial</span><h1>Fomb</h1><p>Administra sabores, cajas, extras y disponibilidad de bombones.</p></div></div>
           <div id="fombEditor"></div>
+        </section>
+
+        <section class="view" data-panel="sales">
+          <div class="page-head"><div><span class="eyebrow">Control de ingresos</span><h1>Ventas</h1><p>Registra manualmente lo vendido y consulta los ingresos de Fontana. Los pedidos de WhatsApp no se cuentan hasta que los confirmes aquí.</p></div><button class="primary" id="newSaleButton" type="button">+ Registrar venta</button></div>
+          <div class="stats sales-stats" id="salesStats"></div>
+          <div class="toolbar sales-toolbar"><input id="saleSearch" type="search" placeholder="Buscar cliente, producto o nota"><select id="saleStatusFilter"><option value="all">Todos los estados</option><option value="confirmed">Ventas confirmadas</option><option value="pending">Pendientes de cobro</option><option value="cancelled">Anuladas</option></select><select id="salePeriodFilter"><option value="all">Todo el historial</option><option value="today">Hoy</option><option value="month">Este mes</option><option value="year">Este año</option></select></div>
+          <div class="sales-list" id="salesList"></div>
         </section>
 
         <section class="view" data-panel="security">
@@ -169,6 +183,23 @@
         <div class="image-field wide"><div class="image-preview" id="flavorImagePreview"></div><div><label>Ruta de imagen<input name="image"></label><label class="file-button">Subir y optimizar imagen<input id="flavorImageInput" type="file" accept="image/jpeg,image/png,image/webp"></label></div></div>
       </div>
       <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="saveFlavorButton" type="submit">Guardar sabor</button></div>
+    </form>
+  </dialog>
+  <dialog id="saleDialog">
+    <form id="saleForm" method="dialog">
+      <div class="dialog-head"><div><span class="eyebrow">Contabilidad</span><h2 id="saleDialogTitle">Registrar venta</h2></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <label>Fecha de venta<input name="soldAt" type="date" required></label>
+        <label>Monto total USD<input name="total" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+        <label>Estado<select name="status"><option value="confirmed">Confirmada / cobrada</option><option value="pending">Pendiente de cobro</option><option value="cancelled">Anulada</option></select></label>
+        <label>Canal<select name="channel"><option value="WhatsApp">WhatsApp</option><option value="Instagram">Instagram</option><option value="Presencial">Presencial</option><option value="Otro">Otro</option></select></label>
+        <label>Forma de pago<select name="paymentMethod"><option value="Pago Móvil">Pago Móvil</option><option value="Binance">Binance</option><option value="Efectivo">Efectivo</option><option value="Otro">Otro</option></select></label>
+        <label>Cliente (opcional)<input name="customerName" maxlength="100" autocomplete="off"></label>
+        <label class="wide">Productos vendidos<textarea name="items" rows="4" required placeholder="Ej. 1 Torta de pistacho; 1 caja de 4 Fonkies"></textarea><small>Escribe cantidades, presentaciones y sabores para conservar el detalle.</small></label>
+        <label class="wide">Referencia o nota (opcional)<textarea name="notes" rows="3" placeholder="Ej. Pedido FNT-..., abono, observación"></textarea></label>
+      </div>
+      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" type="submit">Guardar venta</button></div>
     </form>
   </dialog>
   <div class="toast" id="adminToast" role="status"></div>

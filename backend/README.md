@@ -1,6 +1,8 @@
 # API privada de Fontana
 
-Backend gratuito basado en Cloudflare Workers + D1. Mantiene el catálogo publicado, cuentas administrativas separadas, sesiones, passkeys para Face ID, imágenes optimizadas y un registro básico de actividad.
+Backend gratuito basado en Cloudflare Workers + D1. Mantiene el catálogo publicado, cuentas administrativas separadas, sesiones, passkeys para Face ID, imágenes optimizadas, un registro básico de actividad y el historial manual de ventas del panel.
+
+El módulo de ventas registra fecha, importe, estado, canal, forma de pago, productos vendidos, cliente opcional y notas. Sus totales cuentan únicamente las ventas confirmadas. Es un control operativo de ingresos; no sustituye una contabilidad fiscal ni calcula automáticamente costos o utilidad.
 
 No usa R2 ni un servicio de pago: las imágenes optimizadas (máximo 1,5 MB cada una) se guardan en D1 junto con el catálogo. El nivel gratuito es suficiente para este catálogo mientras se respeten los límites de Cloudflare.
 

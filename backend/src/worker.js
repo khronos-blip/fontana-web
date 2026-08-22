@@ -45,6 +45,10 @@ export default {
       else if (url.pathname.startsWith("/v1/admin/users/") && request.method === "DELETE") response = await deactivateUser(request, env, url);
       else if (url.pathname === "/v1/admin/catalog" && request.method === "GET") response = await getAdminCatalog(request, env);
       else if (url.pathname === "/v1/admin/catalog" && request.method === "PUT") response = await putCatalog(request, env);
+      else if (url.pathname === "/v1/admin/sales" && request.method === "GET") response = await listSales(request, env);
+      else if (url.pathname === "/v1/admin/sales" && request.method === "POST") response = await createSale(request, env);
+      else if (url.pathname.startsWith("/v1/admin/sales/") && request.method === "PUT") response = await updateSale(request, env, url);
+      else if (url.pathname.startsWith("/v1/admin/sales/") && request.method === "DELETE") response = await deleteSale(request, env, url);
       else if (url.pathname === "/v1/admin/images" && request.method === "POST") response = await uploadImage(request, env);
       else if (url.pathname === "/v1/admin/activity" && request.method === "GET") response = await getActivity(request, env);
       else response = json({ error: "Ruta no encontrada" }, 404);
@@ -397,6 +401,89 @@ async function uploadImage(request, env) {
   const imageUrl = `${new URL(request.url).origin}/v1/images/${id}`;
   await env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'image_upload', ?, ?)").bind(session.username, id, now).run();
   return json({ ok: true, id, url: imageUrl, size: file.size }, 201);
+}
+
+async function listSales(request, env) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  const result = await env.DB.prepare("SELECT id, sold_at AS soldAt, total_cents AS totalCents, currency, status, channel, payment_method AS paymentMethod, customer_name AS customerName, items_text AS items, notes, created_by AS createdBy, created_at AS createdAt, updated_by AS updatedBy, updated_at AS updatedAt FROM sales ORDER BY sold_at DESC, created_at DESC LIMIT 1000").all();
+  const items = result.results || [];
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const month = today.slice(0, 7);
+  const year = today.slice(0, 4);
+  const confirmed = items.filter(item => item.status === "confirmed");
+  const sum = values => values.reduce((total, item) => total + Number(item.totalCents || 0), 0);
+  return json({
+    items,
+    summary: {
+      todayCents: sum(confirmed.filter(item => item.soldAt === today)),
+      monthCents: sum(confirmed.filter(item => String(item.soldAt).startsWith(month))),
+      yearCents: sum(confirmed.filter(item => String(item.soldAt).startsWith(year))),
+      allCents: sum(confirmed),
+      confirmedCount: confirmed.length,
+      pendingCount: items.filter(item => item.status === "pending").length
+    }
+  });
+}
+
+function validatedSale(body) {
+  const soldAt = String(body.soldAt || "").trim();
+  const total = Number(body.total);
+  const status = ["confirmed", "pending", "cancelled"].includes(body.status) ? body.status : "confirmed";
+  const items = String(body.items || "").trim().slice(0, 4000);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(soldAt) || !Number.isFinite(total) || total < 0 || !items) return null;
+  return {
+    soldAt,
+    totalCents: Math.round(total * 100),
+    status,
+    channel: String(body.channel || "WhatsApp").trim().slice(0, 60),
+    paymentMethod: String(body.paymentMethod || "").trim().slice(0, 60),
+    customerName: String(body.customerName || "").trim().slice(0, 100),
+    items,
+    notes: String(body.notes || "").trim().slice(0, 2000)
+  };
+}
+
+async function createSale(request, env) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  const sale = validatedSale(await request.json());
+  if (!sale) return json({ error: "Indica fecha, monto válido y productos vendidos." }, 400);
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO sales (id, sold_at, total_cents, currency, status, channel, payment_method, customer_name, items_text, notes, created_by, created_at, updated_by, updated_at) VALUES (?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, sale.soldAt, sale.totalCents, sale.status, sale.channel, sale.paymentMethod, sale.customerName, sale.items, sale.notes, session.username, now, session.username, now),
+    env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'sale_create', ?, ?)").bind(session.username, `${sale.soldAt} · USD ${(sale.totalCents / 100).toFixed(2)}`, now)
+  ]);
+  return json({ ok: true, id }, 201);
+}
+
+async function updateSale(request, env, url) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  const id = decodeURIComponent(url.pathname.split("/").pop() || "");
+  if (!/^[a-f0-9-]{36}$/.test(id)) return json({ error: "Venta inválida" }, 400);
+  const sale = validatedSale(await request.json());
+  if (!sale) return json({ error: "Indica fecha, monto válido y productos vendidos." }, 400);
+  const now = new Date().toISOString();
+  const saved = await env.DB.prepare("UPDATE sales SET sold_at = ?, total_cents = ?, status = ?, channel = ?, payment_method = ?, customer_name = ?, items_text = ?, notes = ?, updated_by = ?, updated_at = ? WHERE id = ?")
+    .bind(sale.soldAt, sale.totalCents, sale.status, sale.channel, sale.paymentMethod, sale.customerName, sale.items, sale.notes, session.username, now, id).run();
+  if (Number(saved?.meta?.changes || 0) !== 1) return json({ error: "Venta no encontrada" }, 404);
+  await env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'sale_update', ?, ?)").bind(session.username, id, now).run();
+  return json({ ok: true, id });
+}
+
+async function deleteSale(request, env, url) {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+  const id = decodeURIComponent(url.pathname.split("/").pop() || "");
+  if (!/^[a-f0-9-]{36}$/.test(id)) return json({ error: "Venta inválida" }, 400);
+  const deleted = await env.DB.prepare("DELETE FROM sales WHERE id = ?").bind(id).run();
+  if (Number(deleted?.meta?.changes || 0) !== 1) return json({ error: "Venta no encontrada" }, 404);
+  await env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'sale_delete', ?, ?)").bind(session.username, id, new Date().toISOString()).run();
+  return json({ ok: true });
 }
 
 async function getActivity(request, env) {

@@ -28,7 +28,7 @@ Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a G
 
 ## Gestión del catálogo
 
-El panel administrativo vive en `/admin/`. Incluye acceso privado con cuentas individuales y passkeys (Face ID en iPhone), CRUD de productos, cantidades, visibilidad, nuevo, promoción, stock inmediato, agotado, pre-order, etiquetas personalizadas, variantes, presentaciones, anticipación, carga optimizada de imágenes, constructores de Fonkies y Fomb, y exportación/importación de copias JSON.
+El panel administrativo vive en `/admin/`. Incluye acceso privado con cuentas individuales y passkeys (Face ID en iPhone), CRUD de productos, cantidades, visibilidad, nuevo, promoción, stock inmediato, agotado, pre-order, etiquetas personalizadas, variantes, presentaciones, anticipación, carga optimizada de imágenes, constructores de Fonkies y Fomb, exportación/importación de copias JSON y un registro manual de ventas con resumen diario, mensual, anual y acumulado. Las ventas pendientes o anuladas se conservan en el historial, pero no se suman a los ingresos confirmados.
 
 En producción, el panel guarda en D1 y los cambios se reflejan para todos los visitantes. Las contraseñas se derivan con PBKDF2, las sesiones usan cookies seguras y los secretos no forman parte del JavaScript público. Face ID se implementa con WebAuthn: la biometría permanece en el dispositivo y el servidor solo almacena la clave pública de cada passkey. En `localhost` se conserva un modo de revisión con `localStorage` para pruebas automáticas, nunca para producción.
 

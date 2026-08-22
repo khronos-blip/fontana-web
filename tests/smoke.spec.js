@@ -697,7 +697,8 @@ test("el administrador ofrece Face ID y cuentas separadas sin romper la vista m�
   await page.getByRole("button", { name: "Entrar con Face ID" }).click();
   await expect(page.locator("#loginStatus")).toHaveText("Escribe tu usuario y luego usa Face ID.");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
-  await page.getByRole("button", { name: "Acceso y Face ID" }).click();
+  await page.getByRole("button", { name: "Abrir menú de configuración" }).click();
+  await page.getByRole("button", { name: "Acceso, usuarios y Face ID" }).click();
   await expect(page.getByRole("heading", { name: "Acceso y Face ID" })).toBeVisible();
   await expect(page.getByRole("button", { name: "+ Activar Face ID" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Usuarios del panel" })).toBeVisible();
@@ -717,6 +718,42 @@ test("el administrador ofrece Face ID y cuentas separadas sin romper la vista m�
   expect(adminScript).toContain('await apiFetch("/v1/auth/logout", { method:"POST", body:"{}" })');
   expect(adminScript).not.toContain('currentSession = await apiFetch("/v1/auth/session")');
   expect(adminScript).toContain('if (!verifiedSession?.ok || verifiedSession.username !== username)');
+});
+
+test("el panel registra ventas manuales y separa la configuración del catálogo", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+
+  await expect(page.getByRole("button", { name: "Acceso y Face ID" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Abrir menú de configuración" }).click();
+  await expect(page.getByRole("button", { name: "Acceso, usuarios y Face ID" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copias y publicación" })).toBeVisible();
+  await page.getByRole("button", { name: "Acceso, usuarios y Face ID" }).click();
+  await expect(page.getByRole("heading", { name: "Acceso y Face ID" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Ventas", exact: true }).click();
+  await page.getByRole("button", { name: "+ Registrar venta" }).click();
+  await page.locator('#saleForm [name="total"]').fill("47");
+  await page.locator('#saleForm [name="customerName"]').fill("Cliente de prueba");
+  await page.locator('#saleForm [name="items"]').fill("1 Torta de manjar de naranja");
+  await page.locator('#saleForm button[type="submit"]').click();
+  await expect(page.locator("#salesList")).toContainText("Cliente de prueba");
+  await expect(page.locator("#salesList")).toContainText("USD 47,00");
+  await expect(page.locator("#salesStats")).toContainText("USD 47,00");
+  await page.screenshot({ path: testInfo.outputPath("ventas-admin-movil.png"), fullPage: false });
+
+  await page.reload();
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Ventas", exact: true }).click();
+  await expect(page.locator("#salesList")).toContainText("Cliente de prueba");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.screenshot({ path: testInfo.outputPath("ventas-admin-escritorio.png"), fullPage: false });
+
+  const worker = readFileSync("backend/src/worker.js", "utf8");
+  const migration = readFileSync("backend/migrations/0003_sales_accounting.sql", "utf8");
+  expect(worker).toContain('/v1/admin/sales');
+  expect(migration).toContain('CREATE TABLE IF NOT EXISTS sales');
 });
 
 test("el checkout móvil mantiene los campos a tamaño anti-zoom", async ({ page }) => {

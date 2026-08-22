@@ -2,6 +2,7 @@
   "use strict";
 
   const STORAGE_KEY = "fontana-admin-catalog-v1";
+  const SALES_STORAGE_KEY = "fontana-admin-sales-v1";
   const config = window.FONTANA_CONFIG || {};
   const apiBase = String(config.adminApiBase || "").replace(/\/$/, "");
   const localMode = ["localhost", "127.0.0.1"].includes(location.hostname);
@@ -123,6 +124,8 @@
   let remoteRevision = 0;
   let dirty = false;
   let currentSession = null;
+  let sales = [];
+  let salesSummary = {todayCents:0,monthCents:0,yearCents:0,allCents:0,confirmedCount:0,pendingCount:0};
 
   async function apiFetch(path, options = {}) {
     if (!apiBase) throw new Error("API_NOT_CONFIGURED");
@@ -153,6 +156,7 @@
     $("#loginView").hidden = true;
     $("#adminApp").hidden = false;
     renderAll();
+    await loadSales();
   }
 
   function base64UrlToBytes(value) {
@@ -258,7 +262,107 @@
     $$(".view").forEach(view => view.classList.toggle("active", view.dataset.panel === name));
     $$(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.view === name));
     if (name === "security") loadSecurity();
+    if (name === "sales") loadSales();
+    closeAdminMenu();
     window.scrollTo({top:0,behavior:"smooth"});
+  }
+
+  function closeAdminMenu() {
+    const menu = $("#adminMenu");
+    const button = $("#adminMenuButton");
+    menu.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleAdminMenu() {
+    const menu = $("#adminMenu");
+    const willOpen = menu.hidden;
+    menu.hidden = !willOpen;
+    $("#adminMenuButton").setAttribute("aria-expanded", String(willOpen));
+  }
+
+  function centsMoney(value) {
+    return money(Number(value || 0) / 100);
+  }
+
+  function calculateSalesSummary(items) {
+    const today = new Date().toISOString().slice(0, 10);
+    const confirmed = items.filter(item => item.status === "confirmed");
+    const sum = matches => matches.reduce((total, item) => total + Number(item.totalCents || 0), 0);
+    return {
+      todayCents: sum(confirmed.filter(item => item.soldAt === today)),
+      monthCents: sum(confirmed.filter(item => String(item.soldAt).startsWith(today.slice(0, 7)))),
+      yearCents: sum(confirmed.filter(item => String(item.soldAt).startsWith(today.slice(0, 4)))),
+      allCents: sum(confirmed), confirmedCount: confirmed.length,
+      pendingCount: items.filter(item => item.status === "pending").length
+    };
+  }
+
+  function readLocalSales() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(SALES_STORAGE_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+
+  async function loadSales() {
+    try {
+      if (localMode) {
+        sales = readLocalSales();
+        salesSummary = calculateSalesSummary(sales);
+      } else {
+        const payload = await apiFetch("/v1/admin/sales");
+        sales = payload.items || [];
+        salesSummary = payload.summary || calculateSalesSummary(sales);
+      }
+      renderSales();
+      renderSalesSnapshot();
+    } catch (error) {
+      if (error.status === 401) showLogin("Tu sesión venció. Inicia sesión nuevamente.");
+      else toast("No se pudo cargar el registro de ventas.");
+    }
+  }
+
+  function renderSalesSnapshot() {
+    $("#salesSnapshot").innerHTML = `<div><span>Ingresos confirmados este mes</span><b>${escapeHtml(centsMoney(salesSummary.monthCents))}</b></div><div><span>Ventas confirmadas</span><b>${Number(salesSummary.confirmedCount || 0)}</b></div><div><span>Pendientes de cobro</span><b>${Number(salesSummary.pendingCount || 0)}</b></div><button type="button" data-view-link="sales">Ver contabilidad →</button>`;
+    $("#salesSnapshot [data-view-link]").addEventListener("click", () => showView("sales"));
+  }
+
+  function filteredSales() {
+    const query = String($("#saleSearch")?.value || "").trim().toLowerCase();
+    const status = $("#saleStatusFilter")?.value || "all";
+    const period = $("#salePeriodFilter")?.value || "all";
+    const today = new Date().toISOString().slice(0, 10);
+    return sales.filter(sale => {
+      const haystack = `${sale.customerName || ""} ${sale.items || ""} ${sale.notes || ""} ${sale.paymentMethod || ""}`.toLowerCase();
+      const periodMatch = period === "all" || (period === "today" && sale.soldAt === today) || (period === "month" && String(sale.soldAt).startsWith(today.slice(0, 7))) || (period === "year" && String(sale.soldAt).startsWith(today.slice(0, 4)));
+      return (!query || haystack.includes(query)) && (status === "all" || sale.status === status) && periodMatch;
+    });
+  }
+
+  function renderSales() {
+    if (!$("#salesStats")) return;
+    const metrics = [[salesSummary.todayCents,"Ingresos de hoy"],[salesSummary.monthCents,"Este mes"],[salesSummary.yearCents,"Este año"],[salesSummary.allCents,"Total registrado"]];
+    $("#salesStats").innerHTML = metrics.map(([value,label]) => `<article class="stat"><b>${escapeHtml(centsMoney(value))}</b><span>${label}</span></article>`).join("");
+    const statusLabels = {confirmed:"Confirmada",pending:"Pendiente",cancelled:"Anulada"};
+    const items = filteredSales();
+    $("#salesList").innerHTML = items.length ? items.map(sale => `<article class="sale-row" data-sale-id="${escapeHtml(sale.id)}"><div class="sale-date"><b>${escapeHtml(new Date(`${sale.soldAt}T12:00:00`).toLocaleDateString("es-VE",{day:"2-digit",month:"short"}))}</b><span>${escapeHtml(sale.channel || "")}</span></div><div class="sale-main"><h3>${escapeHtml(sale.customerName || "Venta sin nombre")}</h3><p>${escapeHtml(sale.items)}</p><small>${escapeHtml(sale.paymentMethod || "Forma de pago no indicada")}${sale.notes ? ` · ${escapeHtml(sale.notes)}` : ""}</small></div><div class="sale-total"><b>${escapeHtml(centsMoney(sale.totalCents))}</b><span class="badge ${sale.status === "confirmed" ? "green" : sale.status === "cancelled" ? "red" : ""}">${statusLabels[sale.status] || "Pendiente"}</span></div><div class="row-actions"><button type="button" data-edit-sale="${escapeHtml(sale.id)}" aria-label="Editar venta">✎</button><button type="button" data-delete-sale="${escapeHtml(sale.id)}" aria-label="Eliminar venta">×</button></div></article>`).join("") : '<div class="empty-list">No hay ventas que coincidan con estos filtros.</div>';
+  }
+
+  function openSale(id = "") {
+    const sale = id ? sales.find(item => item.id === id) : null;
+    const form = $("#saleForm");
+    $("#saleDialogTitle").textContent = sale ? "Editar venta" : "Registrar venta";
+    form.elements.id.value = sale?.id || "";
+    form.elements.soldAt.value = sale?.soldAt || new Date().toISOString().slice(0, 10);
+    form.elements.total.value = sale ? (Number(sale.totalCents || 0) / 100).toFixed(2) : "";
+    form.elements.status.value = sale?.status || "confirmed";
+    form.elements.channel.value = sale?.channel || "WhatsApp";
+    form.elements.paymentMethod.value = sale?.paymentMethod || "Pago Móvil";
+    form.elements.customerName.value = sale?.customerName || "";
+    form.elements.items.value = sale?.items || "";
+    form.elements.notes.value = sale?.notes || "";
+    $("#saleDialog").showModal();
   }
 
   function renderStats() {
@@ -484,6 +588,12 @@
   });
   $("#passkeyLoginButton").addEventListener("click", loginWithPasskey);
   $("#registerPasskeyButton").addEventListener("click", registerPasskey);
+  $("#adminMenuButton").addEventListener("click", event => { event.stopPropagation(); toggleAdminMenu(); });
+  $("#adminMenu").addEventListener("click", event => {
+    const button = event.target.closest("[data-menu-view]");
+    if (button) showView(button.dataset.menuView);
+  });
+  document.addEventListener("click", event => { if (!event.target.closest("#adminMenu") && !event.target.closest("#adminMenuButton")) closeAdminMenu(); });
   ["#loginUsername", "#loginPassword"].forEach(selector => $(selector).addEventListener("keydown", event => { if (event.key === "Enter") $("#loginButton").click(); }));
   $("#logoutButton").addEventListener("click", async () => {
     if (!localMode) await apiFetch("/v1/auth/logout", {method:"POST",body:"{}"}).catch(() => {});
@@ -529,6 +639,51 @@
   $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => button.closest("dialog")?.close()));
   $("#saveAll").addEventListener("click", () => saveState());
   ["#productSearch","#categoryFilter","#statusFilter"].forEach(selector => $(selector).addEventListener("input", renderProducts));
+  ["#saleSearch","#saleStatusFilter","#salePeriodFilter"].forEach(selector => $(selector).addEventListener("input", renderSales));
+  $("#newSaleButton").addEventListener("click", () => openSale());
+
+  $("#salesList").addEventListener("click", async event => {
+    const edit = event.target.closest("[data-edit-sale]");
+    const remove = event.target.closest("[data-delete-sale]");
+    if (edit) openSale(edit.dataset.editSale);
+    if (!remove || !confirm("¿Eliminar esta venta del registro?")) return;
+    try {
+      if (localMode) {
+        sales = sales.filter(item => item.id !== remove.dataset.deleteSale);
+        localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(sales));
+      } else {
+        await apiFetch(`/v1/admin/sales/${encodeURIComponent(remove.dataset.deleteSale)}`, {method:"DELETE",body:"{}"});
+      }
+      toast("Venta eliminada del registro.");
+      await loadSales();
+    } catch (error) { toast(error.message || "No se pudo eliminar la venta."); }
+  });
+
+  $("#saleForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const payload = {soldAt:data.get("soldAt"),total:Number(data.get("total")),status:data.get("status"),channel:data.get("channel"),paymentMethod:data.get("paymentMethod"),customerName:String(data.get("customerName") || "").trim(),items:String(data.get("items") || "").trim(),notes:String(data.get("notes") || "").trim()};
+    if (!payload.soldAt || !Number.isFinite(payload.total) || payload.total < 0 || !payload.items) return toast("Indica fecha, monto y productos vendidos.");
+    const id = String(data.get("id") || "");
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    try {
+      if (localMode) {
+        const now = new Date().toISOString();
+        const record = {...payload,id:id || crypto.randomUUID(),totalCents:Math.round(payload.total * 100),currency:"USD",createdAt:sales.find(item => item.id === id)?.createdAt || now,updatedAt:now,createdBy:"revision-local",updatedBy:"revision-local"};
+        const index = sales.findIndex(item => item.id === id);
+        if (index >= 0) sales[index] = record; else sales.unshift(record);
+        localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(sales));
+      } else {
+        await apiFetch(id ? `/v1/admin/sales/${encodeURIComponent(id)}` : "/v1/admin/sales", {method:id ? "PUT" : "POST",body:JSON.stringify(payload)});
+      }
+      $("#saleDialog").close();
+      toast(id ? "Venta actualizada." : "Venta registrada.");
+      await loadSales();
+    } catch (error) { toast(error.message || "No se pudo guardar la venta."); }
+    finally { submit.disabled = false; }
+  });
 
   $("#productList").addEventListener("click", event => {
     const edit = event.target.closest("[data-edit]");
