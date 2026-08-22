@@ -423,13 +423,21 @@
   function renderStats() {
     const products = state.products.filter(product => !product.deleted);
     const stats = [
-      [products.length,"Productos"],
-      [products.filter(product => product.status !== "sold-out").length,"Disponibles"],
-      [products.filter(product => product.promo).length,"Promociones"],
-      [products.filter(product => product.immediate).length,"Stock de hoy"]
+      [products.length,"Productos","all"],
+      [products.filter(product => product.status !== "sold-out").length,"Disponibles","available"],
+      [products.filter(product => product.promo).length,"Promociones","promo"],
+      [products.filter(product => product.immediate).length,"Stock de hoy","immediate"]
     ];
-    $("#stats").innerHTML = stats.map(([value,label]) => `<article class="stat"><b>${value}</b><span>${label}</span></article>`).join("");
+    $("#stats").innerHTML = stats.map(([value,label,filter]) => `<button type="button" class="stat stat-link" data-dashboard-filter="${filter}" aria-label="Ver ${label.toLowerCase()}"><b>${value}</b><span>${label}</span><i aria-hidden="true">Ver →</i></button>`).join("");
     $("#activity").innerHTML = state.updatedAt ? `<div><b>${new Date(state.updatedAt).toLocaleString("es-VE")}</b><p>${localMode ? "El borrador local está actualizado." : "La tienda pública está actualizada."}</p></div>` : `<div><b>Catálogo inicial</b><p>Guarda el primer cambio para publicarlo.</p></div>`;
+  }
+
+  function openProductFilter(status = "all") {
+    $("#productSearch").value = "";
+    $("#categoryFilter").value = "all";
+    $("#statusFilter").value = status;
+    showView("products");
+    renderProducts();
   }
 
   function productBadges(product) {
@@ -461,6 +469,9 @@
 
   function renderProducts() {
     const products = filteredProducts();
+    const labels = {all:"Todos los productos",available:"Disponibles","sold-out":"Agotados",hidden:"Ocultos",preorder:"Pre-order",new:"Nuevos",promo:"Promociones",immediate:"Stock de hoy"};
+    const activeStatus = $("#statusFilter").value;
+    $("#productFilterSummary").innerHTML = `<div><strong>${escapeHtml(labels[activeStatus] || "Resultados")}</strong><span>${products.length} producto${products.length === 1 ? "" : "s"}</span></div>${activeStatus !== "all" ? '<button type="button" data-clear-product-filter>Ver todos</button>' : ""}`;
     $("#productList").innerHTML = products.length ? products.map(product => `<article class="product-row" data-product-id="${escapeHtml(product.id)}"><img src="${escapeHtml(absoluteImage(product.image))}" alt=""><div><h3>${escapeHtml(product.name)}</h3><p>${escapeHtml(product.description || "Sin descripción")}</p></div><div class="badges">${productBadges(product)}<span class="badge">${escapeHtml(money(product.price))}</span></div><div class="row-actions"><button data-edit="${escapeHtml(product.id)}" aria-label="Editar ${escapeHtml(product.name)}">✎</button><button data-delete="${escapeHtml(product.id)}" aria-label="Eliminar ${escapeHtml(product.name)}">×</button></div></article>`).join("") : '<div class="empty-list">No hay productos que coincidan con estos filtros.</div>';
   }
 
@@ -690,6 +701,13 @@
   });
   $$(".nav-item").forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
   $$('[data-view-link]').forEach(button => button.addEventListener("click", () => showView(button.dataset.viewLink)));
+  $("#stats").addEventListener("click", event => {
+    const button = event.target.closest("[data-dashboard-filter]");
+    if (button) openProductFilter(button.dataset.dashboardFilter);
+  });
+  $("#productFilterSummary").addEventListener("click", event => {
+    if (event.target.closest("[data-clear-product-filter]")) openProductFilter("all");
+  });
   $$('[data-action="new-product"]').forEach(button => button.addEventListener("click", () => openProduct()));
   $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => button.closest("dialog")?.close()));
   $("#saveAll").addEventListener("click", () => saveState());
@@ -863,9 +881,7 @@
   });
 
   $$("[data-quick]").forEach(button => button.addEventListener("click", () => {
-    showView("products");
-    $("#statusFilter").value = button.dataset.quick;
-    renderProducts();
+    openProductFilter(button.dataset.quick);
   }));
 
   $("#exportButton").addEventListener("click", () => {

@@ -75,6 +75,7 @@
         <section class="view" data-panel="products">
           <div class="page-head"><div><span class="eyebrow">Catálogo</span><h1>Productos</h1><p>Edita el contenido que aparece en la tienda y en WhatsApp.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>
           <div class="toolbar"><input id="productSearch" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="snacks">Otros</option></select><select id="statusFilter"><option value="all">Todos los estados</option><option value="available">Disponibles</option><option value="sold-out">Agotados</option><option value="hidden">Ocultos</option><option value="preorder">Pre-order</option><option value="new">Nuevos</option><option value="promo">Promoción</option><option value="immediate">Stock de hoy</option></select></div>
+          <div class="filter-summary" id="productFilterSummary" aria-live="polite"></div>
           <div class="product-list" id="productList"></div>
         </section>
 

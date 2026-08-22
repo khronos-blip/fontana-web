@@ -1034,6 +1034,37 @@ test("el panel centraliza cantidades privadas y pedidos reservados en móvil y e
   await page.screenshot({ path: testInfo.outputPath("inventario-central-escritorio.png"), fullPage: false });
 });
 
+test("las métricas del resumen abren productos con su filtro en móvil y escritorio", async ({ page }, testInfo) => {
+  const consoleErrors = [];
+  page.on("console", message => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.locator('#stats [data-dashboard-filter="immediate"]').click();
+  await expect(page.getByRole("heading", { name: "Productos", exact: true })).toBeVisible();
+  await expect(page.locator("#statusFilter")).toHaveValue("immediate");
+  await expect(page.locator("#productFilterSummary")).toContainText("Stock de hoy");
+  await expect(page.locator("#productFilterSummary")).toContainText(/\d+ productos?/);
+  expect(await page.locator("#productList .product-row").count()).toBeGreaterThan(0);
+  await page.screenshot({ path: testInfo.outputPath("resumen-stock-filtrado-movil.png"), fullPage: false });
+
+  await page.getByRole("button", { name: "Ver todos", exact: true }).click();
+  await expect(page.locator("#statusFilter")).toHaveValue("all");
+  await expect(page.locator("#productFilterSummary")).toContainText("Todos los productos");
+
+  await page.getByRole("button", { name: "Resumen", exact: true }).click();
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.locator('#stats [data-dashboard-filter="promo"]').click();
+  await expect(page.locator("#statusFilter")).toHaveValue("promo");
+  await expect(page.locator("#productFilterSummary")).toContainText("Promociones");
+  await page.screenshot({ path: testInfo.outputPath("resumen-promociones-filtrado-escritorio.png"), fullPage: false });
+
+  expect(consoleErrors).toEqual([]);
+});
+
 test("el inventario usa reservas transaccionales, vencimiento y contabilidad automática", async () => {
   const worker = readFileSync("backend/src/worker.js", "utf8");
   const migration = readFileSync("backend/migrations/0004_central_inventory.sql", "utf8");
