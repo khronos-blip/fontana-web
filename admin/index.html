@@ -64,8 +64,19 @@
 
       <main class="content">
         <section class="electricity-control" id="electricityControl" aria-labelledby="electricityTitle">
-          <div><span class="eyebrow">Estado de producción</span><h2 id="electricityTitle">Producción con electricidad</h2><p id="electricityDescription">Los productos que requieren electricidad siguen su disponibilidad normal.</p><small id="electricityMeta"></small></div>
-          <button class="electricity-switch" id="electricityToggle" type="button" role="switch" aria-checked="true"><span aria-hidden="true"></span><b>Con electricidad</b></button>
+          <div class="electricity-identity">
+            <span class="electricity-symbol" aria-hidden="true">
+              <svg viewBox="0 0 32 32" focusable="false"><path class="electricity-bolt" d="M18.4 2.8 7.7 17h7.1l-1.2 12.2L24.4 14h-7.2l1.2-11.2Z"/><path class="electricity-slash" d="m5.2 5.2 21.6 21.6"/></svg>
+            </span>
+            <div><span class="eyebrow">Producción</span><h2 id="electricityTitle">Electricidad activa</h2></div>
+          </div>
+          <div class="electricity-actions">
+            <details class="electricity-details">
+              <summary aria-label="Ver detalles del estado de producción"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10.8v5.5M12 7.5h.01"/></svg></summary>
+              <div class="electricity-details-panel"><p id="electricityDescription">Los productos que requieren electricidad siguen su disponibilidad normal.</p><small id="electricityMeta"></small></div>
+            </details>
+            <button class="electricity-switch" id="electricityToggle" type="button" role="switch" aria-checked="true" aria-label="Cambiar a producción sin electricidad"><span aria-hidden="true"></span></button>
+          </div>
         </section>
         <section class="view active" data-panel="dashboard">
           <div class="page-head"><div><span class="eyebrow">Centro de control</span><h1>Buenos días, Fontana</h1><p>Todo lo necesario para mantener el menú claro y actualizado.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>

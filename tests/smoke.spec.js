@@ -1134,7 +1134,7 @@ test("el centro de control abre y cierra Stock de hoy, repone rápido y conserva
   expect(consoleErrors).toEqual([]);
 });
 
-test("el panel controla la electricidad, persiste el estado y registra la dependencia por producto", async ({ page }) => {
+test("el panel controla la electricidad, persiste el estado y registra la dependencia por producto", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
@@ -1142,18 +1142,25 @@ test("el panel controla la electricidad, persiste el estado y registra la depend
   const control = page.locator("#electricityControl");
   const toggle = page.locator("#electricityToggle");
   await expect(control).toBeVisible();
-  await expect(page.locator("#electricityTitle")).toHaveText("Producción con electricidad");
+  await expect(page.locator("#electricityTitle")).toHaveText("Electricidad activa");
   await expect(toggle).toHaveAttribute("aria-checked", "true");
+  expect(await control.evaluate(element => element.clientHeight)).toBeLessThanOrEqual(64);
+  await page.locator('summary[aria-label="Ver detalles del estado de producción"]').click();
+  await expect(page.locator("#electricityDescription")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("electricidad-compacta-movil.png"), fullPage: false });
 
   page.once("dialog", dialog => dialog.accept());
   await toggle.click();
-  await expect(page.locator("#electricityTitle")).toHaveText("Producción sin electricidad");
+  await expect(page.locator("#electricityTitle")).toHaveText("Sin electricidad");
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-admin-catalog-v1")).settings.productionWithElectricity)).toBe(false);
 
   await page.reload();
   await page.getByRole("button", { name: "Entrar al panel" }).click();
   await expect(page.locator("#electricityToggle")).toHaveAttribute("aria-checked", "false");
+  await page.setViewportSize({ width: 1366, height: 900 });
+  expect(await control.evaluate(element => element.clientHeight)).toBeLessThanOrEqual(72);
+  await page.screenshot({ path: testInfo.outputPath("electricidad-compacta-escritorio.png"), fullPage: false });
   await page.getByRole("button", { name: "Fonkies", exact: true }).click();
   await expect(page.locator('[data-builder="fonkies"] [data-builder-field="requiresElectricity"]')).toBeChecked();
   await page.getByRole("button", { name: "Fomb", exact: true }).click();

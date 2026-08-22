@@ -411,11 +411,12 @@
     const enabled = operations.electricityEnabled !== false;
     const count = Number(operations.affectedCount ?? affectedElectricityCount());
     $("#electricityControl")?.classList.toggle("is-paused", !enabled);
-    $("#electricityTitle").textContent = enabled ? "Producción con electricidad" : "Producción sin electricidad";
+    $("#electricityTitle").textContent = enabled ? "Electricidad activa" : "Sin electricidad";
     $("#electricityDescription").textContent = enabled ? "Los productos que requieren electricidad siguen su disponibilidad normal." : `${count} ${count === 1 ? "producto queda" : "productos quedan"} temporalmente no disponible. El resto del catálogo sigue activo.`;
     $("#electricityMeta").textContent = operations.updatedAt ? `Último cambio: ${new Date(operations.updatedAt).toLocaleString("es-VE")} · ${operations.updatedBy || "sistema"}` : "Estado central de producción";
     $("#electricityToggle").setAttribute("aria-checked", String(enabled));
-    $("#electricityToggle").innerHTML = `<span aria-hidden="true"></span><b>${enabled ? "Con electricidad" : "Sin electricidad"}</b>`;
+    $("#electricityToggle").setAttribute("aria-label", enabled ? "Cambiar a producción sin electricidad" : "Restablecer producción con electricidad");
+    $("#electricityToggle").innerHTML = `<span aria-hidden="true"></span>`;
   }
 
   async function toggleElectricity() {
