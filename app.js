@@ -315,7 +315,6 @@
       if (product.promo) badges.push("PROMOCIÓN DEL DÍA");
       if (stockTodayOpen && product.immediate) badges.push("STOCK DE HOY");
       (Array.isArray(product.customLabels) ? product.customLabels : []).forEach(label => { if (label) badges.push(String(label).slice(0,40)); });
-      if (!badges.length && category === "beverages") badges.push("BEBIDA");
       const image = product.image
         ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(name)}">`
         : `<div class="product-placeholder"><div><b>${escapeHtml(name)}</b><small>Foto por actualizar</small></div></div>`;

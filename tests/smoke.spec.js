@@ -1127,6 +1127,9 @@ test("el centro de control abre y cierra Stock de hoy, repone rápido y conserva
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Stock de hoy" })).toBeHidden();
   await expect(page.locator('.product[data-category="beverages"]').first()).toBeVisible();
+  await expect(page.locator('.product[data-category="beverages"] .product-tag')).toHaveCount(0);
+  await page.locator('.product[data-category="beverages"]').first().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("bebidas-sin-sticker-generico.png"), fullPage: false });
 
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
