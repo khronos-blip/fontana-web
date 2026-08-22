@@ -1018,8 +1018,8 @@ test("el panel centraliza cantidades privadas y pedidos reservados en móvil y e
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
-  await page.getByRole("button", { name: "Stock de hoy", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Stock de hoy", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Inventario", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Inventario", exact: true })).toBeVisible();
   expect(await page.locator("#inventoryList .inventory-row").count()).toBeGreaterThan(10);
   await expect(page.locator("#inventoryList")).toContainText("Control activo");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -1030,7 +1030,7 @@ test("el panel centraliza cantidades privadas y pedidos reservados en móvil y e
   await expect(page.locator("#ordersList")).toContainText("No hay pedidos en este estado");
 
   await page.setViewportSize({ width: 1366, height: 900 });
-  await page.getByRole("button", { name: "Stock de hoy", exact: true }).click();
+  await page.getByRole("button", { name: "Inventario", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("inventario-central-escritorio.png"), fullPage: false });
 });
 
@@ -1100,23 +1100,27 @@ test("el centro de control abre y cierra Stock de hoy, repone rápido y conserva
   await expect(page.getByRole("heading", { name: "Lo que necesita una revisión" })).toBeVisible();
   await expect(page.locator("#attentionGrid .attention-card")).toHaveCount(4);
   await expect(page.locator("#todaySummary")).toContainText("Resumen de hoy");
-  await expect(page.locator("#stockDayToggle")).toContainText("Cerrar Stock de hoy");
+  await expect(page.locator("#stockDayToggle")).toContainText("Pausar Stock de hoy");
   await page.locator("#stockDayToggle").click();
-  await expect(page.locator("#stockDayToggle")).toContainText("Abrir Stock de hoy");
+  await expect(page.locator("#stockDayToggle")).toContainText("Mostrar Stock de hoy");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-admin-catalog-v1")).settings.stockTodayOpen)).toBe(false);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Stock de hoy" }).click();
-  await expect(page.locator("#emptyFilterState")).toBeVisible();
-  await expect(page.locator("#emptyFilterTitle")).toHaveText("Stock de hoy");
+  await expect(page.getByRole("button", { name: "Stock de hoy" })).toBeHidden();
+  await expect(page.locator('.product[data-category="beverages"]').first()).toBeVisible();
 
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
-  await page.getByRole("button", { name: "Stock de hoy", exact: true }).click();
+  await page.getByRole("button", { name: "Inventario", exact: true }).click();
   const firstRow = page.locator("#inventoryList .inventory-row").first();
   const before = Number(await firstRow.locator("[data-stock-value]").inputValue());
-  await firstRow.getByRole("button", { name: "+5" }).click();
-  await expect(firstRow.locator("[data-stock-value]")).toHaveValue(String(before + 5));
+  await firstRow.getByRole("button", { name: "Sumar una unidad" }).click();
+  await expect(firstRow.locator("[data-stock-value]")).toHaveValue(String(before + 1));
+  await firstRow.getByRole("button", { name: "Restar una unidad" }).click();
+  await expect(firstRow.locator("[data-stock-value]")).toHaveValue(String(before));
+  await firstRow.locator("[data-stock-value]").fill(String(before + 3));
+  await firstRow.getByRole("button", { name: "Guardar" }).click();
+  await expect(firstRow.locator("[data-stock-value]")).toHaveValue(String(before + 3));
 
   await page.getByRole("button", { name: "Abrir menú de configuración" }).click();
   await page.getByRole("button", { name: "Historial de cambios" }).click();

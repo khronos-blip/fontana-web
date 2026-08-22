@@ -369,7 +369,7 @@
     $("#attentionGrid").innerHTML = cards.map(([value,label,copy,action]) => `<button type="button" class="attention-card ${Number(value)>0?"needs-attention":"is-clear"}" data-attention-action="${action}"><b>${Number(value)}</b><span>${label}</span><small>${Number(value)>0?copy:"Todo al día"} →</small></button>`).join("");
     const open = state.settings?.stockTodayOpen !== false;
     $("#stockDayToggle").className = `day-toggle ${open ? "is-open" : "is-closed"}`;
-    $("#stockDayToggle").innerHTML = `<span>${open ? "● Abierto" : "● Cerrado"}</span><b>${open ? "Cerrar Stock de hoy" : "Abrir Stock de hoy"}</b>`;
+    $("#stockDayToggle").innerHTML = `<span>${open ? "● Visible en la tienda" : "● Pausado"}</span><b>${open ? "Pausar Stock de hoy" : "Mostrar Stock de hoy"}</b><small>${open ? "Solo afecta el escaparate del día" : "El inventario sigue guardado"}</small>`;
     const today = new Date().toISOString().slice(0,10);
     const todaySales = sales.filter(item => item.status === "confirmed" && item.soldAt === today);
     $("#todaySummary").innerHTML = `<div><span>Resumen de hoy</span><b>${escapeHtml(centsMoney(salesSummary.todayCents))}</b><small>Ingresos confirmados</small></div><div><b>${todaySales.length}</b><small>Ventas confirmadas</small></div><div><b>${reserved}</b><small>Pedidos por confirmar</small></div><button type="button" data-view-link="sales">Ver ventas →</button>`;
@@ -383,7 +383,7 @@
     markDirty();
     renderDashboardOperations();
     await saveState();
-    toast(willOpen ? "Stock de hoy abierto en la tienda." : "Stock de hoy cerrado hasta que vuelvas a abrirlo.");
+    toast(willOpen ? "Stock de hoy vuelve a estar visible." : "Stock de hoy quedó pausado. Los productos y las cantidades siguen guardados.");
   }
 
   function localInventoryItems() {
@@ -418,7 +418,7 @@
       return (!query || `${item.label} ${item.optionSummary}`.toLowerCase().includes(query)) && (kind === "all" || item.kind === kind) && levelMatch;
     });
     $("#inventoryStats").innerHTML = [[inventorySummary.available,"Disponibles"],[inventorySummary.reserved,"Reservadas"],[inventorySummary.tracked,"Artículos controlados"],[inventorySummary.soldOut,"Agotados"]].map(([value,label])=>`<article class="stat"><b>${Number(value||0)}</b><span>${label}</span></article>`).join("");
-    $("#inventoryList").innerHTML = items.length ? items.map(item => `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy"><span class="eyebrow">${escapeHtml(item.optionSummary || item.kind)}</span><h3>${escapeHtml(item.label)}</h3><p>${item.trackStock ? `${item.available} disponible${item.available===1?"":"s"} · ${item.reserved} reservada${item.reserved===1?"":"s"}` : "Sin control numérico"}</p></div><label>Cantidad total<input data-stock-value type="number" min="${Number(item.reserved||0)}" step="1" value="${Number(item.onHand||0)}"></label><div class="restock-buttons" aria-label="Reposición rápida"><button type="button" data-stock-delta="1">+1</button><button type="button" data-stock-delta="5">+5</button></div><label class="switch"><input data-track-stock type="checkbox" ${item.trackStock?"checked":""}><span>Control activo</span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`).join("") : '<div class="empty-list">No hay artículos que coincidan.</div>';
+    $("#inventoryList").innerHTML = items.length ? items.map(item => { const minimum=Number(item.reserved||0); const value=Number(item.onHand||0); return `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy"><span class="eyebrow">${escapeHtml(item.optionSummary || item.kind)}</span><h3>${escapeHtml(item.label)}</h3><p>${item.trackStock ? `${item.available} disponible${item.available===1?"":"s"} · ${item.reserved} reservada${item.reserved===1?"":"s"}` : "Sin control numérico"}</p></div><label class="stock-quantity-label">Cantidad total<div class="stock-stepper"><button type="button" data-stock-delta="-1" aria-label="Restar una unidad" ${value<=minimum?"disabled":""}>−</button><input data-stock-value aria-label="Cantidad total de ${escapeHtml(item.label)}" type="number" inputmode="numeric" min="${minimum}" step="1" value="${value}"><button type="button" data-stock-delta="1" aria-label="Sumar una unidad">+</button></div></label><label class="switch"><input data-track-stock type="checkbox" ${item.trackStock?"checked":""}><span>Control activo</span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`; }).join("") : '<div class="empty-list">No hay artículos que coincidan.</div>';
   }
 
   async function loadOrders() {
@@ -842,15 +842,23 @@
     if (!button) return;
     const row=button.closest("[data-sku]");
     const input=$("[data-stock-value]",row);
-    if(deltaButton) input.value=String(Math.max(Number(input.min||0),Number(input.value||0)+Number(deltaButton.dataset.stockDelta||0)));
-    const payload={onHand:Number($("[data-stock-value]",row).value),trackStock:$("[data-track-stock]",row).checked};
+    const delta=Number(deltaButton?.dataset.stockDelta||0);
+    if(deltaButton) input.value=String(Math.max(Number(input.min||0),Number(input.value||0)+delta));
+    const onHand=Number(input.value);
+    const minimum=Number(input.min||0);
+    if(!Number.isInteger(onHand)||onHand<minimum){
+      toast(minimum>0?`La cantidad debe ser un número entero igual o mayor que ${minimum}, porque hay unidades reservadas.`:"Escribe una cantidad entera igual o mayor que cero.");
+      input.focus();
+      return;
+    }
+    const payload={onHand,trackStock:$("[data-track-stock]",row).checked};
     button.disabled=true;
     try {
       if (localMode) {
         const item=inventory.find(entry=>entry.sku===row.dataset.sku);
         if(item){item.onHand=payload.onHand;item.available=Math.max(0,payload.onHand-Number(item.reserved||0));item.trackStock=payload.trackStock;}
-      } else await apiFetch(`/v1/admin/inventory/${encodeURIComponent(row.dataset.sku)}`,{method:"PUT",body:JSON.stringify({...payload,note:deltaButton?`Reposición rápida +${deltaButton.dataset.stockDelta}`:"Ajuste manual desde el panel"})});
-      toast(deltaButton?`Se agregaron ${deltaButton.dataset.stockDelta} unidades.`:"Cantidad actualizada para todos los clientes.");
+      } else await apiFetch(`/v1/admin/inventory/${encodeURIComponent(row.dataset.sku)}`,{method:"PUT",body:JSON.stringify({...payload,note:deltaButton?`Ajuste rápido ${delta>0?"+":""}${delta}`:"Cantidad escrita manualmente desde el panel"})});
+      toast(deltaButton?(delta>0?"Se sumó una unidad.":"Se restó una unidad."):"Cantidad actualizada para todos los clientes.");
       if(localMode){renderInventory();renderDashboardOperations();}else await Promise.all([loadInventory(),loadActivity()]);
     } catch(error){toast(error.message||"No se pudo actualizar la cantidad.");}
     finally{button.disabled=false;}

@@ -57,7 +57,7 @@
         <button class="nav-item" data-view="products">Productos</button>
         <button class="nav-item" data-view="fonkies">Fonkies</button>
         <button class="nav-item" data-view="fomb">Fomb</button>
-        <button class="nav-item" data-view="inventory">Stock de hoy</button>
+        <button class="nav-item" data-view="inventory">Inventario</button>
         <button class="nav-item" data-view="orders">Pedidos</button>
         <button class="nav-item" data-view="sales">Ventas</button>
       </aside>
@@ -96,7 +96,7 @@
         </section>
 
         <section class="view" data-panel="inventory">
-          <div class="page-head"><div><span class="eyebrow">Inventario central</span><h1>Stock de hoy</h1><p>Las cantidades son privadas. La tienda solo muestra Disponible o Agotado.</p></div><button class="ghost" id="refreshInventoryButton" type="button">Actualizar</button></div>
+          <div class="page-head"><div><span class="eyebrow">Inventario central</span><h1>Inventario</h1><p>Escribe la cantidad exacta o ajústala con − y +. Las cantidades son privadas: la tienda solo muestra Disponible o Agotado.</p></div><button class="ghost" id="refreshInventoryButton" type="button">Actualizar</button></div>
           <div class="stats" id="inventoryStats"></div>
           <div class="toolbar inventory-toolbar"><input id="inventorySearch" type="search" placeholder="Buscar producto, sabor o presentación"><select id="inventoryKindFilter"><option value="all">Todo el inventario</option><option value="product">Productos</option><option value="fonkies">Sabores Fonkies</option><option value="fomb">Sabores Fomb</option></select><select id="inventoryStateFilter"><option value="all">Todos los niveles</option><option value="low">Stock bajo</option><option value="soldout">Agotados</option><option value="reserved">Con reservas</option></select></div>
           <div class="inventory-list" id="inventoryList"></div>

@@ -924,6 +924,8 @@
   applyAdminBuilders();
   renderDynamicCatalog();
   setupCatalogGroups();
+  const stockTodayFilter = $('.filter[data-filter="immediate"]');
+  if (stockTodayFilter && !stockTodayOpen) stockTodayFilter.hidden = true;
   $$(".add").forEach(button => button.addEventListener("click", () => addProduct(button.closest(".product"))));
   $$(".filter").forEach(button => button.addEventListener("click", () => {
     $$(".filter").forEach(item => item.classList.remove("active"));
