@@ -766,10 +766,29 @@ test("el checkout móvil mantiene los campos a tamaño anti-zoom", async ({ page
   await expect(page.locator("#customerNotes")).toHaveCSS("font-size", "16px");
 });
 
-test("el panel administra sabores especiales y conserva el checkout", async ({ page }) => {
+test("el panel administra sabores especiales en tarjetas compactas y conserva el checkout", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
   await page.getByRole("button", { name: "Fonkies", exact: true }).click();
+  await expect(page.locator("#fonkiesEditor .builder-settings")).not.toHaveAttribute("open", "");
+  const compactLayout = await page.locator("#fonkiesEditor").evaluate(editor => {
+    const cards = [...editor.querySelectorAll(".flavor-row")];
+    const columns = getComputedStyle(editor.querySelector(".flavor-admin-list")).gridTemplateColumns.split(" ").length;
+    return {
+      columns,
+      tallestCard: Math.max(...cards.map(card => card.getBoundingClientRect().height)),
+      fitsViewport: document.documentElement.scrollWidth <= window.innerWidth
+    };
+  });
+  expect(compactLayout.columns).toBe(2);
+  expect(compactLayout.tallestCard).toBeLessThanOrEqual(78);
+  expect(compactLayout.fitsViewport).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("fonkies-admin-compacto-movil.png"), fullPage: false });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect.poll(() => page.locator("#fonkiesEditor .flavor-admin-list").evaluate(list => getComputedStyle(list).gridTemplateColumns.split(" ").length)).toBe(3);
+  await page.screenshot({ path: testInfo.outputPath("fonkies-admin-compacto-escritorio.png"), fullPage: false });
+  await page.locator("#fonkiesEditor .builder-settings summary").click();
   await page.locator('#fonkiesEditor [data-builder-field="singlePrice"]').fill("16");
   await page.locator('#fonkiesEditor [data-builder-field="promo"]').check();
   await page.getByRole("button", { name: "Guardar Fonkies" }).click();
