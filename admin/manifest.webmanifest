@@ -9,7 +9,7 @@
   "theme_color": "#4b164d",
   "icons": [
     {
-      "src": "/assets/fontana-logo-official.png?v=20260822",
+      "src": "/assets/fontana-admin-icon.png?v=20260822",
       "sizes": "1080x1080",
       "type": "image/png",
       "purpose": "any"

@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { readFileSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 
 async function openPreview(page) {
   await page.route("**/config.js*", async route => {
@@ -1001,14 +1001,15 @@ test("SEO público es indexable y mantiene privado el panel", async ({ page, req
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
 });
 
-test("los accesos de iPhone usan el logo oficial de Fontana", async ({ page }) => {
+test("los accesos de iPhone diferencian la tienda del panel", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute("href", /fontana-logo-official\.png/);
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "manifest.webmanifest");
   await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute("content", "Fontana");
 
   await page.goto("/admin/");
-  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute("href", /fontana-logo-official\.png/);
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute("href", /fontana-admin-icon\.png/);
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "manifest.webmanifest");
   await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute("content", "Panel Fontana");
+  expect(existsSync("assets/fontana-admin-icon.png")).toBe(true);
 });
