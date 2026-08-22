@@ -1192,3 +1192,102 @@ test("sin electricidad pausa Fonkies y bloquea un carrito existente sin eliminar
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   await expect(page.locator(".fomb-builder")).not.toContainText("Temporalmente no disponible");
 });
+
+test("los formularios operativos conservan cabecera, contenido y acciones accesibles en móvil", async ({ page }, testInfo) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+
+  async function expectUsableDialog(selector, actionName) {
+    const dialog = page.locator(selector);
+    await expect(dialog).toBeVisible();
+    const geometry = await dialog.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const scroller = element.querySelector(".form-grid");
+      const actions = element.querySelector(".dialog-actions").getBoundingClientRect();
+      return {
+        top: box.top,
+        bottom: box.bottom,
+        viewportHeight: window.innerHeight,
+        actionsTop: actions.top,
+        actionsBottom: actions.bottom,
+        canScroll: scroller.scrollHeight > scroller.clientHeight
+      };
+    });
+    expect(geometry.top).toBeGreaterThanOrEqual(0);
+    expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+    expect(geometry.actionsTop).toBeGreaterThanOrEqual(geometry.top);
+    expect(geometry.actionsBottom).toBeLessThanOrEqual(geometry.viewportHeight);
+    await expect(dialog.getByRole("button", { name: actionName })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cerrar" })).toBeVisible();
+    return geometry;
+  }
+
+  await page.getByRole("button", { name: "+ Nuevo producto" }).first().click();
+  expect((await expectUsableDialog("#productDialog", "Guardar producto")).canScroll).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("producto-modal-movil.png") });
+  await page.locator("#productDialog").getByRole("button", { name: "Cerrar" }).click();
+
+  await page.getByRole("button", { name: "Fonkies", exact: true }).click();
+  await page.locator('#fonkiesEditor [data-add-flavor="fonkies"]').click();
+  await expectUsableDialog("#flavorDialog", "Guardar sabor");
+  await page.locator("#flavorDialog").getByRole("button", { name: "Cerrar" }).click();
+
+  await page.getByRole("button", { name: "Ventas", exact: true }).click();
+  await page.getByRole("button", { name: "+ Registrar venta" }).click();
+  expect((await expectUsableDialog("#saleDialog", "Guardar venta")).canScroll).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("venta-modal-movil-corregido.png") });
+  await page.locator('#saleForm [name="total"]').fill("23.50");
+  await page.locator('#saleForm [name="customerName"]').fill("Revisión móvil");
+  await page.locator('#saleForm [name="items"]').fill("Venta de prueba funcional");
+  await page.locator('#saleForm button[type="submit"]').click();
+  await expect(page.locator("#salesList")).toContainText("Revisión móvil");
+
+  await page.locator("#salesList [data-edit-sale]").first().click();
+  await page.locator('#saleForm [name="status"]').selectOption("pending");
+  await page.locator('#saleForm button[type="submit"]').click();
+  await page.locator("#saleStatusFilter").selectOption("pending");
+  await expect(page.locator("#salesList")).toContainText("Revisión móvil");
+  page.once("dialog", dialog => dialog.accept());
+  await page.locator("#salesList [data-delete-sale]").first().click();
+  await expect(page.locator("#salesList")).not.toContainText("Revisión móvil");
+
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("todas las áreas del panel navegan y responden sin errores", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+
+  for (const item of ["Resumen", "Productos", "Fonkies", "Fomb", "Inventario", "Pedidos", "Ventas"]) {
+    await page.getByRole("button", { name: item, exact: true }).click();
+    await expect(page.locator('.view.active')).toBeVisible();
+  }
+
+  for (const item of [
+    ["Acceso, usuarios y Face ID", "Acceso y Face ID"],
+    ["Copias y publicación", "Copias y publicación"],
+    ["Historial de cambios", "Historial de cambios"]
+  ]) {
+    await page.getByRole("button", { name: "Abrir menú de configuración" }).click();
+    await page.getByRole("button", { name: item[0] }).click();
+    await expect(page.getByRole("heading", { name: item[1], exact: true })).toBeVisible();
+  }
+
+  await page.getByRole("button", { name: "Abrir menú de configuración" }).click();
+  await page.getByRole("button", { name: "Copias y publicación" }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Descargar copia" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^fontana-catalogo-\d{4}-\d{2}-\d{2}\.json$/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
