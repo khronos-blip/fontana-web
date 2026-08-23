@@ -2,6 +2,7 @@
   "use strict";
 
   const STORAGE_KEY = "fontana-admin-catalog-v1";
+  const LAST_USERNAME_KEY = "fontana-admin-last-username";
   const SALES_STORAGE_KEY = "fontana-admin-sales-v1";
   const config = window.FONTANA_CONFIG || {};
   const apiBase = String(config.adminApiBase || "").replace(/\/$/, "");
@@ -762,11 +763,11 @@
   }
 
   async function loginWithPasskey() {
-    const username = $("#loginUsername").value.trim();
-    if (!username) {
-      $("#loginStatus").textContent = "Escribe tu usuario y luego usa Face ID.";
+    if (localMode) {
+      $("#loginStatus").textContent = "Face ID se prueba únicamente en el panel publicado.";
       return;
     }
+    const username = $("#loginUsername").value.trim() || localStorage.getItem(LAST_USERNAME_KEY) || "";
     if (!window.PublicKeyCredential || !navigator.credentials) {
       $("#loginStatus").textContent = "Este navegador no admite Face ID para sitios web.";
       return;
@@ -778,8 +779,10 @@
       const credential = await navigator.credentials.get({ publicKey:authenticationOptionsForBrowser(payload.publicKey) });
       if (!credential) throw new Error("No se completó Face ID.");
       const verifiedSession = await apiFetch("/v1/auth/passkey/verify", { method:"POST", body:JSON.stringify({ username, challengeId:payload.challengeId, response:publicKeyCredentialToJSON(credential) }) });
-      if (!verifiedSession?.ok || verifiedSession.username !== username) throw new Error("Face ID no pudo verificarse.");
+      if (!verifiedSession?.ok || (username && verifiedSession.username !== username)) throw new Error("Face ID no pudo verificarse.");
       currentSession = verifiedSession;
+      localStorage.setItem(LAST_USERNAME_KEY, verifiedSession.username);
+      $("#loginUsername").value = verifiedSession.username;
       await loadRemoteState();
       await enterPanel();
       toast(`Bienvenido, ${currentSession.username}.`);
@@ -809,6 +812,7 @@
         const password = $("#loginPassword").value;
         if (!username || !password) throw new Error("Escribe el usuario y la contraseña.");
         currentSession = await apiFetch("/v1/auth/login", {method:"POST",body:JSON.stringify({username,password})});
+        localStorage.setItem(LAST_USERNAME_KEY, currentSession.username);
         await loadRemoteState();
       }
       await enterPanel();
@@ -1122,6 +1126,7 @@
       return;
     }
     currentSession = null;
+    $("#loginUsername").value = localStorage.getItem(LAST_USERNAME_KEY) || "";
     try {
       // Una cookie anterior nunca debe abrir el panel por sí sola. Al cargar la
       // página cerramos cualquier sesión previa y exigimos una autenticación

@@ -722,8 +722,9 @@ test("el administrador ofrece Face ID y cuentas separadas sin romper la vista m�
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/");
   await expect(page.getByRole("button", { name: "Entrar con Face ID" })).toBeVisible();
+  await expect(page.getByText("No necesitas escribir la contraseña. Pulsa Face ID y confirma en tu iPhone.")).toBeVisible();
   await page.getByRole("button", { name: "Entrar con Face ID" }).click();
-  await expect(page.locator("#loginStatus")).toHaveText("Escribe tu usuario y luego usa Face ID.");
+  await expect(page.locator("#loginStatus")).toHaveText("Face ID se prueba únicamente en el panel publicado.");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
   await page.getByRole("button", { name: "Abrir menú de configuración" }).click();
   await page.getByRole("button", { name: "Acceso, usuarios y Face ID" }).click();
@@ -736,16 +737,22 @@ test("el administrador ofrece Face ID y cuentas separadas sin romper la vista m�
 
   const worker = readFileSync("backend/src/worker.js", "utf8");
   const migration = readFileSync("backend/migrations/0002_multi_user_passkeys.sql", "utf8");
+  const discoverableMigration = readFileSync("backend/migrations/0006_discoverable_passkey_login.sql", "utf8");
+  const wrangler = readFileSync("backend/wrangler.jsonc", "utf8");
   expect(worker).toContain('/v1/auth/passkey/options');
   expect(worker).toContain('/v1/admin/users');
   expect(worker).toContain('verifyAuthenticationResponse');
+  expect(worker).toContain('saveDiscoverablePasskeyChallenge');
   expect(migration).toContain('CREATE TABLE IF NOT EXISTS passkey_credentials');
   expect(migration).toContain("role = 'owner'");
+  expect(discoverableMigration).toContain('CREATE TABLE IF NOT EXISTS passkey_login_challenges');
+  expect(wrangler).toContain('https://www.fontanasingluten.com');
 
   const adminScript = readFileSync("admin/admin.js", "utf8");
   expect(adminScript).toContain('await apiFetch("/v1/auth/logout", { method:"POST", body:"{}" })');
   expect(adminScript).not.toContain('currentSession = await apiFetch("/v1/auth/session")');
-  expect(adminScript).toContain('if (!verifiedSession?.ok || verifiedSession.username !== username)');
+  expect(adminScript).toContain('(username && verifiedSession.username !== username)');
+  expect(adminScript).toContain('fontana-admin-last-username');
 });
 
 test("el panel registra ventas manuales y separa la configuración del catálogo", async ({ page }, testInfo) => {

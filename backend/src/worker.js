@@ -550,16 +550,25 @@ async function passkeyLoginOptions(request, env) {
   if (!origin) return json({ error: "Origen no autorizado" }, 403);
   const body = await request.json();
   const username = normalizeUsername(body.username);
-  const user = username ? await env.DB.prepare("SELECT username FROM admin_users WHERE username = ? AND active = 1").bind(username).first() : null;
-  if (!user) return json({ error: "No existe una cuenta activa con ese usuario." }, 404);
-  const credentials = await env.DB.prepare("SELECT credential_id, transports FROM passkey_credentials WHERE username = ?").bind(username).all();
-  if (!(credentials.results || []).length) return json({ error: "Este usuario todavía no configuró Face ID." }, 404);
+  let allowCredentials;
+  if (username) {
+    const user = await env.DB.prepare("SELECT username FROM admin_users WHERE username = ? AND active = 1").bind(username).first();
+    if (!user) return json({ error: "No existe una cuenta activa con ese usuario." }, 404);
+    const credentials = await env.DB.prepare("SELECT credential_id, transports FROM passkey_credentials WHERE username = ?").bind(username).all();
+    if (!(credentials.results || []).length) return json({ error: "Este usuario todavía no configuró Face ID." }, 404);
+    allowCredentials = credentials.results.map(row => ({ id: row.credential_id, transports: parseJsonArray(row.transports) }));
+  } else {
+    const available = await env.DB.prepare("SELECT COUNT(*) AS total FROM passkey_credentials p JOIN admin_users u ON u.username = p.username WHERE u.active = 1").first();
+    if (!Number(available?.total || 0)) return json({ error: "Todavía no hay accesos con Face ID configurados." }, 404);
+  }
   const options = await generateAuthenticationOptions({
     rpID: webAuthnRpID(origin, env),
     userVerification: "required",
-    allowCredentials: credentials.results.map(row => ({ id: row.credential_id, transports: parseJsonArray(row.transports) }))
+    ...(allowCredentials ? { allowCredentials } : {})
   });
-  const challengeId = await savePasskeyChallenge(env, username, options.challenge, "authentication");
+  const challengeId = username
+    ? await savePasskeyChallenge(env, username, options.challenge, "authentication")
+    : await saveDiscoverablePasskeyChallenge(env, options.challenge);
   return json({ challengeId, publicKey: options });
 }
 
@@ -567,10 +576,15 @@ async function verifyPasskeyLogin(request, env) {
   const origin = requireWebAuthnOrigin(request, env);
   if (!origin) return json({ error: "Origen no autorizado" }, 403);
   const body = await request.json();
-  const username = normalizeUsername(body.username);
-  const challenge = await consumePasskeyChallenge(env, body.challengeId, username, "authentication");
+  const requestedUsername = normalizeUsername(body.username);
+  const row = requestedUsername
+    ? await env.DB.prepare("SELECT credential_id, username, public_key, counter, transports, device_type, backed_up FROM passkey_credentials WHERE credential_id = ? AND username = ?").bind(body.response?.id || "", requestedUsername).first()
+    : await env.DB.prepare("SELECT credential_id, username, public_key, counter, transports, device_type, backed_up FROM passkey_credentials WHERE credential_id = ?").bind(body.response?.id || "").first();
+  const username = row?.username || requestedUsername;
+  const challenge = requestedUsername
+    ? await consumePasskeyChallenge(env, body.challengeId, requestedUsername, "authentication")
+    : await consumeDiscoverablePasskeyChallenge(env, body.challengeId);
   if (!challenge) return json({ error: "La solicitud de Face ID venció. Inténtalo de nuevo." }, 400);
-  const row = await env.DB.prepare("SELECT credential_id, username, public_key, counter, transports, device_type, backed_up FROM passkey_credentials WHERE credential_id = ? AND username = ?").bind(body.response?.id || "", username).first();
   if (!row) return json({ error: "Face ID no está registrado para este usuario." }, 401);
   let verification;
   try {
@@ -972,6 +986,24 @@ async function consumePasskeyChallenge(env, id, username, purpose) {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const row = await env.DB.prepare("SELECT challenge FROM passkey_challenges WHERE id = ? AND username = ? AND purpose = ? AND expires_at > ?").bind(id, username, purpose, nowSeconds).first();
   await env.DB.prepare("DELETE FROM passkey_challenges WHERE id = ?").bind(id).run();
+  return row?.challenge || "";
+}
+
+async function saveDiscoverablePasskeyChallenge(env, challenge) {
+  const id = randomToken(18);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM passkey_login_challenges WHERE expires_at <= ?").bind(nowSeconds),
+    env.DB.prepare("INSERT INTO passkey_login_challenges (id, challenge, expires_at, created_at) VALUES (?, ?, ?, ?)").bind(id, challenge, nowSeconds + PASSKEY_CHALLENGE_TTL_SECONDS, new Date().toISOString())
+  ]);
+  return id;
+}
+
+async function consumeDiscoverablePasskeyChallenge(env, id) {
+  if (!/^[a-zA-Z0-9_-]{20,80}$/.test(String(id || ""))) return "";
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare("SELECT challenge FROM passkey_login_challenges WHERE id = ? AND expires_at > ?").bind(id, nowSeconds).first();
+  await env.DB.prepare("DELETE FROM passkey_login_challenges WHERE id = ?").bind(id).run();
   return row?.challenge || "";
 }
 
