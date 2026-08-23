@@ -254,6 +254,16 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#menu");
 });
 
+test("las pestañas superiores conservan contraste al seleccionarlas en móvil", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const menuLink = page.locator('.nav-links a[href="#menu"]');
+  await menuLink.hover();
+  await expect(menuLink).toHaveCSS("color", "rgb(79, 22, 81)");
+  await expect(menuLink).toHaveCSS("background-color", "rgba(110, 35, 111, 0.09)");
+  await page.screenshot({ path: testInfo.outputPath("navegacion-activa-contraste-movil.png"), fullPage: false });
+});
+
 test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
