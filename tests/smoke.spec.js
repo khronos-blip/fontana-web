@@ -109,6 +109,52 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-fit", "cover");
 });
 
+test("Fonkies nunca permite seleccionar ni pedir más unidades que el inventario", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version: 2,
+      settings: { productionWithElectricity: true, stockTodayOpen: true },
+      products: [],
+      builders: {
+        fonkies: {
+          visible: true,
+          status: "available",
+          requiresElectricity: false,
+          minimum: 4,
+          singlePrice: 15,
+          mixedPrice: 17,
+          extraPrice: 3.5,
+          flavors: [{
+            name: "Chips de Chocolate Oscuro",
+            ingredients: "Harina de almendra, chocolate vegano oscuro y monkfruit",
+            image: "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg",
+            status: "available",
+            stockQuantity: 6
+          }]
+        }
+      }
+    }));
+  });
+  await openPreview(page);
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await openFlavorChoice(page, ".fonkie-builder");
+
+  const flavor = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
+  const plus = flavor.locator('[data-delta="1"]');
+  for (let index = 0; index < 8; index += 1) await plus.click();
+  await expect(flavor.locator("output")).toHaveText("6");
+  await expect(page.locator("#toast")).toContainText("No hay suficientes unidades disponibles");
+  await page.screenshot({ path: testInfo.outputPath("fonkies-stock-6-bloquea-8-movil.png"), fullPage: false });
+
+  await page.locator("#addFonkieBox").click();
+  await expect(page.locator("#cartCount")).toHaveText("1");
+  await page.locator("#cartButton").click();
+  await page.locator('.cart-item .qty button[aria-label="Sumar"]').click();
+  await expect(page.locator(".cart-item .qty b")).toHaveText("1");
+  await expect(page.locator("#toast")).toContainText("No hay suficientes unidades disponibles");
+});
+
 test("los selectores de Fonkies y Fomb son compactos en escritorio y pueden plegarse", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openPreview(page);
@@ -208,7 +254,7 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#menu");
 });
 
-test("el nombre entra en ola, las hojas aparecen y la cascada termina sobre la F inferior", async ({ page }, testInfo) => {
+test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   const logo = page.locator(".hero-logo");
@@ -230,26 +276,8 @@ test("el nombre entra en ola, las hojas aparecen y la cascada termina sobre la F
   await expect(leaves.last()).toHaveCSS("animation-name", "leaf-lower-breeze");
   await expect(leaves.first()).toHaveCSS("animation-duration", "7.4s");
   await expect(leaves.last()).toHaveCSS("animation-duration", "8.2s");
-  const water = page.locator(".hero-logo-water");
-  const waterStage = water.locator(".hero-water-stage");
-  await expect(page.locator(".hero-logo-mark")).toHaveClass(/hero-water-trial/);
-  await expect(water).toBeVisible();
-  await expect(waterStage).toHaveCSS("animation-name", "waterfall-window");
-  await expect(waterStage).toHaveCSS("animation-delay", "1.82s");
-  await expect(waterStage).toHaveCSS("animation-duration", "2.75s");
-  await expect(waterStage).toHaveCSS("animation-iteration-count", "1");
-  const waterfallFrames = await waterStage.evaluate(element => element.getAnimations()[0].effect.getKeyframes().map(frame => Number(frame.opacity)));
-  expect(waterfallFrames[0]).toBe(0);
-  expect(Math.max(...waterfallFrames)).toBe(1);
-  expect(waterfallFrames.at(-1)).toBe(0);
-  await expect(water.locator(".hero-water-mist")).toHaveCount(1);
-  await expect(water.locator(".hero-water-stream")).toHaveCount(1);
-  await expect(water.locator(".hero-water-edge")).toHaveCount(1);
-  await expect(water.locator(".hero-water-drop")).toHaveCount(4);
-  await expect(water.locator(".hero-water-splash")).toHaveCount(1);
-  await expect(water.locator(".hero-water-stream")).toHaveCSS("animation-name", "waterfall-draw");
-  await expect(water.locator(".hero-water-stream")).toHaveCSS("animation-delay", "1.88s");
-  expect(await water.locator(".hero-water-stream").getAttribute("d")).toMatch(/^M409 278.*190 807$/);
+  await expect(page.locator(".hero-logo-water, .hero-water-stage, .hero-water-stream")).toHaveCount(0);
+  await expect(page.locator(".hero-logo-mark")).not.toHaveClass(/hero-water-trial/);
   const logoSize = await logo.evaluate(element => ({ width: element.offsetWidth, height: element.offsetHeight }));
   const leafCanvasSize = await page.locator(".hero-logo-leaves").evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }));
   expect(leafCanvasSize).toEqual(logoSize);
@@ -297,7 +325,6 @@ test("el nombre entra en ola, las hojas aparecen y la cascada termina sobre la F
   await expect(leafStage).toHaveCSS("opacity", "1");
   await expect(leaves.first()).toHaveCSS("animation-name", "none");
   await expect(leaves.last()).toHaveCSS("animation-name", "none");
-  await expect(water).toHaveCSS("display", "none");
   await expect(leaves.first()).toHaveCSS("transform", "none");
   await expect(leaves.last()).toHaveCSS("transform", "none");
   const reducedShape = await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {
@@ -1146,6 +1173,8 @@ test("el inventario usa reservas transaccionales, vencimiento y contabilidad aut
   expect(migration).toContain("CREATE TABLE IF NOT EXISTS stock_orders");
   expect(migration).toContain("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_order_id");
   expect(worker).toContain('/v1/orders/reserve');
+  expect(worker).toContain('/v1/orders/validate');
+  expect(worker).toContain('resolveStockChecks');
   expect(worker).toContain('/v1/admin/inventory');
   expect(worker).toContain('/v1/admin/orders');
   expect(worker).toContain("await expireReservations(env)");
@@ -1153,6 +1182,8 @@ test("el inventario usa reservas transaccionales, vencimiento y contabilidad aut
   expect(wrangler).toContain('"* * * * *"');
   expect(checkout).toContain('textContent = "Reservando stock…"');
   expect(checkout).toContain('/v1/orders/reserve');
+  expect(checkout).toContain('/v1/orders/validate');
+  expect(checkout).toContain('flavor.quantity ?? flavor.qty');
   expect(checkout).toContain('Stock reservado hasta:');
 });
 

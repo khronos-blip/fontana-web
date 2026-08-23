@@ -33,6 +33,7 @@ export default {
       if (url.pathname === "/v1/health" && request.method === "GET") response = json({ ok: true });
       else if (url.pathname === "/v1/catalog" && request.method === "GET") response = await getCatalog(request, env);
       else if (url.pathname.startsWith("/v1/images/") && request.method === "GET") response = await getImage(url, env);
+      else if (url.pathname === "/v1/orders/validate" && request.method === "POST") response = await validateOrderStock(request, env);
       else if (url.pathname === "/v1/orders/reserve" && request.method === "POST") response = await reserveOrder(request, env);
       else if (url.pathname === "/v1/setup" && request.method === "POST") response = await setupAdmin(request, env);
       else if (url.pathname === "/v1/auth/login" && request.method === "POST") response = await login(request, env);
@@ -357,6 +358,75 @@ function resolveReservationCart(state, requestedItems, operations) {
   }
   const totalCents = snapshotItems.reduce((sum,item) => sum + item.unitPriceCents * item.quantity, 0);
   return {snapshotItems,demands:[...demands.values()],totalCents};
+}
+
+function resolveStockChecks(state, requestedChecks, operations) {
+  if (!Array.isArray(requestedChecks) || requestedChecks.length > MAX_ORDER_ITEMS * 10) throw new Error("invalid_cart");
+  const definitions = deriveInventoryDefinitions(state);
+  const definitionMap = new Map(definitions.map(item => [item.sku, item]));
+  const products = new Map((state.products || []).filter(item => !item.deleted && item.visible !== false).map(item => [item.id, item]));
+  const demands = new Map();
+  const addDemand = (definition, quantity) => {
+    const current = demands.get(definition.sku);
+    if (current) current.quantity += quantity;
+    else demands.set(definition.sku, { definition, quantity });
+  };
+
+  for (const requested of requestedChecks) {
+    const quantity = parsePositiveInteger(requested.quantity);
+    if (!quantity) throw new Error("invalid_quantity");
+    if (requested.preorder === true) continue;
+    const kind = String(requested.kind || "product");
+    if (kind === "product") {
+      const product = products.get(String(requested.productId || ""));
+      if (!product) throw new Error("invalid_product");
+      if (!operations.electricityEnabled && product.requiresElectricity === true) throw new Error("temporarily_unavailable");
+      const sizeName = String(requested.size || "");
+      const variantName = String(requested.variant || "");
+      const size = (product.sizes || []).find(option => option.name === sizeName) || null;
+      const variant = (product.variants || []).find(option => option.name === variantName) || null;
+      if ((product.sizes || []).length && !size) throw new Error("invalid_option");
+      if ((product.variants || []).length && !variant) throw new Error("invalid_option");
+      const sku = ["product", product.id, size ? stockSlug(size.name) : "base", variant ? stockSlug(variant.name) : "base"].join(":");
+      const definition = definitionMap.get(sku);
+      if (!definition) throw new Error("invalid_product");
+      addDemand(definition, quantity);
+      continue;
+    }
+    if (kind !== "fonkies" && kind !== "fomb") throw new Error("invalid_product");
+    const builder = state.builders?.[kind];
+    if (!builder || builder.visible === false) throw new Error("invalid_product");
+    const requiresElectricity = builder.requiresElectricity === true || (kind === "fonkies" && !Object.prototype.hasOwnProperty.call(builder, "requiresElectricity"));
+    if (!operations.electricityEnabled && requiresElectricity) throw new Error("temporarily_unavailable");
+    const flavorName = String(requested.flavor || "");
+    if (!(builder.flavors || []).some(flavor => flavor.name === flavorName)) throw new Error("invalid_option");
+    const definition = definitionMap.get(`builder:${kind}:${stockSlug(flavorName)}`);
+    if (!definition) throw new Error("invalid_option");
+    addDemand(definition, quantity);
+  }
+  return [...demands.values()];
+}
+
+async function validateOrderStock(request, env) {
+  await expireReservations(env);
+  const body = await request.json().catch(() => ({}));
+  const state = await publishedState(env);
+  if (!state) return json({error:"El catálogo todavía no está preparado para comprobar stock."},503);
+  await syncInventoryDefinitions(env, state);
+  const inventory = await loadInventoryMap(env);
+  const operations = await readOperationalState(env);
+  let demands;
+  try { demands = resolveStockChecks(state, body.checks, operations); }
+  catch (error) {
+    const temporary = error.message === "temporarily_unavailable";
+    return json({error:temporary ? "La producción de este producto está temporalmente pausada." : "No pudimos comprobar esta selección.",code:error.message},409);
+  }
+  const conflict = demands.some(demand => {
+    const row = inventory.get(demand.definition.sku);
+    return row?.trackStock && demand.quantity > row.available;
+  });
+  if (conflict) return json({error:"No hay suficientes unidades disponibles para esa cantidad.",code:"stock_conflict"},409);
+  return json({ok:true},200,{"Cache-Control":"no-store"});
 }
 
 async function reserveOrder(request, env) {
@@ -704,7 +774,9 @@ async function updateInventory(request, env, url) {
   if (!sku || sku.length > 240) return json({error:"Artículo de inventario inválido"},400);
   const body = await request.json();
   const onHand = Number(body.onHand);
-  const trackStock = Boolean(body.trackStock);
+  // Una cantidad positiva siempre representa inventario real. Evita que una
+  // omisión accidental del switch deje existencias visibles pero sin límite.
+  const trackStock = Boolean(body.trackStock) || onHand > 0;
   if (!Number.isInteger(onHand) || onHand < 0 || onHand > 100000) return json({error:"Indica una cantidad válida"},400);
   const current = await env.DB.prepare("SELECT on_hand AS onHand, reserved, track_stock AS trackStock, label, option_summary AS optionSummary FROM inventory_items WHERE sku = ? AND active = 1").bind(sku).first();
   if (!current) return json({error:"Artículo de inventario no encontrado"},404);

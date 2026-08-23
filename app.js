@@ -20,6 +20,7 @@
   const backToCart = $("#backToCart");
   const storageKey = "fontana-cart-v1";
   let cart = readCart();
+  let stockValidationPending = false;
 
   async function readAdminState() {
     try {
@@ -75,6 +76,83 @@
     } catch {
       return [];
     }
+  }
+
+  function stockChecks(items = cart, extraChecks = []) {
+    const checks = [];
+    for (const item of items) {
+      const inventory = item.inventory || {};
+      const itemQuantity = Math.max(0, Number(item.qty || 0));
+      if (!itemQuantity || inventory.preorder) continue;
+      if (inventory.kind === "product") {
+        checks.push({kind:"product",productId:inventory.productId || item.productId,size:inventory.size || "",variant:inventory.variant || "",quantity:itemQuantity});
+        continue;
+      }
+      if (inventory.kind !== "fonkies" && inventory.kind !== "fomb") continue;
+      for (const flavor of inventory.flavors || []) {
+        const perBox = Math.max(0, Number(flavor.quantity ?? flavor.qty ?? 0));
+        if (perBox) checks.push({kind:inventory.kind,flavor:flavor.name,quantity:perBox * itemQuantity});
+      }
+    }
+    return [...checks, ...extraChecks].filter(check => Number(check.quantity) > 0);
+  }
+
+  function locallyAvailable(checks) {
+    if (!adminState) return true;
+    const demands = new Map();
+    for (const check of checks) {
+      const key = check.kind === "product"
+        ? `product:${check.productId}:${check.size || ""}:${check.variant || ""}`
+        : `${check.kind}:${check.flavor}`;
+      demands.set(key, {check,quantity:Number(check.quantity) + Number(demands.get(key)?.quantity || 0)});
+    }
+    for (const {check,quantity} of demands.values()) {
+      let configuredQuantity = null;
+      if (check.kind === "product") {
+        const product = adminState.products?.find(item => item.id === check.productId);
+        const size = product?.sizes?.find(item => item.name === check.size);
+        const variant = product?.variants?.find(item => item.name === check.variant);
+        configuredQuantity = variant?.stockQuantity ?? size?.stockQuantity ?? product?.stockQuantity ?? null;
+      } else {
+        const flavor = adminState.builders?.[check.kind]?.flavors?.find(item => item.name === check.flavor);
+        configuredQuantity = flavor?.stockQuantity ?? null;
+      }
+      if (configuredQuantity !== null && configuredQuantity !== "" && quantity > Number(configuredQuantity)) return false;
+    }
+    return true;
+  }
+
+  async function validateStock(extraChecks = [], items = cart) {
+    const checks = stockChecks(items, extraChecks);
+    if (!checks.length) return {ok:true};
+    if (localMode) return locallyAvailable(checks)
+      ? {ok:true}
+      : {ok:false,error:"No hay suficientes unidades disponibles para esa cantidad."};
+    const apiBase = String(config.adminApiBase || "").replace(/\/$/, "");
+    if (!apiBase) return {ok:false,error:"No pudimos comprobar el inventario en este momento."};
+    try {
+      const response = await fetch(`${apiBase}/v1/orders/validate`, {
+        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({checks})
+      });
+      const payload = await response.json().catch(() => ({}));
+      return response.ok ? {ok:true} : {ok:false,error:payload.error || "No hay suficientes unidades disponibles para esa cantidad."};
+    } catch {
+      return {ok:false,error:"No pudimos comprobar el inventario. Inténtalo otra vez."};
+    }
+  }
+
+  function reservationItems() {
+    return cart.map(item => ({
+      quantity:item.qty,
+      kind:item.inventory?.kind || "product",
+      productId:item.inventory?.productId || item.productId,
+      size:item.inventory?.size || "",
+      variant:item.inventory?.variant || "",
+      flavors:(item.inventory?.flavors || []).map(flavor => ({name:flavor.name,quantity:Number(flavor.quantity ?? flavor.qty ?? 0)})),
+      boxSize:item.inventory?.boxSize,
+      extraCount:item.inventory?.extraCount,
+      preorder:Boolean(item.inventory?.preorder)
+    }));
   }
 
   function money(value) {
@@ -418,7 +496,7 @@
     renderCart();
   }
 
-  function addProduct(card) {
+  async function addProduct(card) {
     const selectedVariant = $(".product-variant", card)?.value || "";
     const sizeSelect = $(".product-size", card);
     const selectedSize = sizeSelect?.value || "";
@@ -431,6 +509,10 @@
     const choiceSlug = selectedChoices.join("-").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = choiceSlug ? `${card.dataset.id}-${choiceSlug}` : card.dataset.id;
     const selectedPrice = sizeSelect ? Number(sizeSelect.selectedOptions[0]?.dataset.price) : Number(card.dataset.price);
+    if (!preorder) {
+      const validation = await validateStock([{kind:"product",productId:card.dataset.productId || card.dataset.id,size:selectedSize,variant:selectedVariant,quantity:1}]);
+      if (!validation.ok) { say(validation.error); return; }
+    }
     const found = cart.find(item => item.id === id);
     if (found) {
       found.qty += 1;
@@ -502,20 +584,37 @@
       }
     }
 
-    $$(".fonkie-stepper button", builder).forEach(button => button.addEventListener("click", () => {
+    $$(".fonkie-stepper button", builder).forEach(button => button.addEventListener("click", async () => {
+      if (stockValidationPending) return;
       const output = $("output", button.closest(".fonkie-flavor"));
-      const next = Math.max(0, Number(output.value || output.textContent || 0) + Number(button.dataset.delta));
+      const previous = Number(output.value || output.textContent || 0);
+      const delta = Number(button.dataset.delta);
+      const next = Math.max(0, previous + delta);
+      if (delta > 0 && !preorder) {
+        stockValidationPending = true;
+        const draft = rows.map(row => ({
+          kind:"fonkies",flavor:row.dataset.flavor,
+          quantity:row === button.closest(".fonkie-flavor") ? next : Number($("output", row).value || $("output", row).textContent || 0)
+        }));
+        const validation = await validateStock(draft);
+        stockValidationPending = false;
+        if (!validation.ok) { say(validation.error); return; }
+      }
       output.value = String(next);
       output.textContent = String(next);
       updateBuilder();
     }));
 
-    addButton.addEventListener("click", () => {
+    addButton.addEventListener("click", async () => {
       const selected = selectedFlavors();
       const total = selected.reduce((sum, item) => sum + item.qty, 0);
       if (total < minimum) {
         say(`Mínimo ${minimum} galletas para armar tu caja`);
         return;
+      }
+      if (!preorder) {
+        const validation = await validateStock(selected.map(item => ({kind:"fonkies",flavor:item.name,quantity:item.qty})));
+        if (!validation.ok) { say(validation.error); return; }
       }
       const price = fonkiePrice(total, selected.length);
       const choices = [selected.map(item => `${item.qty} ${item.name}`).join(", "), preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean).join(" · ");
@@ -606,22 +705,38 @@
     });
     sizeInputs.forEach(input => input.addEventListener("change", updateBuilder));
 
-    $$(".fomb-flavor .fonkie-stepper button", builder).forEach(button => button.addEventListener("click", () => {
+    $$(".fomb-flavor .fonkie-stepper button", builder).forEach(button => button.addEventListener("click", async () => {
+      if (stockValidationPending) return;
       const current = selection();
       const output = $("output", button.closest(".fomb-flavor"));
       const delta = Number(button.dataset.delta);
       if (delta > 0 && current.selectedTotal >= current.total) return;
-      const next = Math.max(0, Number(output.value || output.textContent || 0) + delta);
+      const previous = Number(output.value || output.textContent || 0);
+      const next = Math.max(0, previous + delta);
+      if (delta > 0 && !preorder) {
+        stockValidationPending = true;
+        const draft = rows.map(row => ({
+          kind:"fomb",flavor:row.dataset.flavor,
+          quantity:row === button.closest(".fomb-flavor") ? next : Number($("output", row).value || $("output", row).textContent || 0)
+        }));
+        const validation = await validateStock(draft);
+        stockValidationPending = false;
+        if (!validation.ok) { say(validation.error); return; }
+      }
       output.value = String(next);
       output.textContent = String(next);
       updateBuilder();
     }));
 
-    addButton.addEventListener("click", () => {
+    addButton.addEventListener("click", async () => {
       const current = selection();
       if (current.selectedTotal !== current.total) {
         say(`Selecciona exactamente ${current.total} bombones para armar tu caja`);
         return;
+      }
+      if (!preorder) {
+        const validation = await validateStock(current.flavors.map(item => ({kind:"fomb",flavor:item.name,quantity:item.qty})));
+        if (!validation.ok) { say(validation.error); return; }
       }
       const choices = [current.flavors.map(item => `${item.qty} ${item.name}`).join(", "), preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean).join(" · ");
       const id = `fomb-box-${current.size}-${extras}-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
@@ -648,10 +763,18 @@
     updateBuilder();
   }
 
-  window.changeQty = (id, delta) => {
+  window.changeQty = async (id, delta) => {
+    if (stockValidationPending) return;
     const item = cart.find(entry => entry.id === id);
     if (!item) return;
+    const previous = item.qty;
     item.qty += delta;
+    if (delta > 0 && !item.inventory?.preorder) {
+      stockValidationPending = true;
+      const validation = await validateStock();
+      stockValidationPending = false;
+      if (!validation.ok) { item.qty = previous; say(validation.error); renderCart(); return; }
+    }
     if (item.qty <= 0) cart = cart.filter(entry => entry.id !== id);
     save();
   };
@@ -691,13 +814,18 @@
     return product?.requiresElectricity === true;
   }
 
-  function showCheckoutStep() {
+  async function showCheckoutStep() {
     if (!cart.length) {
       say("Primero agrega algo rico al pedido");
       return;
     }
     if (cart.some(isElectricityBlockedCartItem)) {
       say("Hay un producto temporalmente no disponible. No lo eliminamos: retíralo del carrito para continuar.");
+      return;
+    }
+    const validation = await validateStock();
+    if (!validation.ok) {
+      say(`${validation.error} Reduce el pedido para continuar.`);
       return;
     }
     cartItems.hidden = true;
@@ -867,6 +995,8 @@
       $("#otherAllergy").focus();
       return;
     }
+    const stockValidation = await validateStock();
+    if (!stockValidation.ok) { say(`${stockValidation.error} Reduce el pedido para continuar.`); return; }
     const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
 
     if (config.previewMode || !whatsappNumber) {
@@ -890,17 +1020,7 @@
       checkoutForm.dataset.reservationKey = clientKey;
       const payload = {
         clientKey,
-        items: cart.map(item => ({
-          quantity:item.qty,
-          kind:item.inventory?.kind || "product",
-          productId:item.inventory?.productId || item.productId,
-          size:item.inventory?.size || "",
-          variant:item.inventory?.variant || "",
-          flavors:item.inventory?.flavors || [],
-          boxSize:item.inventory?.boxSize,
-          extraCount:item.inventory?.extraCount,
-          preorder:Boolean(item.inventory?.preorder)
-        })),
+        items: reservationItems(),
         customer: {
           name:String(data.get("name") || ""), phone:String(data.get("phone") || ""),
           fulfillment:data.get("fulfillment") === "delivery" ? (config.deliveryLabel || "Delivery") : (config.pickupLabel || "Pickup"),

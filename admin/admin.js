@@ -902,6 +902,13 @@
   $("#refreshInventoryButton").addEventListener("click", loadInventory);
   $("#refreshOrdersButton").addEventListener("click", loadOrders);
   $("#refreshActivityButton").addEventListener("click", loadActivity);
+  $("#inventoryList").addEventListener("input", event => {
+    const input=event.target.closest("[data-stock-value]");
+    if(!input || Number(input.value)<=0) return;
+    const row=input.closest("[data-sku]");
+    const control=$("[data-track-stock]",row);
+    if(control) control.checked=true;
+  });
   $("#inventoryList").addEventListener("click", async event => {
     const deltaButton=event.target.closest("[data-stock-delta]");
     const button=event.target.closest("[data-save-stock]") || deltaButton;
@@ -917,7 +924,7 @@
       input.focus();
       return;
     }
-    const payload={onHand,trackStock:$("[data-track-stock]",row).checked};
+    const payload={onHand,trackStock:onHand>0 || $("[data-track-stock]",row).checked};
     button.disabled=true;
     try {
       if (localMode) {
