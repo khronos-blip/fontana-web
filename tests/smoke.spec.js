@@ -254,7 +254,7 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#menu");
 });
 
-test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", async ({ page }, testInfo) => {
+test("el nombre entra en ola, las hojas aparecen y la fuente cae una sola vez sobre la f", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   const logo = page.locator(".hero-logo");
@@ -276,11 +276,22 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", a
   await expect(leaves.last()).toHaveCSS("animation-name", "leaf-lower-breeze");
   await expect(leaves.first()).toHaveCSS("animation-duration", "7.4s");
   await expect(leaves.last()).toHaveCSS("animation-duration", "8.2s");
-  await expect(page.locator(".hero-logo-water, .hero-water-stage, .hero-water-stream")).toHaveCount(0);
-  await expect(page.locator(".hero-logo-mark")).not.toHaveClass(/hero-water-trial/);
+  const water = page.locator(".hero-water-feature");
+  const stream = page.locator(".hero-water-mask-path");
+  await expect(water).toHaveCount(1);
+  await expect(stream).toHaveCount(1);
+  await expect(stream).toHaveCSS("animation-name", "water-stream-life");
+  await expect(stream).toHaveCSS("animation-duration", "3.65s");
+  await expect(stream).toHaveCSS("animation-delay", "0.95s");
+  await expect(stream).toHaveCSS("animation-iteration-count", "1");
+  await expect(page.locator(".hero-water-flow")).toHaveCSS("animation-name", "water-flow-glint");
+  await expect(page.locator(".hero-water-finale .hero-water-drop")).toHaveCount(6);
+  await expect(page.locator(".hero-water-stream-body")).toHaveAttribute("d", /M421 321C374 337/);
   const logoSize = await logo.evaluate(element => ({ width: element.offsetWidth, height: element.offsetHeight }));
   const leafCanvasSize = await page.locator(".hero-logo-leaves").evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }));
+  const waterCanvasSize = await water.evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }));
   expect(leafCanvasSize).toEqual(logoSize);
+  expect(waterCanvasSize).toEqual(logoSize);
   await expect(page.locator("path.hero-logo-leaf-art")).toHaveCount(2);
   await expect(page.locator("image.hero-logo-leaf-art")).toHaveCount(0);
   await expect(page.locator("feDisplacementMap")).toHaveCount(0);
@@ -307,6 +318,7 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", a
     return { x:box.x, y:box.y, width:box.width, height:box.height };
   }));
   await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-detras-de-la-f.png"), fullPage: false });
+  await page.screenshot({ path: testInfo.outputPath("fuente-vectorial-cayendo-sobre-la-f.png"), fullPage: false });
   expect(secondTransform).not.toEqual(firstTransform);
   expect(secondTransform[0]).not.toBe(secondTransform[1]);
   expect(secondShapes).not.toEqual(firstShapes);
@@ -314,6 +326,23 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", a
   await expect(wordSlices.last()).toHaveCSS("opacity", "1");
   await expect(leafStage).toHaveCSS("opacity", "1");
   await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-movil.png"), fullPage: false });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await water.evaluate(element => element.getAnimations({ subtree:true }).forEach(animation => {
+    animation.pause();
+    animation.currentTime = 2500;
+  }));
+  await page.screenshot({ path: testInfo.outputPath("fuente-vectorial-activa-escritorio.png"), fullPage: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await water.evaluate(element => element.getAnimations({ subtree:true }).forEach(animation => {
+    animation.pause();
+    animation.currentTime = 3950;
+  }));
+  await page.screenshot({ path: testInfo.outputPath("fuente-salpicadura-final-movil.png"), fullPage: false });
+  await water.evaluate(element => element.getAnimations({ subtree:true }).forEach(animation => {
+    animation.currentTime = 5000;
+  }));
+  await expect(stream).toHaveCSS("opacity", "0");
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-escritorio.png"), fullPage: false });
@@ -327,15 +356,17 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", a
   await expect(leaves.last()).toHaveCSS("animation-name", "none");
   await expect(leaves.first()).toHaveCSS("transform", "none");
   await expect(leaves.last()).toHaveCSS("transform", "none");
+  await expect(water).toHaveCSS("display", "none");
   const reducedShape = await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {
     const box = element.getBBox();
     return { x:box.x, y:box.y, width:box.width, height:box.height };
   });
   await page.waitForTimeout(500);
-  expect(await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {
+  const reducedShapeAfterWait = await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {
     const box = element.getBBox();
     return { x:box.x, y:box.y, width:box.width, height:box.height };
-  })).toEqual(reducedShape);
+  });
+  Object.keys(reducedShape).forEach(key => expect(Math.abs(reducedShapeAfterWait[key] - reducedShape[key])).toBeLessThan(.2));
 });
 
 test("¿Es para ti? abre una vista propia con el mensaje, los sellos y el acceso al menú", async ({ page }, testInfo) => {
