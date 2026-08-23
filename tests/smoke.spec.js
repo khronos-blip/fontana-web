@@ -230,6 +230,11 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F", async ({ pag
   await expect(leaves.last()).toHaveCSS("animation-name", "leaf-lower-breeze");
   await expect(leaves.first()).toHaveCSS("animation-duration", "7.4s");
   await expect(leaves.last()).toHaveCSS("animation-duration", "8.2s");
+  const water = page.locator(".hero-logo-water");
+  await expect(page.locator(".hero-logo-mark")).toHaveClass(/hero-water-trial/);
+  await expect(water).toBeVisible();
+  await expect(water.locator(".hero-water-stream")).toHaveCount(1);
+  await expect(water.locator(".hero-water-drop")).toHaveCount(2);
   const logoSize = await logo.evaluate(element => ({ width: element.offsetWidth, height: element.offsetHeight }));
   const leafCanvasSize = await page.locator(".hero-logo-leaves").evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }));
   expect(leafCanvasSize).toEqual(logoSize);

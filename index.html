@@ -428,6 +428,14 @@
     .hero-logo-leaf-art{fill:#819347;shape-rendering:geometricPrecision}
     .hero-logo-leaf-upper{transform-origin:59.2% 34.6%;animation:leaf-upper-breeze 7.4s cubic-bezier(.45,.05,.55,.95) infinite}
     .hero-logo-leaf-lower{transform-origin:59.2% 36.2%;animation:leaf-lower-breeze 8.2s cubic-bezier(.45,.05,.55,.95) -2.1s infinite}
+    /* Prueba reversible: quitar la clase hero-water-trial desactiva el chorro sin tocar el logo. */
+    .hero-logo-water{position:absolute;z-index:3;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;display:none}
+    .hero-water-trial .hero-logo-water{display:block}
+    .hero-water-stage{opacity:0;transform-box:view-box;transform-origin:35.5% 29%;animation:water-jet-on .72s .72s cubic-bezier(.16,.86,.28,1) both}
+    .hero-water-stream{fill:none;stroke:#c9edf0;stroke-width:10;stroke-linecap:round;filter:drop-shadow(0 1px 3px rgba(201,237,240,.34));animation:water-jet-sway 3.4s ease-in-out 1.2s infinite}
+    .hero-water-highlight{fill:none;stroke:rgba(255,255,255,.72);stroke-width:3;stroke-linecap:round;stroke-dasharray:20 18;animation:water-flow 1.25s linear 1.2s infinite}
+    .hero-water-drop{fill:#d8f3f4;opacity:0;transform-box:fill-box;transform-origin:center;animation:water-drop 1.7s var(--drop-delay) ease-in infinite}
+    .hero-water-splash{fill:none;stroke:#d8f3f4;stroke-width:5;stroke-linecap:round;opacity:.8;animation:water-splash 1.7s 1.45s ease-out infinite}
     .hero-scroll{position:absolute;left:50%;bottom:18px;z-index:5;transform:translateX(-50%);width:34px;height:34px;border:1px solid rgba(255,250,242,.42);border-radius:50%;display:grid;place-items:center;color:var(--cream);font-size:1rem}
     .hero-scroll:hover{border-color:var(--green);color:var(--green)}
     .fit-dialog{width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:var(--lilac);color:var(--plum-dark);overflow:auto}
@@ -474,10 +482,15 @@
     @keyframes leaf-sprout-in{0%{opacity:0;transform:translate3d(-38px,0,0) scale(.2,.72)}52%{opacity:1}72%{transform:translate3d(4px,0,0) scale(1.04,1.02)}100%{opacity:1;transform:translate3d(0,0,0) scale(1)}}
     @keyframes leaf-upper-breeze{0%,100%{transform:translate3d(-2px,1px,0) rotate(-4deg) skewX(-1.1deg) scaleX(.979)}35%{transform:translate3d(5px,-2px,0) rotate(8.2deg) skewX(1.8deg) scaleX(1.041)}62%{transform:translate3d(2px,-1px,0) rotate(3.1deg) skewX(.78deg) scaleX(1.02)}84%{transform:translate3d(-1px,1px,0) rotate(-2.5deg) skewX(-.82deg) scaleX(.988)}}
     @keyframes leaf-lower-breeze{0%,100%{transform:translate3d(2px,-1px,0) rotate(5.5deg) skewY(1.08deg) scaleX(1.021)}40%{transform:translate3d(-5px,2px,0) rotate(-6.8deg) skewY(-1.55deg) scaleX(.966)}70%{transform:translate3d(2px,-1px,0) rotate(2.7deg) skewY(.72deg) scaleX(1.025)}88%{transform:translate3d(1px,0,0) rotate(.65deg) skewY(.2deg) scaleX(1.008)}}
+    @keyframes water-jet-on{0%{opacity:0;transform:scaleY(.16)}100%{opacity:1;transform:scaleY(1)}}
+    @keyframes water-jet-sway{0%,100%{d:path('M393 291C360 302 344 331 350 366C358 409 345 457 351 504C355 535 359 558 357 581')}50%{d:path('M393 291C358 304 347 334 352 368C359 410 347 459 353 505C357 536 360 559 357 581')}}
+    @keyframes water-flow{to{stroke-dashoffset:-38}}
+    @keyframes water-drop{0%,22%{opacity:0;transform:translate3d(0,-16px,0) scale(.55)}35%{opacity:.9}78%{opacity:.72}100%{opacity:0;transform:translate3d(var(--drop-x),52px,0) scale(1)}}
+    @keyframes water-splash{0%,58%{opacity:0;transform:scale(.45)}70%{opacity:.85}100%{opacity:0;transform:scale(1.22) translateY(-4px)}}
     @keyframes menu-eyebrow-in{to{opacity:1;transform:translateX(0)}}
     @keyframes menu-letter-in{0%{opacity:0;transform:translateY(42px) scale(.78);filter:blur(5px)}65%{opacity:1;transform:translateY(-4px) scale(1.03);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
     @keyframes menu-line-in{to{opacity:1;transform:scaleX(1)}}
-    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf,.hero-logo-leaves-stage,.hero-logo-word-slice{animation:none;transform:none}.hero-logo-leaves-stage,.hero-logo-word-slice{opacity:1}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
+    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf,.hero-logo-leaves-stage,.hero-logo-word-slice,.hero-water-stage,.hero-water-stream,.hero-water-highlight,.hero-water-drop,.hero-water-splash{animation:none;transform:none}.hero-logo-leaves-stage,.hero-logo-word-slice,.hero-water-stage{opacity:1}.hero-water-drop,.hero-water-splash{display:none}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
 
     .allergy-panel,.checkout-option-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
     .allergy-panel legend,.checkout-option-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
@@ -702,7 +715,7 @@
       <div class="container hero-grid">
         <div class="hero-copy">
           <h1 class="sr-only">Fontana sin gluten: postres y comidas fit en Carabobo</h1>
-          <div class="hero-logo-mark">
+          <div class="hero-logo-mark hero-water-trial">
             <img class="hero-logo" src="assets/fontana-logo-official-reverse-base.png" alt="Fontana">
             <div class="hero-logo-wordmark" aria-hidden="true">
               <span class="hero-logo-word-slice" style="--slice-left:12%;--slice-right:76%;--wave-index:0"></span>
@@ -725,6 +738,15 @@
                   <animate class="hero-logo-leaf-wave" attributeName="d" begin="-1.8s" dur="7.1s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.3;.6;.84;1" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1;.42 0 .58 1" values="M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z;M639 392C654 397 669 397 685 393C670 404 654 409 641 401C657 417 676 423 693 423C716 425 737 416 747 399C735 386 717 378 698 375C675 373 653 380 639 392Z;M639 392C646 408 657 415 670 419C660 417 649 410 641 401C649 424 665 441 680 447C700 452 715 445 721 436C722 413 708 391 690 382C671 373 651 379 639 392Z;M639 392C652 400 667 402 682 399C668 408 653 409 641 401C655 419 674 428 691 428C713 430 733 421 744 408C735 391 716 380 696 376C674 373 653 380 639 392Z;M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z" />
                 </path>
               </g>
+              </g>
+            </svg>
+            <svg class="hero-logo-water" viewBox="0 0 1080 1080" aria-hidden="true" focusable="false">
+              <g class="hero-water-stage">
+                <path class="hero-water-stream" d="M393 291C360 302 344 331 350 366C358 409 345 457 351 504C355 535 359 558 357 581" />
+                <path class="hero-water-highlight" d="M393 291C360 302 344 331 350 366C358 409 345 457 351 504C355 535 359 558 357 581" />
+                <circle class="hero-water-drop" cx="344" cy="488" r="7" style="--drop-delay:1.25s;--drop-x:-12px" />
+                <circle class="hero-water-drop" cx="367" cy="514" r="5" style="--drop-delay:1.78s;--drop-x:10px" />
+                <path class="hero-water-splash" d="M335 585Q345 574 355 585M359 585Q369 574 379 585" />
               </g>
             </svg>
           </div>
