@@ -208,7 +208,7 @@ test("la portada ocupa la primera vista antes de presentar el menú", async ({ p
   await expect(page.locator(".hero-scroll")).toHaveAttribute("href", "#menu");
 });
 
-test("el nombre entra en ola y las hojas aparecen detrás de la F", async ({ page }, testInfo) => {
+test("el nombre entra en ola, las hojas aparecen y la cascada termina sobre la F inferior", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   const logo = page.locator(".hero-logo");
@@ -231,10 +231,25 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F", async ({ pag
   await expect(leaves.first()).toHaveCSS("animation-duration", "7.4s");
   await expect(leaves.last()).toHaveCSS("animation-duration", "8.2s");
   const water = page.locator(".hero-logo-water");
+  const waterStage = water.locator(".hero-water-stage");
   await expect(page.locator(".hero-logo-mark")).toHaveClass(/hero-water-trial/);
   await expect(water).toBeVisible();
+  await expect(waterStage).toHaveCSS("animation-name", "waterfall-window");
+  await expect(waterStage).toHaveCSS("animation-delay", "1.82s");
+  await expect(waterStage).toHaveCSS("animation-duration", "2.75s");
+  await expect(waterStage).toHaveCSS("animation-iteration-count", "1");
+  const waterfallFrames = await waterStage.evaluate(element => element.getAnimations()[0].effect.getKeyframes().map(frame => Number(frame.opacity)));
+  expect(waterfallFrames[0]).toBe(0);
+  expect(Math.max(...waterfallFrames)).toBe(1);
+  expect(waterfallFrames.at(-1)).toBe(0);
+  await expect(water.locator(".hero-water-mist")).toHaveCount(1);
   await expect(water.locator(".hero-water-stream")).toHaveCount(1);
-  await expect(water.locator(".hero-water-drop")).toHaveCount(2);
+  await expect(water.locator(".hero-water-edge")).toHaveCount(1);
+  await expect(water.locator(".hero-water-drop")).toHaveCount(4);
+  await expect(water.locator(".hero-water-splash")).toHaveCount(1);
+  await expect(water.locator(".hero-water-stream")).toHaveCSS("animation-name", "waterfall-draw");
+  await expect(water.locator(".hero-water-stream")).toHaveCSS("animation-delay", "1.88s");
+  expect(await water.locator(".hero-water-stream").getAttribute("d")).toMatch(/^M409 278.*190 807$/);
   const logoSize = await logo.evaluate(element => ({ width: element.offsetWidth, height: element.offsetHeight }));
   const leafCanvasSize = await page.locator(".hero-logo-leaves").evaluate(element => ({ width: element.clientWidth, height: element.clientHeight }));
   expect(leafCanvasSize).toEqual(logoSize);
@@ -282,6 +297,7 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F", async ({ pag
   await expect(leafStage).toHaveCSS("opacity", "1");
   await expect(leaves.first()).toHaveCSS("animation-name", "none");
   await expect(leaves.last()).toHaveCSS("animation-name", "none");
+  await expect(water).toHaveCSS("display", "none");
   await expect(leaves.first()).toHaveCSS("transform", "none");
   await expect(leaves.last()).toHaveCSS("transform", "none");
   const reducedShape = await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {

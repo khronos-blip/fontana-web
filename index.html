@@ -431,11 +431,14 @@
     /* Prueba reversible: quitar la clase hero-water-trial desactiva el chorro sin tocar el logo. */
     .hero-logo-water{position:absolute;z-index:3;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;display:none}
     .hero-water-trial .hero-logo-water{display:block}
-    .hero-water-stage{opacity:0;transform-box:view-box;transform-origin:35.5% 29%;animation:water-jet-on .72s .72s cubic-bezier(.16,.86,.28,1) both}
-    .hero-water-stream{fill:none;stroke:#c9edf0;stroke-width:10;stroke-linecap:round;filter:drop-shadow(0 1px 3px rgba(201,237,240,.34));animation:water-jet-sway 3.4s ease-in-out 1.2s infinite}
-    .hero-water-highlight{fill:none;stroke:rgba(255,255,255,.72);stroke-width:3;stroke-linecap:round;stroke-dasharray:20 18;animation:water-flow 1.25s linear 1.2s infinite}
-    .hero-water-drop{fill:#d8f3f4;opacity:0;transform-box:fill-box;transform-origin:center;animation:water-drop 1.7s var(--drop-delay) ease-in infinite}
-    .hero-water-splash{fill:none;stroke:#d8f3f4;stroke-width:5;stroke-linecap:round;opacity:.8;animation:water-splash 1.7s 1.45s ease-out infinite}
+    .hero-water-stage{opacity:0;animation:waterfall-window 2.75s 1.82s ease-in-out both}
+    .hero-water-mist,.hero-water-stream,.hero-water-edge{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:waterfall-draw 1.04s 1.88s cubic-bezier(.2,.72,.26,1) both}
+    .hero-water-mist{stroke:rgba(199,238,242,.22);stroke-width:22}
+    .hero-water-stream{stroke:url(#heroWaterGradient);stroke-width:12.5}
+    .hero-water-edge{stroke:rgba(238,253,252,.74);stroke-width:2.6}
+    .hero-water-highlight{fill:none;stroke:rgba(255,255,255,.88);stroke-width:3.2;stroke-linecap:round;stroke-dasharray:.095 .905;stroke-dashoffset:1;opacity:.9;animation:water-shimmer .74s 2.34s ease-in-out 3}
+    .hero-water-drop{fill:#dff8f7;opacity:0;transform-box:fill-box;transform-origin:center;animation:water-drop .72s var(--drop-delay) cubic-bezier(.3,.05,.62,1) 1 both}
+    .hero-water-splash{fill:none;stroke:#dff8f7;stroke-width:5;stroke-linecap:round;opacity:0;transform-box:fill-box;transform-origin:center;animation:water-splash .72s 2.74s ease-out 1 both}
     .hero-scroll{position:absolute;left:50%;bottom:18px;z-index:5;transform:translateX(-50%);width:34px;height:34px;border:1px solid rgba(255,250,242,.42);border-radius:50%;display:grid;place-items:center;color:var(--cream);font-size:1rem}
     .hero-scroll:hover{border-color:var(--green);color:var(--green)}
     .fit-dialog{width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:var(--lilac);color:var(--plum-dark);overflow:auto}
@@ -482,15 +485,15 @@
     @keyframes leaf-sprout-in{0%{opacity:0;transform:translate3d(-38px,0,0) scale(.2,.72)}52%{opacity:1}72%{transform:translate3d(4px,0,0) scale(1.04,1.02)}100%{opacity:1;transform:translate3d(0,0,0) scale(1)}}
     @keyframes leaf-upper-breeze{0%,100%{transform:translate3d(-2px,1px,0) rotate(-4deg) skewX(-1.1deg) scaleX(.979)}35%{transform:translate3d(5px,-2px,0) rotate(8.2deg) skewX(1.8deg) scaleX(1.041)}62%{transform:translate3d(2px,-1px,0) rotate(3.1deg) skewX(.78deg) scaleX(1.02)}84%{transform:translate3d(-1px,1px,0) rotate(-2.5deg) skewX(-.82deg) scaleX(.988)}}
     @keyframes leaf-lower-breeze{0%,100%{transform:translate3d(2px,-1px,0) rotate(5.5deg) skewY(1.08deg) scaleX(1.021)}40%{transform:translate3d(-5px,2px,0) rotate(-6.8deg) skewY(-1.55deg) scaleX(.966)}70%{transform:translate3d(2px,-1px,0) rotate(2.7deg) skewY(.72deg) scaleX(1.025)}88%{transform:translate3d(1px,0,0) rotate(.65deg) skewY(.2deg) scaleX(1.008)}}
-    @keyframes water-jet-on{0%{opacity:0;transform:scaleY(.16)}100%{opacity:1;transform:scaleY(1)}}
-    @keyframes water-jet-sway{0%,100%{d:path('M393 291C360 302 344 331 350 366C358 409 345 457 351 504C355 535 359 558 357 581')}50%{d:path('M393 291C358 304 347 334 352 368C359 410 347 459 353 505C357 536 360 559 357 581')}}
-    @keyframes water-flow{to{stroke-dashoffset:-38}}
-    @keyframes water-drop{0%,22%{opacity:0;transform:translate3d(0,-16px,0) scale(.55)}35%{opacity:.9}78%{opacity:.72}100%{opacity:0;transform:translate3d(var(--drop-x),52px,0) scale(1)}}
-    @keyframes water-splash{0%,58%{opacity:0;transform:scale(.45)}70%{opacity:.85}100%{opacity:0;transform:scale(1.22) translateY(-4px)}}
+    @keyframes waterfall-window{0%,2%{opacity:0}8%,82%{opacity:1}100%{opacity:0}}
+    @keyframes waterfall-draw{0%{stroke-dashoffset:1}100%{stroke-dashoffset:0}}
+    @keyframes water-shimmer{0%{stroke-dashoffset:1;opacity:0}18%{opacity:.92}82%{opacity:.76}100%{stroke-dashoffset:-.12;opacity:0}}
+    @keyframes water-drop{0%{opacity:0;transform:translate3d(0,-12px,0) scale(.45)}24%{opacity:.9}74%{opacity:.75}100%{opacity:0;transform:translate3d(var(--drop-x),var(--drop-y),0) scale(.92)}}
+    @keyframes water-splash{0%{opacity:0;transform:scale(.35) translateY(5px)}24%{opacity:.88}100%{opacity:0;transform:scale(1.18) translateY(-7px)}}
     @keyframes menu-eyebrow-in{to{opacity:1;transform:translateX(0)}}
     @keyframes menu-letter-in{0%{opacity:0;transform:translateY(42px) scale(.78);filter:blur(5px)}65%{opacity:1;transform:translateY(-4px) scale(1.03);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
     @keyframes menu-line-in{to{opacity:1;transform:scaleX(1)}}
-    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf,.hero-logo-leaves-stage,.hero-logo-word-slice,.hero-water-stage,.hero-water-stream,.hero-water-highlight,.hero-water-drop,.hero-water-splash{animation:none;transform:none}.hero-logo-leaves-stage,.hero-logo-word-slice,.hero-water-stage{opacity:1}.hero-water-drop,.hero-water-splash{display:none}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
+    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf,.hero-logo-leaves-stage,.hero-logo-word-slice,.hero-water-stage,.hero-water-mist,.hero-water-stream,.hero-water-edge,.hero-water-highlight,.hero-water-drop,.hero-water-splash{animation:none;transform:none}.hero-logo-leaves-stage,.hero-logo-word-slice{opacity:1}.hero-logo-water{display:none!important}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
 
     .allergy-panel,.checkout-option-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
     .allergy-panel legend,.checkout-option-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
@@ -741,12 +744,24 @@
               </g>
             </svg>
             <svg class="hero-logo-water" viewBox="0 0 1080 1080" aria-hidden="true" focusable="false">
+              <defs>
+                <linearGradient id="heroWaterGradient" x1="409" y1="278" x2="190" y2="807" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stop-color="#f2ffff" />
+                  <stop offset=".38" stop-color="#bdecef" />
+                  <stop offset=".72" stop-color="#d9f7f6" />
+                  <stop offset="1" stop-color="#a9dfe5" />
+                </linearGradient>
+              </defs>
               <g class="hero-water-stage">
-                <path class="hero-water-stream" d="M393 291C360 302 344 331 350 366C358 409 345 457 351 504C355 535 359 558 357 581" />
-                <path class="hero-water-highlight" d="M393 291C360 302 344 331 350 366C358 409 345 457 351 504C355 535 359 558 357 581" />
-                <circle class="hero-water-drop" cx="344" cy="488" r="7" style="--drop-delay:1.25s;--drop-x:-12px" />
-                <circle class="hero-water-drop" cx="367" cy="514" r="5" style="--drop-delay:1.78s;--drop-x:10px" />
-                <path class="hero-water-splash" d="M335 585Q345 574 355 585M359 585Q369 574 379 585" />
+                <path class="hero-water-mist" pathLength="1" d="M409 278C335 258 267 289 237 349C196 431 233 533 205 627C183 700 157 760 190 807" />
+                <path class="hero-water-stream" pathLength="1" d="M409 278C335 258 267 289 237 349C196 431 233 533 205 627C183 700 157 760 190 807" />
+                <path class="hero-water-edge" pathLength="1" d="M407 277C334 260 270 291 240 350C202 431 237 532 209 628C188 701 163 759 192 805" />
+                <path class="hero-water-highlight" pathLength="1" d="M409 278C335 258 267 289 237 349C196 431 233 533 205 627C183 700 157 760 190 807" />
+                <circle class="hero-water-drop" cx="218" cy="562" r="6" style="--drop-delay:2.42s;--drop-x:-15px;--drop-y:54px" />
+                <circle class="hero-water-drop" cx="188" cy="668" r="5" style="--drop-delay:2.58s;--drop-x:11px;--drop-y:48px" />
+                <circle class="hero-water-drop" cx="170" cy="724" r="4" style="--drop-delay:2.72s;--drop-x:-10px;--drop-y:42px" />
+                <circle class="hero-water-drop" cx="184" cy="768" r="5" style="--drop-delay:2.84s;--drop-x:12px;--drop-y:35px" />
+                <path class="hero-water-splash" d="M158 817Q177 795 196 817M181 820Q199 799 218 817M205 820Q219 806 232 820" />
               </g>
             </svg>
           </div>
