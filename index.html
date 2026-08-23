@@ -428,19 +428,6 @@
     .hero-logo-leaf-art{fill:#819347;shape-rendering:geometricPrecision}
     .hero-logo-leaf-upper{transform-origin:59.2% 34.6%;animation:leaf-upper-breeze 7.4s cubic-bezier(.45,.05,.55,.95) infinite}
     .hero-logo-leaf-lower{transform-origin:59.2% 36.2%;animation:leaf-lower-breeze 8.2s cubic-bezier(.45,.05,.55,.95) -2.1s infinite}
-    .hero-water-feature{position:absolute;z-index:4;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;shape-rendering:geometricPrecision}
-    .hero-water-mask-path{fill:none;stroke:#fff;stroke-width:94;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 1;stroke-dashoffset:1;will-change:stroke-dashoffset,opacity;animation:water-stream-life 3.65s .95s cubic-bezier(.34,.02,.22,1) 1 both}
-    .hero-water-stream-shadow{fill:rgba(15,5,20,.18);filter:blur(4px)}
-    .hero-water-stream-body{fill:url(#hero-water-body);stroke:rgba(255,255,255,.38);stroke-width:2.5;stroke-linejoin:round}
-    .hero-water-stream-core{fill:none;stroke:url(#hero-water-core);stroke-width:7;stroke-linecap:round;opacity:.72}
-    .hero-water-stream-edge{fill:none;stroke:rgba(255,255,255,.84);stroke-width:3;stroke-linecap:round;opacity:.68}
-    .hero-water-flow{fill:none;stroke:rgba(255,255,255,.76);stroke-width:4.5;stroke-linecap:round;stroke-dasharray:22 54;opacity:0;will-change:stroke-dashoffset,opacity;animation:water-flow-glint 2.72s 1.55s linear 1 both}
-    .hero-water-source{opacity:0;transform-box:fill-box;transform-origin:center;will-change:transform,opacity;animation:water-source-life 3.68s .92s cubic-bezier(.2,.8,.2,1) 1 both}
-    .hero-water-contact{opacity:0;transform-box:fill-box;transform-origin:center;will-change:transform,opacity;animation:water-contact 1.05s 1.55s ease-out 1 both}
-    .hero-water-pool{opacity:0;transform-box:fill-box;transform-origin:center;will-change:transform,opacity;animation:water-pool-life 3.08s 1.58s cubic-bezier(.2,.72,.25,1) 1 both}
-    .hero-water-finale{opacity:0;transform-box:fill-box;transform-origin:center;will-change:transform,opacity;animation:water-finale-splash .92s 3.4s cubic-bezier(.16,.78,.2,1) 1 both}
-    .hero-water-drop{fill:url(#hero-water-drop);stroke:rgba(255,255,255,.72);stroke-width:2}
-    .hero-water-ripple{fill:none;stroke:url(#hero-water-ripple);stroke-linecap:round}
     .hero-scroll{position:absolute;left:50%;bottom:18px;z-index:5;transform:translateX(-50%);width:34px;height:34px;border:1px solid rgba(255,250,242,.42);border-radius:50%;display:grid;place-items:center;color:var(--cream);font-size:1rem}
     .hero-scroll:hover{border-color:var(--green);color:var(--green)}
     .fit-dialog{width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:var(--lilac);color:var(--plum-dark);overflow:auto}
@@ -487,16 +474,10 @@
     @keyframes leaf-sprout-in{0%{opacity:0;transform:translate3d(-38px,0,0) scale(.2,.72)}52%{opacity:1}72%{transform:translate3d(4px,0,0) scale(1.04,1.02)}100%{opacity:1;transform:translate3d(0,0,0) scale(1)}}
     @keyframes leaf-upper-breeze{0%,100%{transform:translate3d(-2px,1px,0) rotate(-4deg) skewX(-1.1deg) scaleX(.979)}35%{transform:translate3d(5px,-2px,0) rotate(8.2deg) skewX(1.8deg) scaleX(1.041)}62%{transform:translate3d(2px,-1px,0) rotate(3.1deg) skewX(.78deg) scaleX(1.02)}84%{transform:translate3d(-1px,1px,0) rotate(-2.5deg) skewX(-.82deg) scaleX(.988)}}
     @keyframes leaf-lower-breeze{0%,100%{transform:translate3d(2px,-1px,0) rotate(5.5deg) skewY(1.08deg) scaleX(1.021)}40%{transform:translate3d(-5px,2px,0) rotate(-6.8deg) skewY(-1.55deg) scaleX(.966)}70%{transform:translate3d(2px,-1px,0) rotate(2.7deg) skewY(.72deg) scaleX(1.025)}88%{transform:translate3d(1px,0,0) rotate(.65deg) skewY(.2deg) scaleX(1.008)}}
-    @keyframes water-stream-life{0%{opacity:0;stroke-dashoffset:1}4%{opacity:1}22%{opacity:1;stroke-dashoffset:0}69%{opacity:1;stroke-dashoffset:0}96%{opacity:1;stroke-dashoffset:-1}100%{opacity:0;stroke-dashoffset:-1}}
-    @keyframes water-flow-glint{0%{opacity:0;stroke-dashoffset:118}9%,82%{opacity:.78}100%{opacity:0;stroke-dashoffset:-192}}
-    @keyframes water-source-life{0%{opacity:0;transform:scale(.35)}8%{opacity:.92;transform:scale(1.12)}16%,76%{opacity:.72;transform:scale(1)}100%{opacity:0;transform:scale(.55)}}
-    @keyframes water-contact{0%{opacity:0;transform:translateY(-8px) scale(.35)}22%{opacity:.82}100%{opacity:0;transform:translateY(5px) scale(1.35)}}
-    @keyframes water-pool-life{0%{opacity:0;transform:scaleX(.32) scaleY(.6)}14%{opacity:.72;transform:scaleX(1) scaleY(1)}72%{opacity:.62;transform:scaleX(1.06) scaleY(.92)}100%{opacity:0;transform:scaleX(.72) scaleY(.42)}}
-    @keyframes water-finale-splash{0%{opacity:0;transform:translateY(5px) scale(.45)}14%{opacity:.96}66%{opacity:.72;transform:translateY(-10px) scale(1.08)}100%{opacity:0;transform:translateY(5px) scale(1.25)}}
     @keyframes menu-eyebrow-in{to{opacity:1;transform:translateX(0)}}
     @keyframes menu-letter-in{0%{opacity:0;transform:translateY(42px) scale(.78);filter:blur(5px)}65%{opacity:1;transform:translateY(-4px) scale(1.03);filter:blur(0)}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
     @keyframes menu-line-in{to{opacity:1;transform:scaleX(1)}}
-    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf,.hero-logo-leaves-stage,.hero-logo-word-slice{animation:none;transform:none}.hero-logo-leaves-stage,.hero-logo-word-slice{opacity:1}.hero-water-feature{display:none}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
+    @media(prefers-reduced-motion:reduce){.hero-logo-mark,.hero-logo-leaf,.hero-logo-leaves-stage,.hero-logo-word-slice{animation:none;transform:none}.hero-logo-leaves-stage,.hero-logo-word-slice{opacity:1}.menu-intro .eyebrow,.menu-intro h2,.menu-title-letter{opacity:1;transform:none;filter:none}.menu-intro:after{opacity:1;transform:none}.menu-intro.menu-intro-visible .eyebrow,.menu-intro.menu-intro-visible .menu-title-letter,.menu-intro.menu-intro-visible:after{animation:none}}
 
     .allergy-panel,.checkout-option-panel{display:grid;gap:14px;padding:18px;border:1px solid var(--night-line);border-radius:16px;background:var(--surface)}
     .allergy-panel legend,.checkout-option-panel legend{padding:0 5px;font-size:.78rem;font-weight:800;color:var(--paper)}
@@ -744,69 +725,6 @@
                   <animate class="hero-logo-leaf-wave" attributeName="d" begin="-1.8s" dur="7.1s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.3;.6;.84;1" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1;.42 0 .58 1" values="M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z;M639 392C654 397 669 397 685 393C670 404 654 409 641 401C657 417 676 423 693 423C716 425 737 416 747 399C735 386 717 378 698 375C675 373 653 380 639 392Z;M639 392C646 408 657 415 670 419C660 417 649 410 641 401C649 424 665 441 680 447C700 452 715 445 721 436C722 413 708 391 690 382C671 373 651 379 639 392Z;M639 392C652 400 667 402 682 399C668 408 653 409 641 401C655 419 674 428 691 428C713 430 733 421 744 408C735 391 716 380 696 376C674 373 653 380 639 392Z;M639 392C650 402 663 406 677 405C665 409 652 408 641 401C653 420 670 431 685 433C703 435 721 427 732 416C727 399 713 385 694 378C675 373 654 379 639 392Z" />
                 </path>
               </g>
-              </g>
-            </svg>
-            <svg class="hero-water-feature" viewBox="0 0 1080 1080" aria-hidden="true" focusable="false">
-              <defs>
-                <linearGradient id="hero-water-body" x1="470" y1="320" x2="188" y2="800" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stop-color="#fffaf2" stop-opacity=".96"/>
-                  <stop offset=".24" stop-color="#e8fbff" stop-opacity=".9"/>
-                  <stop offset=".62" stop-color="#c9eceb" stop-opacity=".82"/>
-                  <stop offset="1" stop-color="#d9d8ef" stop-opacity=".9"/>
-                </linearGradient>
-                <linearGradient id="hero-water-core" x1="438" y1="330" x2="205" y2="795" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stop-color="#ffffff" stop-opacity=".88"/>
-                  <stop offset=".46" stop-color="#f7ffff" stop-opacity=".56"/>
-                  <stop offset=".76" stop-color="#d9eaa6" stop-opacity=".38"/>
-                  <stop offset="1" stop-color="#ffffff" stop-opacity=".72"/>
-                </linearGradient>
-                <radialGradient id="hero-water-drop" cx="35%" cy="25%" r="76%">
-                  <stop offset="0" stop-color="#ffffff" stop-opacity=".96"/>
-                  <stop offset=".45" stop-color="#dff6f7" stop-opacity=".88"/>
-                  <stop offset="1" stop-color="#b7dfe4" stop-opacity=".64"/>
-                </radialGradient>
-                <linearGradient id="hero-water-ripple" x1="145" y1="0" x2="265" y2="0" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stop-color="#d9d8ef" stop-opacity="0"/>
-                  <stop offset=".22" stop-color="#e8fbff" stop-opacity=".72"/>
-                  <stop offset=".5" stop-color="#ffffff" stop-opacity=".88"/>
-                  <stop offset=".78" stop-color="#d9eaa6" stop-opacity=".58"/>
-                  <stop offset="1" stop-color="#d9d8ef" stop-opacity="0"/>
-                </linearGradient>
-                <mask id="hero-water-stream-mask" x="130" y="285" width="380" height="555" maskUnits="userSpaceOnUse">
-                  <path class="hero-water-mask-path" pathLength="1" d="M432 326C379 342 337 390 307 455C270 537 244 652 205 787"/>
-                </mask>
-              </defs>
-              <g class="hero-water-source">
-                <ellipse cx="431" cy="326" rx="22" ry="9" transform="rotate(-18 431 326)" fill="url(#hero-water-drop)"/>
-                <ellipse cx="427" cy="322" rx="10" ry="3.4" transform="rotate(-18 427 322)" fill="rgba(255,255,255,.86)"/>
-              </g>
-              <g class="hero-water-stream-layer" mask="url(#hero-water-stream-mask)">
-                <path class="hero-water-stream-shadow" d="M421 321C374 337 330 382 298 451C262 530 236 646 194 783C190 795 199 806 211 806C222 806 229 797 231 786C268 650 290 544 326 466C354 405 389 366 441 339C451 333 448 319 439 317C433 316 427 318 421 321Z" transform="translate(5 7)"/>
-                <path class="hero-water-stream-body" d="M421 321C374 337 330 382 298 451C262 530 236 646 194 783C190 795 199 806 211 806C222 806 229 797 231 786C268 650 290 544 326 466C354 405 389 366 441 339C451 333 448 319 439 317C433 316 427 318 421 321Z"/>
-                <path class="hero-water-stream-core" d="M431 329C384 347 345 391 315 457C279 538 255 650 214 789"/>
-                <path class="hero-water-stream-edge" d="M421 329C381 346 339 390 307 458C273 533 245 650 202 785"/>
-                <path class="hero-water-flow" pathLength="310" d="M428 328C379 347 339 391 309 457C272 539 248 651 208 789"/>
-              </g>
-              <g class="hero-water-contact">
-                <ellipse class="hero-water-ripple" cx="205" cy="796" rx="54" ry="12" stroke-width="7"/>
-                <path class="hero-water-ripple" d="M170 789C181 777 194 773 205 784C217 770 231 777 241 790" stroke-width="8"/>
-              </g>
-              <g class="hero-water-pool">
-                <ellipse cx="205" cy="798" rx="56" ry="9" fill="rgba(220,243,242,.24)"/>
-                <ellipse class="hero-water-ripple" cx="205" cy="798" rx="48" ry="7" stroke-width="4"/>
-                <ellipse class="hero-water-ripple" cx="205" cy="799" rx="30" ry="4" stroke-width="2.5" opacity=".72"/>
-              </g>
-              <g class="hero-water-finale">
-                <path class="hero-water-ripple" d="M151 801C160 792 168 786 177 798C184 780 194 774 205 796C215 775 226 780 232 798C242 786 252 792 261 801" stroke-width="7"/>
-                <ellipse class="hero-water-ripple" cx="205" cy="802" rx="66" ry="13" stroke-width="5"/>
-              </g>
-              <g class="hero-water-finale" aria-hidden="true">
-                <ellipse class="hero-water-drop" cx="151" cy="752" rx="6" ry="13" transform="rotate(-30 151 752)"/>
-                <ellipse class="hero-water-drop" cx="174" cy="726" rx="5" ry="10" transform="rotate(-18 174 726)"/>
-                <ellipse class="hero-water-drop" cx="195" cy="743" rx="5" ry="11" transform="rotate(-6 195 743)"/>
-                <ellipse class="hero-water-drop" cx="220" cy="730" rx="5" ry="11" transform="rotate(10 220 730)"/>
-                <ellipse class="hero-water-drop" cx="244" cy="748" rx="6" ry="13" transform="rotate(22 244 748)"/>
-                <ellipse class="hero-water-drop" cx="263" cy="768" rx="4" ry="8" transform="rotate(34 263 768)"/>
               </g>
             </svg>
           </div>
