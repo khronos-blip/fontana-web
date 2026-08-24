@@ -477,6 +477,12 @@
     say.timer = setTimeout(() => toast.classList.remove("show"), 2800);
   }
 
+  function stockLimitNotice(error, itemName = "este producto") {
+    if (/No pudimos|momento|Inténtalo/i.test(error || "")) return error;
+    if (!/suficientes|disponible|inventario|stock|cantidad/i.test(error || "")) return error;
+    return `Llegaste al máximo disponible de ${itemName}. No puedes agregar más por ahora.`;
+  }
+
   function openCart() {
     showCartStep();
     drawer.classList.add("open");
@@ -611,7 +617,7 @@
         save();
         say(accepted === 1 ? "Añadido a tu pedido 💜" : `${accepted} unidades añadidas a tu pedido 💜`);
       }
-      if (accepted < requested && result.error) say(`${result.error} Se añadió únicamente la cantidad disponible.`);
+      if (accepted < requested && result.error) say(stockLimitNotice(result.error, queue.item.name));
     }
     queue.processing = false;
     if (!queue.pending && !queue.inFlight) productAddQueues.delete(id);
@@ -748,7 +754,7 @@
         }));
         const validation = await validateStock(draft);
         stockValidationPending = false;
-        if (!validation.ok) { say(validation.error); return; }
+        if (!validation.ok) { say(stockLimitNotice(validation.error, button.closest(".fonkie-flavor").dataset.flavor)); return; }
       }
       output.value = String(next);
       output.textContent = String(next);
@@ -764,7 +770,7 @@
       }
       if (!preorder) {
         const validation = await validateStock(selected.map(item => ({kind:"fonkies",flavor:item.name,quantity:item.qty})));
-        if (!validation.ok) { say(validation.error); return; }
+        if (!validation.ok) { say(stockLimitNotice(validation.error, "la caja de Fonkies")); return; }
       }
       const price = fonkiePrice(total, selected.length);
       const choices = [selected.map(item => `${item.qty} ${item.name}`).join(", "), preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean).join(" · ");
@@ -871,7 +877,7 @@
         }));
         const validation = await validateStock(draft);
         stockValidationPending = false;
-        if (!validation.ok) { say(validation.error); return; }
+        if (!validation.ok) { say(stockLimitNotice(validation.error, button.closest(".fomb-flavor").dataset.flavor)); return; }
       }
       output.value = String(next);
       output.textContent = String(next);
@@ -886,7 +892,7 @@
       }
       if (!preorder) {
         const validation = await validateStock(current.flavors.map(item => ({kind:"fomb",flavor:item.name,quantity:item.qty})));
-        if (!validation.ok) { say(validation.error); return; }
+        if (!validation.ok) { say(stockLimitNotice(validation.error, "la caja Fomb")); return; }
       }
       const choices = [current.flavors.map(item => `${item.qty} ${item.name}`).join(", "), preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean).join(" · ");
       const id = `fomb-box-${current.size}-${extras}-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
@@ -923,7 +929,7 @@
       stockValidationPending = true;
       const validation = await validateStock();
       stockValidationPending = false;
-      if (!validation.ok) { item.qty = previous; say(validation.error); renderCart(); return; }
+      if (!validation.ok) { item.qty = previous; say(stockLimitNotice(validation.error, item.name)); renderCart(); return; }
     }
     if (item.qty <= 0) cart = cart.filter(entry => entry.id !== id);
     save();

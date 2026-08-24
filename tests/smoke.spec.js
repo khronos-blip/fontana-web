@@ -114,7 +114,7 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
   await expect(page.locator("#cartCount")).toHaveText("3");
   await expect(quantity).toHaveText("3");
   await expect(minus).toBeVisible();
-  await expect(page.locator("#toast")).toContainText("cantidad disponible");
+  await expect(page.locator("#toast")).toContainText("Llegaste al máximo disponible de Torta Ballerine");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await card.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("controles-rapidos-producto-movil.png"), fullPage: false });
@@ -128,7 +128,6 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
   await expect(quantity).toBeHidden();
 
   await page.setViewportSize({ width: 1366, height: 900 });
-  await page.reload();
   const desktopCard = page.locator('[data-product-id="ballerine"]');
   await desktopCard.locator(".add").evaluate(button => {
     button.click();
@@ -207,7 +206,7 @@ test("Fonkies nunca permite seleccionar ni pedir más unidades que el inventario
   const plus = flavor.locator('[data-delta="1"]');
   for (let index = 0; index < 8; index += 1) await plus.click();
   await expect(flavor.locator("output")).toHaveText("6");
-  await expect(page.locator("#toast")).toContainText("No hay suficientes unidades disponibles");
+  await expect(page.locator("#toast")).toContainText("Llegaste al máximo disponible de Chips de Chocolate Oscuro");
   await page.screenshot({ path: testInfo.outputPath("fonkies-stock-6-bloquea-8-movil.png"), fullPage: false });
 
   await page.locator("#addFonkieBox").click();
@@ -215,7 +214,42 @@ test("Fonkies nunca permite seleccionar ni pedir más unidades que el inventario
   await page.locator("#cartButton").click();
   await page.locator('.cart-item .qty button[aria-label="Sumar"]').click();
   await expect(page.locator(".cart-item .qty b")).toHaveText("1");
-  await expect(page.locator("#toast")).toContainText("No hay suficientes unidades disponibles");
+  await expect(page.locator("#toast")).toContainText("Llegaste al máximo disponible de Caja de 6 Fonkies");
+});
+
+test("Fomb avisa al alcanzar el máximo disponible de un sabor", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version: 2,
+      settings: { productionWithElectricity: true, stockTodayOpen: true },
+      products: [],
+      builders: {
+        fomb: {
+          visible: true,
+          status: "available",
+          minimumQuantity: 4,
+          sizes: [{ quantity: 4, price: 15 }],
+          flavors: [{
+            name: "Pistacho",
+            ingredients: "Pistacho y chocolate blanco vegano",
+            image: "assets/fomb-pistachio-fontana-pro.jpg",
+            status: "available",
+            stockQuantity: 2
+          }]
+        }
+      }
+    }));
+  });
+  await openPreview(page);
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await openFlavorChoice(page, ".fomb-builder");
+  const flavor = page.locator('.fomb-flavor[data-flavor="Pistacho"]');
+  const plus = flavor.locator('[data-delta="1"]');
+  await plus.click();
+  await plus.click();
+  await plus.click();
+  await expect(flavor.locator("output")).toHaveText("2");
+  await expect(page.locator("#toast")).toContainText("Llegaste al máximo disponible de Pistacho");
 });
 
 test("los selectores de Fonkies y Fomb son compactos en escritorio y pueden plegarse", async ({ page }) => {
