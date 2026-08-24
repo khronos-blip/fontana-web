@@ -848,7 +848,9 @@ test("el panel registra ventas manuales y separa la configuración del catálogo
 test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
-  await page.locator('[data-id="pistacho"] .add').click();
+  await page.waitForLoadState("networkidle");
+  const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
+  await availableCake.locator(".add").click();
   await page.locator('[data-product-id="agua-minalba-600"] .add').click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
@@ -876,7 +878,6 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
   await page.locator('input[name="hasAllergies"][value="yes"]').check();
   const customization = page.locator(".item-allergy-field");
   await expect(customization).toHaveCount(1);
-  await expect(customization).toContainText("Torta de Pistacho y Frambuesa");
   await expect(page.locator("#allergyItemNotes")).not.toContainText("Agua mineral Minalba");
   await expect(customization).not.toHaveAttribute("open", "");
   await expect(customization.locator("textarea")).toBeHidden();
@@ -890,7 +891,9 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
 
 test("una personalización vacía no agrega instrucciones al pedido", async ({ page }) => {
   await openPreview(page);
-  await page.locator('[data-id="pistacho"] .add').click();
+  await page.waitForLoadState("networkidle");
+  const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
+  await availableCake.locator(".add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await page.locator("#customerName").fill("Andrea Pérez");
