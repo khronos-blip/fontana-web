@@ -319,6 +319,15 @@
     .checkout-form{padding:24px 28px 34px;overflow-y:auto;overflow-x:hidden;flex:1}.checkout-intro{margin:0 0 20px;color:var(--muted);font-size:.84rem}.form-grid{display:grid;gap:16px}.field{display:grid;gap:7px}.field label{font-size:.76rem;font-weight:800;color:var(--ink)}.field input,.field select,.field textarea{display:block;width:100%;min-width:0;max-width:100%;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 14px;color:var(--ink)}.field textarea{min-height:82px;resize:vertical}.checkout-form .btn{width:100%;margin-top:20px}.checkout-help{display:block;text-align:center;color:var(--muted);font-size:.7rem;margin-top:10px}
     .checkout-validation{margin:0 0 16px;padding:12px 14px;border-left:4px solid #e18189;border-radius:10px;background:rgba(225,129,137,.13);color:#fff;font-size:.76rem;font-weight:800;line-height:1.45}
     .checkout-invalid{border-color:rgba(225,129,137,.82)!important;box-shadow:0 0 0 2px rgba(225,129,137,.14)}
+    @media(min-width:900px){
+      .drawer{width:min(620px,100vw)}
+      .checkout-form{padding:26px 32px 38px}
+      .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+      .field-wide,.allergy-panel,.checkout-option-panel{grid-column:1/-1}
+      .item-allergy-list{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+      .allergen-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+      .checkout-form>.btn{width:min(330px,100%);margin-left:auto;margin-right:auto;display:block}
+    }
     [hidden]{display:none!important}
     .toast{position:fixed;z-index:80;left:50%;bottom:25px;transform:translate(-50%,30px);background:#211321;color:#fff;border-radius:999px;padding:13px 20px;font-size:.82rem;opacity:0;pointer-events:none;transition:.3s ease;box-shadow:0 12px 35px rgba(0,0,0,.22)}.toast.show{opacity:1;transform:translate(-50%,0)}
 
@@ -893,7 +902,7 @@
         <div class="field"><label for="customerName">Nombre y apellido</label><input id="customerName" name="name" autocomplete="name" required></div>
         <div class="field"><label for="customerPhone">Teléfono de contacto</label><input id="customerPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>
         <div class="field"><label for="fulfillment">¿Cómo lo recibirás?</label><select id="fulfillment" name="fulfillment" required></select></div>
-        <div class="field" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
+        <div class="field field-wide" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
         <div class="field"><label id="requestedDateLabel" for="requestedDate">Fecha deseada</label><input id="requestedDate" name="requestedDate" type="date" required><p class="schedule-note" id="requestedDateNotice"></p></div>
         <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select><p class="schedule-note" id="paymentNotice">Los datos se envían por WhatsApp. Se requiere el 100% del pago por adelantado.</p></div>
         <fieldset class="checkout-option-panel" id="birthdayCandlePanel" hidden>
@@ -912,7 +921,7 @@
             <div class="allergy-status" id="allergyStatus">Este pedido quedará pendiente de revisión por Fontana.</div>
           </div>
         </fieldset>
-        <div class="field"><label for="customerNotes">Observaciones <span aria-hidden="true">(opcional)</span></label><textarea id="customerNotes" name="notes" placeholder="Dedicatoria u otra indicación para el pedido"></textarea></div>
+        <div class="field field-wide"><label for="customerNotes">Observaciones <span aria-hidden="true">(opcional)</span></label><textarea id="customerNotes" name="notes" placeholder="Dedicatoria u otra indicación para el pedido"></textarea></div>
       </div>
       <button class="btn btn-green" type="submit">Enviar pedido por WhatsApp</button>
       <small class="checkout-help">El pedido queda pendiente hasta que Fontana confirme el pago.</small>

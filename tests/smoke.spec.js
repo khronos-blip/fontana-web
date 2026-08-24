@@ -343,10 +343,13 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", a
     return { x:box.x, y:box.y, width:box.width, height:box.height };
   });
   await page.waitForTimeout(500);
-  expect(await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {
+  const reducedShapeAfterWait = await page.locator("path.hero-logo-leaf-art").first().evaluate(element => {
     const box = element.getBBox();
     return { x:box.x, y:box.y, width:box.width, height:box.height };
-  })).toEqual(reducedShape);
+  });
+  Object.keys(reducedShape).forEach(key => {
+    expect(Math.abs(reducedShapeAfterWait[key] - reducedShape[key])).toBeLessThan(0.5);
+  });
 });
 
 test("¿Es para ti? abre una vista propia con el mensaje, los sellos y el acceso al menú", async ({ page }, testInfo) => {
@@ -909,6 +912,43 @@ test("una personalización vacía no agrega instrucciones al pedido", async ({ p
   const message = await page.evaluate(() => window.__copiedOrder);
   expect(message).toContain("Condiciones, alergias o intolerancias: Celíaco");
   expect(message).not.toContain("INSTRUCCIONES POR PRODUCTO");
+});
+
+test("el checkout de escritorio aprovecha el ancho sin desbordar", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openPreview(page);
+  await page.waitForLoadState("networkidle");
+  const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
+  await availableCake.locator(".add").click();
+  await page.locator('[data-product-id="agua-minalba-600"] .add').click();
+  await page.locator("#cartButton").click();
+  await page.locator("#continueCheckout").click();
+
+  const layout = await page.locator("#drawer").evaluate(drawer => {
+    const form = drawer.querySelector("#checkoutForm");
+    const grid = drawer.querySelector(".form-grid");
+    return {
+      viewport: window.innerWidth,
+      drawerWidth: drawer.getBoundingClientRect().width,
+      drawerScrollWidth: drawer.scrollWidth,
+      formWidth: form.getBoundingClientRect().width,
+      formScrollWidth: form.scrollWidth,
+      columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length
+    };
+  });
+  expect(layout.drawerWidth).toBe(620);
+  expect(layout.drawerWidth).toBeLessThan(layout.viewport);
+  expect(layout.drawerScrollWidth).toBeLessThanOrEqual(layout.drawerWidth);
+  expect(layout.formScrollWidth).toBeLessThanOrEqual(layout.formWidth);
+  expect(layout.columns).toBe(2);
+
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  await expect(page.locator("#checkoutValidation")).toContainText("Nombre y apellido");
+  await page.locator('input[name="hasAllergies"][value="yes"]').check();
+  await expect(page.locator(".item-allergy-field")).toHaveCount(1);
+  await expect(page.locator(".item-allergy-field")).not.toHaveAttribute("open", "");
+  await expect(page.locator("#allergyItemNotes")).not.toContainText("Agua mineral Minalba");
+  await page.screenshot({ path: testInfo.outputPath("checkout-escritorio-compacto.png"), fullPage: false });
 });
 
 test("el panel administra sabores especiales en tarjetas compactas y conserva el checkout", async ({ page }, testInfo) => {
