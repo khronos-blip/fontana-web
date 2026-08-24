@@ -327,6 +327,7 @@
     .checkout-invalid{border-color:#ef646f!important;box-shadow:0 0 0 2px rgba(239,100,111,.28)}
     .checkout-preparation-guide{grid-column:1/-1;border:1px solid rgba(197,218,78,.34);border-radius:16px;background:rgba(255,255,255,.06);padding:14px;display:grid;gap:10px}
     .checkout-preparation-guide h4{margin:0;color:#fff;font-size:.84rem}.checkout-preparation-list{display:grid;gap:8px}.checkout-preparation-row{display:grid;gap:3px;border-left:3px solid var(--green);padding:2px 0 2px 10px}.checkout-preparation-row.prepared{border-left-color:#d9a9df}.checkout-preparation-row.pending{border-left-color:#e18189}.checkout-preparation-row strong{color:#fff;font-size:.74rem}.checkout-preparation-row span,.checkout-preparation-note{color:rgba(255,255,255,.68);font-size:.7rem;line-height:1.45}.checkout-preparation-note{margin:0;padding-top:2px}
+    .delivery-plan-panel{grid-column:1/-1}.delivery-plan-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.delivery-plan-choice{display:flex;align-items:flex-start;gap:10px;padding:13px;border:1px solid rgba(255,255,255,.16);border-radius:14px;background:rgba(255,255,255,.04);cursor:pointer}.delivery-plan-choice:has(input:checked){border-color:var(--green);background:rgba(197,218,78,.12)}.delivery-plan-choice input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--green);flex:0 0 auto}.delivery-plan-choice span{display:grid;gap:3px}.delivery-plan-choice strong{color:#fff;font-size:.76rem}.delivery-plan-choice small,.delivery-plan-help{color:rgba(255,255,255,.68);font-size:.68rem;line-height:1.4}.delivery-plan-help{margin:0}.split-delivery-fields{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.split-delivery-card{min-width:0;padding:14px;border:1px solid rgba(255,255,255,.16);border-radius:16px;background:rgba(42,15,45,.22);display:grid;gap:12px}.split-delivery-card h4{margin:0;color:#fff;font-size:.82rem}.split-delivery-card>p{margin:-5px 0 0;color:rgba(255,255,255,.68);font-size:.68rem;line-height:1.4}.split-item-summary{margin:0;padding-left:18px;color:rgba(255,255,255,.8);font-size:.68rem;line-height:1.45}.split-item-summary li+li{margin-top:3px}
     @media(min-width:900px){
       .drawer{width:min(620px,100vw)}
       .checkout-form{padding:26px 32px 38px}
@@ -336,6 +337,7 @@
       .allergen-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
       .checkout-form>.btn{width:min(330px,100%);margin-left:auto;margin-right:auto;display:block}
     }
+    @media(max-width:899px){.delivery-plan-options,.split-delivery-fields{grid-template-columns:1fr}}
     [hidden]{display:none!important}
     .toast{position:fixed;z-index:80;left:50%;bottom:25px;transform:translate(-50%,30px);background:#211321;color:#fff;border-radius:999px;padding:13px 20px;font-size:.82rem;opacity:0;pointer-events:none;transition:.3s ease;box-shadow:0 12px 35px rgba(0,0,0,.22)}.toast.show{opacity:1;transform:translate(-50%,0)}
 
@@ -910,14 +912,40 @@
       <div class="form-grid">
         <div class="field"><label for="customerName">Nombre y apellido</label><input id="customerName" name="name" autocomplete="name" required></div>
         <div class="field"><label for="customerPhone">Teléfono de contacto</label><input id="customerPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>
-        <div class="field"><label for="fulfillment">¿Cómo lo recibirás?</label><select id="fulfillment" name="fulfillment" required></select></div>
+        <div class="field" id="singleFulfillmentGroup"><label for="fulfillment">¿Cómo lo recibirás?</label><select id="fulfillment" name="fulfillment" required></select></div>
         <div class="field field-wide" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
         <section class="checkout-preparation-guide" id="checkoutPreparationGuide" aria-labelledby="checkoutPreparationTitle">
           <h4 id="checkoutPreparationTitle">Tiempo de preparación de este pedido</h4>
           <div class="checkout-preparation-list" id="checkoutPreparationList"></div>
           <p class="checkout-preparation-note" id="checkoutPreparationNote" hidden></p>
         </section>
-        <div class="field"><label id="requestedDateLabel" for="requestedDate">Fecha deseada</label><input id="requestedDate" name="requestedDate" type="date" required><p class="schedule-note" id="requestedDateNotice"></p></div>
+        <fieldset class="checkout-option-panel delivery-plan-panel" id="deliveryPlanPanel" hidden>
+          <legend>¿Cómo quieres recibir este pedido mixto?</legend>
+          <div class="delivery-plan-options">
+            <label class="delivery-plan-choice"><input type="radio" name="deliveryPlan" value="together" checked><span><strong>Recibir todo junto</strong><small>Esperar a que todo el pedido esté listo y recibirlo en una sola fecha.</small></span></label>
+            <label class="delivery-plan-choice"><input type="radio" name="deliveryPlan" value="split"><span><strong>Recibir en dos momentos</strong><small>Recibir primero lo disponible y después los productos que requieren preparación.</small></span></label>
+          </div>
+          <p class="delivery-plan-help">Si se necesitan dos deliveries, cualquier costo adicional se confirma directamente por WhatsApp.</p>
+        </fieldset>
+        <div class="field" id="singleDateGroup"><label id="requestedDateLabel" for="requestedDate">Fecha deseada</label><input id="requestedDate" name="requestedDate" type="date" required><p class="schedule-note" id="requestedDateNotice"></p></div>
+        <section class="split-delivery-fields" id="splitDeliveryFields" hidden aria-label="Datos para recibir el pedido en dos momentos">
+          <div class="split-delivery-card">
+            <h4>Primera entrega · Disponible primero</h4>
+            <p>Sujeta al stock y a la confirmación de Fontana.</p>
+            <ul class="split-item-summary" id="immediateItemSummary"></ul>
+            <div class="field"><label for="immediateFulfillment">¿Cómo la recibirás?</label><select id="immediateFulfillment" name="immediateFulfillment"></select></div>
+            <div class="field" id="immediateAddressGroup" hidden><label for="immediateAddress">Dirección de entrega</label><textarea id="immediateAddress" name="immediateAddress" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
+            <div class="field"><label for="immediateRequestedDate">Fecha solicitada</label><input id="immediateRequestedDate" name="immediateRequestedDate" type="date"><p class="schedule-note">La disponibilidad final se confirma por WhatsApp.</p></div>
+          </div>
+          <div class="split-delivery-card">
+            <h4>Segunda entrega · Con preparación</h4>
+            <p>Se habilita desde la fecha mínima del producto con mayor preparación.</p>
+            <ul class="split-item-summary" id="preparedItemSummary"></ul>
+            <div class="field"><label for="preparedFulfillment">¿Cómo la recibirás?</label><select id="preparedFulfillment" name="preparedFulfillment"></select></div>
+            <div class="field" id="preparedAddressGroup" hidden><label for="preparedAddress">Dirección de entrega</label><textarea id="preparedAddress" name="preparedAddress" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
+            <div class="field"><label for="preparedRequestedDate">Fecha solicitada</label><input id="preparedRequestedDate" name="preparedRequestedDate" type="date"><p class="schedule-note">No permite elegir una fecha anterior al tiempo de preparación.</p></div>
+          </div>
+        </section>
         <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select><p class="schedule-note" id="paymentNotice">Los datos se envían por WhatsApp. Se requiere el 100% del pago por adelantado.</p></div>
         <fieldset class="checkout-option-panel" id="birthdayCandlePanel" hidden>
           <legend>¿Necesitas vela de cumpleaños?</legend>

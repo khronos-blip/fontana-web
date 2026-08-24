@@ -976,7 +976,7 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
   await expect(page.locator("#customerName")).toHaveCSS("border-top-color", "rgb(239, 100, 111)");
   await expect(page.locator("#checkoutPreparationGuide")).toContainText("Puede pedirse para el mismo día");
   await expect(page.locator("#checkoutPreparationGuide")).toContainText("Mínimo 2 días de preparación");
-  await expect(page.locator("#checkoutPreparationNote")).toContainText("corresponde al que requiere más preparación");
+  await expect(page.locator("#checkoutPreparationNote")).toContainText("Puedes recibir primero lo disponible");
 
   await page.locator('input[name="hasAllergies"][value="yes"]').check();
   const customization = page.locator(".item-allergy-field");
@@ -990,6 +990,57 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
   await page.screenshot({ path: testInfo.outputPath("checkout-movil-compacto-sin-desborde.png"), fullPage: false });
   await customization.locator("summary").click();
   await expect(customization.locator("textarea")).toBeVisible();
+});
+
+test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await page.waitForLoadState("networkidle");
+  const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
+  await availableCake.locator(".add").click();
+  await page.locator('[data-product-id="agua-minalba-600"] .add').click();
+  await page.locator("#cartButton").click();
+  await page.locator("#continueCheckout").click();
+
+  await expect(page.locator("#deliveryPlanPanel")).toBeVisible();
+  await expect(page.locator('input[name="deliveryPlan"][value="together"]')).toBeChecked();
+  await expect(page.locator("#singleFulfillmentGroup")).toBeVisible();
+  await expect(page.locator("#splitDeliveryFields")).toBeHidden();
+
+  await page.locator('input[name="deliveryPlan"][value="split"]').check();
+  await expect(page.locator("#singleFulfillmentGroup")).toBeHidden();
+  await expect(page.locator("#singleDateGroup")).toBeHidden();
+  await expect(page.locator("#splitDeliveryFields")).toBeVisible();
+  await expect(page.locator("#immediateItemSummary")).toContainText("Agua mineral Minalba");
+  await expect(page.locator("#preparedItemSummary")).toContainText("Torta de");
+  await expect(page.locator("#immediateRequestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
+  await expect(page.locator("#preparedRequestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
+
+  await page.locator("#customerName").fill("Andrea Pérez");
+  await page.locator("#customerPhone").fill("0412 000 0000");
+  await page.locator("#immediateFulfillment").selectOption("pickup");
+  await page.locator("#preparedFulfillment").selectOption("delivery");
+  await page.locator("#preparedAddress").fill("Dirección de prueba");
+  await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
+  await page.locator('input[name="birthdayCandle"][value="no"]').check();
+  await page.locator('input[name="hasAllergies"][value="no"]').check();
+  await page.locator('#checkoutForm button[type="submit"]').click();
+
+  const message = await page.evaluate(() => window.__copiedOrder);
+  expect(message).toContain("*Primera entrega · Productos disponibles primero*");
+  expect(message).toContain("Agua mineral Minalba");
+  expect(message).toContain("*Segunda entrega · Productos con preparación*");
+  expect(message).toContain("• Modalidad: Delivery en todo Carabobo (costo confirmado por WhatsApp)");
+  expect(message).toContain("• Dirección: Dirección de prueba");
+  expect(message).not.toContain("Costo del segundo delivery");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.locator("#deliveryPlanPanel").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("pedido-mixto-dividido-movil.png"), fullPage: false });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect.poll(() => page.locator("#splitDeliveryFields").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
+  await page.locator("#deliveryPlanPanel").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("pedido-mixto-dividido-escritorio.png"), fullPage: false });
 });
 
 test("una personalización vacía no agrega instrucciones al pedido", async ({ page }) => {

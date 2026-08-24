@@ -1006,19 +1006,60 @@
   }
 
   function populateOptions() {
-    $("#fulfillment").innerHTML = `
+    const fulfillmentOptions = `
       <option value="pickup">${config.pickupLabel || "Pickup"}</option>
       <option value="delivery">${config.deliveryLabel || "Delivery"}</option>`;
+    ["#fulfillment", "#immediateFulfillment", "#preparedFulfillment"].forEach(selector => {
+      $(selector).innerHTML = fulfillmentOptions;
+    });
     $("#paymentMethod").innerHTML = (config.paymentMethods || [])
       .map(method => `<option value="${method}">${method}</option>`)
       .join("");
   }
 
+  function toggleAddressFor(select, group, address) {
+    const delivery = select.value === "delivery";
+    group.hidden = !delivery;
+    address.required = delivery && !select.disabled;
+  }
+
   function toggleAddress() {
+    toggleAddressFor($("#fulfillment"), $("#addressGroup"), $("#customerAddress"));
     const delivery = $("#fulfillment").value === "delivery";
-    $("#addressGroup").hidden = !delivery;
-    $("#customerAddress").required = delivery;
     $("#requestedDateLabel").textContent = delivery ? "Fecha deseada para delivery" : "Fecha deseada para pickup";
+  }
+
+  function itemLeadTime(item) {
+    const leadTime = config.leadTimesByProduct?.[item.productId || item.id];
+    const days = Number(leadTime?.minimumBusinessDays);
+    return Number.isFinite(days) ? Math.max(0, days) : null;
+  }
+
+  function cartScheduleGroups() {
+    const immediate = [];
+    const prepared = [];
+    const pending = [];
+    cart.forEach(item => {
+      const days = itemLeadTime(item);
+      if (days === null) pending.push(item);
+      else if (days === 0) immediate.push(item);
+      else prepared.push({ item, days });
+    });
+    return {
+      immediate,
+      prepared,
+      pending,
+      mixed: immediate.length > 0 && (prepared.length > 0 || pending.length > 0),
+      maximumDays: prepared.length ? Math.max(...prepared.map(entry => entry.days)) : 0
+    };
+  }
+
+  function currentDeliveryPlan() {
+    return cartScheduleGroups().mixed && checkoutForm.elements.deliveryPlan?.value === "split" ? "split" : "together";
+  }
+
+  function toggleSplitAddress(selectId, groupId, addressId) {
+    toggleAddressFor($(selectId), $(groupId), $(addressId));
   }
 
   function localDateValue(date) {
@@ -1032,13 +1073,12 @@
   }
 
   function renderCheckoutPreparationGuide() {
-    const groups = { sameDay: [], prepared: [], pending: [] };
-    cart.forEach(item => {
-      const leadTime = config.leadTimesByProduct?.[item.productId || item.id];
-      if (!leadTime || !Number.isFinite(Number(leadTime.minimumBusinessDays))) groups.pending.push(item.name);
-      else if (Number(leadTime.minimumBusinessDays) === 0) groups.sameDay.push(item.name);
-      else groups.prepared.push({ name:item.name, days:Number(leadTime.minimumBusinessDays) });
-    });
+    const schedule = cartScheduleGroups();
+    const groups = {
+      sameDay: schedule.immediate.map(item => item.name),
+      prepared: schedule.prepared.map(entry => ({ name:entry.item.name, days:entry.days })),
+      pending: schedule.pending.map(item => item.name)
+    };
     const unique = values => [...new Set(values)];
     const rows = [];
     const sameDayNames = unique(groups.sameDay);
@@ -1052,19 +1092,46 @@
     if (pendingNames.length) rows.push(`<div class="checkout-preparation-row pending"><strong>Tiempo por confirmar</strong><span>${escapeHtml(pendingNames.join(", "))}.</span></div>`);
     $("#checkoutPreparationList").innerHTML = rows.join("");
     const note = $("#checkoutPreparationNote");
-    const mixedLeadTimes = sameDayNames.length && groups.prepared.length;
-    note.textContent = mixedLeadTimes ? "Al combinar productos, la fecha disponible corresponde al que requiere más preparación." : "";
-    note.hidden = !mixedLeadTimes;
+    note.textContent = schedule.mixed ? "Puedes recibir primero lo disponible y después lo que requiere preparación, o esperar para recibir todo junto." : "";
+    note.hidden = !schedule.mixed;
+  }
+
+  function renderSplitItemSummaries(schedule) {
+    const itemMarkup = item => `<li>${item.qty}× ${escapeHtml(item.name)}</li>`;
+    $("#immediateItemSummary").innerHTML = schedule.immediate.map(itemMarkup).join("");
+    $("#preparedItemSummary").innerHTML = [
+      ...schedule.prepared.map(entry => entry.item),
+      ...schedule.pending
+    ].map(itemMarkup).join("");
+  }
+
+  function setFieldAvailability(field, enabled) {
+    field.disabled = !enabled;
+    field.required = enabled;
+  }
+
+  function toggleDeliveryPlan() {
+    const schedule = cartScheduleGroups();
+    const split = schedule.mixed && currentDeliveryPlan() === "split";
+    $("#singleFulfillmentGroup").hidden = split;
+    $("#singleDateGroup").hidden = split;
+    $("#splitDeliveryFields").hidden = !split;
+    setFieldAvailability($("#fulfillment"), !split);
+    setFieldAvailability($("#requestedDate"), !split);
+    ["#immediateFulfillment", "#immediateRequestedDate", "#preparedFulfillment", "#preparedRequestedDate"].forEach(selector => setFieldAvailability($(selector), split));
+    $("#customerAddress").disabled = split;
+    $("#customerAddress").required = !split && $("#fulfillment").value === "delivery";
+    $("#immediateAddress").disabled = !split;
+    $("#preparedAddress").disabled = !split;
+    toggleAddress();
+    toggleSplitAddress("#immediateFulfillment", "#immediateAddressGroup", "#immediateAddress");
+    toggleSplitAddress("#preparedFulfillment", "#preparedAddressGroup", "#preparedAddress");
   }
 
   function setupRequestedDate() {
     renderCheckoutPreparationGuide();
-    const leadTimes = cart
-      .map(item => config.leadTimesByProduct?.[item.productId || item.id])
-      .filter(Boolean);
-    const minimumBusinessDays = leadTimes.length
-      ? Math.max(...leadTimes.map(item => Number(item.minimumBusinessDays) || 0))
-      : 0;
+    const schedule = cartScheduleGroups();
+    const minimumBusinessDays = schedule.maximumDays;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const minimumDate = addPreparationDays(today, minimumBusinessDays);
@@ -1075,7 +1142,16 @@
       : "La fecha final queda sujeta a confirmación por WhatsApp.";
     if (minimumBusinessDays > 0 && (!input.value || input.value < input.min)) input.value = input.min;
     else if (input.value && input.value < input.min) input.value = "";
-
+    const immediateDate = $("#immediateRequestedDate");
+    immediateDate.min = localDateValue(today);
+    if (!immediateDate.value || immediateDate.value < immediateDate.min) immediateDate.value = immediateDate.min;
+    const preparedDate = $("#preparedRequestedDate");
+    preparedDate.min = localDateValue(minimumDate);
+    if (!preparedDate.value || preparedDate.value < preparedDate.min) preparedDate.value = preparedDate.min;
+    $("#deliveryPlanPanel").hidden = !schedule.mixed;
+    if (!schedule.mixed) checkoutForm.elements.deliveryPlan.value = "together";
+    renderSplitItemSummaries(schedule);
+    toggleDeliveryPlan();
   }
 
   function cartHasCake() {
@@ -1132,6 +1208,38 @@
     return list.join(", ");
   }
 
+  function fulfillmentLabel(value) {
+    return value === "delivery" ? (config.deliveryLabel || "Delivery") : (config.pickupLabel || "Pickup");
+  }
+
+  function cartItemMessageLine(item) {
+    return `• ${item.qty}× ${item.name} — ${money(item.price * item.qty)}${item.choices ? `\n  Sabores: ${item.choices}` : ""}`;
+  }
+
+  function splitDeliveryMessageLines(data) {
+    const schedule = cartScheduleGroups();
+    if (!schedule.mixed || currentDeliveryPlan() !== "split") return null;
+    const immediateFulfillment = fulfillmentLabel(data.get("immediateFulfillment"));
+    const preparedFulfillment = fulfillmentLabel(data.get("preparedFulfillment"));
+    const preparedItems = [...schedule.prepared.map(entry => entry.item), ...schedule.pending];
+    const twoDeliveries = data.get("immediateFulfillment") === "delivery" && data.get("preparedFulfillment") === "delivery";
+    return [
+      "*Primera entrega · Productos disponibles primero*",
+      ...schedule.immediate.map(cartItemMessageLine),
+      `• Modalidad: ${immediateFulfillment}`,
+      data.get("immediateAddress") ? `• Dirección: ${data.get("immediateAddress")}` : null,
+      `• Fecha solicitada: ${data.get("immediateRequestedDate")}`,
+      "• Disponibilidad sujeta a confirmación de Fontana",
+      "",
+      "*Segunda entrega · Productos con preparación*",
+      ...preparedItems.map(cartItemMessageLine),
+      `• Modalidad: ${preparedFulfillment}`,
+      data.get("preparedAddress") ? `• Dirección: ${data.get("preparedAddress")}` : null,
+      `• Fecha solicitada: ${data.get("preparedRequestedDate")}`,
+      twoDeliveries ? "• Costo del segundo delivery: sujeto a confirmación por WhatsApp" : null
+    ].filter(line => line !== null);
+  }
+
   function buildMessage(form, reservation = {}) {
     const data = new FormData(form);
     const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
@@ -1147,10 +1255,9 @@
         return note ? `• ${item.name}: ${note}` : "";
       }).filter(Boolean)
       : [];
-    const fulfillment = data.get("fulfillment") === "delivery"
-      ? (config.deliveryLabel || "Delivery")
-      : (config.pickupLabel || "Pickup");
-    const lines = cart.map(item => `• ${item.qty}× ${item.name} — ${money(item.price * item.qty)}${item.choices ? `\n  Sabores: ${item.choices}` : ""}`);
+    const fulfillment = fulfillmentLabel(data.get("fulfillment"));
+    const splitLines = splitDeliveryMessageLines(data);
+    const lines = splitLines || cart.map(cartItemMessageLine);
     const orderId = reservation.orderCode || createOrderId();
     const message = [
       `Hola ${config.businessName || "Fontana"} 💜 Quiero hacer este pedido:`,
@@ -1164,9 +1271,9 @@
       "",
       `• Nombre: ${data.get("name")}`,
       `• Teléfono: ${data.get("phone")}`,
-      `• Modalidad: ${fulfillment}`,
-      data.get("address") ? `• Dirección: ${data.get("address")}` : null,
-      `• Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
+      splitLines ? null : `• Modalidad: ${fulfillment}`,
+      !splitLines && data.get("address") ? `• Dirección: ${data.get("address")}` : null,
+      splitLines ? null : `• Fecha deseada para ${fulfillment}: ${data.get("requestedDate")}`,
       `• Forma de pago: ${data.get("payment")}`,
       "• Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
       hasCake ? `• Vela de cumpleaños: ${birthdayCandle === "yes" ? "Sí" : "No"}` : null,
@@ -1243,14 +1350,20 @@
       const data = new FormData(checkoutForm);
       const clientKey = checkoutForm.dataset.reservationKey || crypto.randomUUID();
       checkoutForm.dataset.reservationKey = clientKey;
+      const split = currentDeliveryPlan() === "split";
+      const immediateFulfillment = fulfillmentLabel(data.get("immediateFulfillment"));
+      const preparedFulfillment = fulfillmentLabel(data.get("preparedFulfillment"));
       const payload = {
         clientKey,
         items: reservationItems(),
         customer: {
           name:String(data.get("name") || ""), phone:String(data.get("phone") || ""),
-          fulfillment:data.get("fulfillment") === "delivery" ? (config.deliveryLabel || "Delivery") : (config.pickupLabel || "Pickup"),
-          requestedDate:String(data.get("requestedDate") || ""), paymentMethod:String(data.get("payment") || ""),
-          address:String(data.get("address") || ""), allergySummary:allergySummary(checkoutForm),
+          fulfillment:split ? `Pedido dividido: ${immediateFulfillment} + ${preparedFulfillment}` : fulfillmentLabel(data.get("fulfillment")),
+          requestedDate:String(split ? data.get("preparedRequestedDate") : data.get("requestedDate") || ""), paymentMethod:String(data.get("payment") || ""),
+          address:split
+            ? [`Primera entrega: ${data.get("immediateAddress") || "pickup"}`, `Segunda entrega: ${data.get("preparedAddress") || "pickup"}`].join(" | ")
+            : String(data.get("address") || ""),
+          allergySummary:allergySummary(checkoutForm),
           birthdayCandle:String(data.get("birthdayCandle") || ""), notes:String(data.get("notes") || "")
         }
       };
@@ -1481,6 +1594,16 @@
     toggleAddress();
     setupRequestedDate();
   });
+  ["#immediateFulfillment", "#preparedFulfillment"].forEach(selector => {
+    $(selector).addEventListener("change", () => {
+      toggleSplitAddress(
+        selector,
+        selector === "#immediateFulfillment" ? "#immediateAddressGroup" : "#preparedAddressGroup",
+        selector === "#immediateFulfillment" ? "#immediateAddress" : "#preparedAddress"
+      );
+    });
+  });
+  $$('input[name="deliveryPlan"]').forEach(input => input.addEventListener("change", toggleDeliveryPlan));
   $$('input[name="hasAllergies"]').forEach(input => input.addEventListener("change", toggleAllergyDetails));
   document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
 
