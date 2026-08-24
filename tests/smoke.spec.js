@@ -31,6 +31,7 @@ async function fillCheckout(page, { allergies = false, birthdayCandle = false } 
   await page.locator(`input[name="hasAllergies"][value="${allergies ? "yes" : "no"}"]`).check();
   if (allergies) {
     await page.locator('input[name="allergens"][value="Frutos secos"]').check();
+    await page.locator(".item-allergy-field").first().locator("summary").click();
     await page.locator('[name^="allergyNote:"]').first().fill("Evitar frutos secos");
     await page.locator("#crossContamination").check();
   }
@@ -844,14 +845,67 @@ test("el panel registra ventas manuales y separa la configuración del catálogo
   expect(migration).toContain('CREATE TABLE IF NOT EXISTS sales');
 });
 
-test("el checkout móvil mantiene los campos a tamaño anti-zoom", async ({ page }) => {
+test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   await page.locator('[data-id="pistacho"] .add').click();
+  await page.locator('[data-product-id="agua-minalba-600"] .add').click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#customerName")).toHaveCSS("font-size", "16px");
   await expect(page.locator("#customerNotes")).toHaveCSS("font-size", "16px");
+  const fit = await page.locator("#drawer").evaluate(drawer => {
+    const form = drawer.querySelector("#checkoutForm");
+    return {
+      viewport: window.innerWidth,
+      drawerWidth: drawer.getBoundingClientRect().width,
+      drawerScrollWidth: drawer.scrollWidth,
+      formWidth: form.getBoundingClientRect().width,
+      formScrollWidth: form.scrollWidth
+    };
+  });
+  expect(fit.drawerWidth).toBeLessThanOrEqual(fit.viewport);
+  expect(fit.drawerScrollWidth).toBeLessThanOrEqual(fit.drawerWidth);
+  expect(fit.formScrollWidth).toBeLessThanOrEqual(fit.formWidth);
+
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  await expect(page.locator("#checkoutValidation")).toBeVisible();
+  await expect(page.locator("#checkoutValidation")).toContainText("Nombre y apellido");
+  await expect(page.locator("#checkoutValidation")).toContainText("Teléfono de contacto");
+
+  await page.locator('input[name="hasAllergies"][value="yes"]').check();
+  const customization = page.locator(".item-allergy-field");
+  await expect(customization).toHaveCount(1);
+  await expect(customization).toContainText("Torta de Pistacho y Frambuesa");
+  await expect(page.locator("#allergyItemNotes")).not.toContainText("Agua mineral Minalba");
+  await expect(customization).not.toHaveAttribute("open", "");
+  await expect(customization.locator("textarea")).toBeHidden();
+  await expect(customization.locator("textarea")).not.toHaveAttribute("required", "");
+  await customization.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(2600);
+  await page.screenshot({ path: testInfo.outputPath("checkout-movil-compacto-sin-desborde.png"), fullPage: false });
+  await customization.locator("summary").click();
+  await expect(customization.locator("textarea")).toBeVisible();
+});
+
+test("una personalización vacía no agrega instrucciones al pedido", async ({ page }) => {
+  await openPreview(page);
+  await page.locator('[data-id="pistacho"] .add').click();
+  await page.locator("#cartButton").click();
+  await page.locator("#continueCheckout").click();
+  await page.locator("#customerName").fill("Andrea Pérez");
+  await page.locator("#customerPhone").fill("0412 000 0000");
+  await page.locator("#requestedDate").fill(await page.locator("#requestedDate").getAttribute("min"));
+  await page.locator("#paymentMethod").selectOption({ label: "Pago Móvil" });
+  await page.locator('input[name="birthdayCandle"][value="no"]').check();
+  await page.locator('input[name="hasAllergies"][value="yes"]').check();
+  await page.locator('input[name="allergens"][value="Celíaco"]').check();
+  await page.locator("#crossContamination").check();
+  await expect(page.locator(".item-allergy-field")).not.toHaveAttribute("open", "");
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  const message = await page.evaluate(() => window.__copiedOrder);
+  expect(message).toContain("Condiciones, alergias o intolerancias: Celíaco");
+  expect(message).not.toContain("INSTRUCCIONES POR PRODUCTO");
 });
 
 test("el panel administra sabores especiales en tarjetas compactas y conserva el checkout", async ({ page }, testInfo) => {

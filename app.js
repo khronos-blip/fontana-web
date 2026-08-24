@@ -911,14 +911,25 @@
   }
 
   function renderAllergyItemNotes() {
-    $("#allergyItemNotes").innerHTML = cart.map(item => {
+    const container = $("#allergyItemNotes");
+    const customizableItems = cart.filter(item => {
+      if (item.category === "beverages") return false;
+      const productId = item.productId || item.inventory?.productId;
+      const product = adminState?.products?.find(entry => entry.id === productId);
+      return product?.category !== "beverages";
+    });
+    container.innerHTML = customizableItems.map(item => {
       const fieldId = `allergyNote-${item.id.replace(/[^a-z0-9_-]/gi, "-")}`;
-      return `<div class="item-allergy-field">
-        <label for="${fieldId}">${escapeHtml(item.name)}</label>
-        <textarea id="${fieldId}" name="allergyNote:${escapeHtml(item.id)}" placeholder="Ingrediente que debe evitarse e instrucciones para este producto"></textarea>
-        <small>Ingredientes declarados: ${escapeHtml(item.ingredients || productIngredients(item.id))}</small>
-      </div>`;
+      return `<details class="item-allergy-field">
+        <summary><span>${escapeHtml(item.name)}</span><small>Personalización opcional</small></summary>
+        <div class="item-allergy-content">
+          <label for="${fieldId}">¿Qué ingrediente deseas retirar o evitar?</label>
+          <textarea id="${fieldId}" name="allergyNote:${escapeHtml(item.id)}" placeholder="Escribe aquí solo si necesitas una adaptación"></textarea>
+          <small>Ingredientes declarados: ${escapeHtml(item.ingredients || productIngredients(item.id))}</small>
+        </div>
+      </details>`;
     }).join("");
+    container.hidden = customizableItems.length === 0;
   }
 
   function createOrderId() {
@@ -976,7 +987,7 @@
       "• Condición de pago: 100% por adelantado; los datos se envían por WhatsApp",
       hasCake ? `• Vela de cumpleaños: ${birthdayCandle === "yes" ? "Sí" : "No"}` : null,
       `• Condiciones, alergias o intolerancias: ${hasAllergies ? allergyList.join(", ") : "No indica"}`,
-      hasAllergies ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : null,
+      itemAllergyLines.length ? "*⚠️ INSTRUCCIONES POR PRODUCTO*" : null,
       ...itemAllergyLines,
       hasAllergies ? "*• Estado: PENDIENTE DE REVISIÓN POR FONTANA*" : "• Estado: pendiente de confirmación",
       data.get("notes") ? `• Observaciones: ${data.get("notes")}` : null,
@@ -986,13 +997,59 @@
     return { message, orderId };
   }
 
+  function checkoutFieldLabel(field) {
+    const labels = {
+      customerName: "Nombre y apellido",
+      customerPhone: "Teléfono de contacto",
+      fulfillment: "Cómo recibirás el pedido",
+      customerAddress: "Dirección de entrega",
+      requestedDate: "Fecha deseada",
+      paymentMethod: "Forma de pago",
+      crossContamination: "Confirmación de revisión por Fontana"
+    };
+    if (labels[field.id]) return labels[field.id];
+    const legend = field.closest("fieldset")?.querySelector("legend")?.textContent?.trim();
+    if (legend) return legend;
+    const label = field.id ? checkoutForm.querySelector(`label[for="${CSS.escape(field.id)}"]`) : field.closest("label");
+    return label?.textContent?.replace(/\(opcional\)/gi, "").trim() || "Un dato obligatorio";
+  }
+
+  function showCheckoutErrors(labels, firstField) {
+    const uniqueLabels = [...new Set(labels.filter(Boolean))];
+    const message = `Falta completar: ${uniqueLabels.join(" · ")}.`;
+    const summary = $("#checkoutValidation");
+    summary.textContent = message;
+    summary.hidden = false;
+    say(message);
+    if (!firstField) return;
+    firstField.setAttribute("aria-invalid", "true");
+    firstField.closest(".field,.checkout-option-panel,.allergy-panel")?.classList.add("checkout-invalid");
+    firstField.scrollIntoView({ behavior:"smooth", block:"center" });
+    setTimeout(() => firstField.focus({ preventScroll:true }), 260);
+  }
+
+  function validateCheckoutFields() {
+    $$("[aria-invalid='true']", checkoutForm).forEach(field => field.removeAttribute("aria-invalid"));
+    $$(".checkout-invalid", checkoutForm).forEach(group => group.classList.remove("checkout-invalid"));
+    const invalidFields = [...checkoutForm.elements].filter(field => field.willValidate && !field.checkValidity());
+    if (!invalidFields.length) {
+      $("#checkoutValidation").hidden = true;
+      return true;
+    }
+    invalidFields.forEach(field => {
+      field.setAttribute("aria-invalid", "true");
+      field.closest(".field,.checkout-option-panel,.allergy-panel")?.classList.add("checkout-invalid");
+    });
+    showCheckoutErrors(invalidFields.map(checkoutFieldLabel), invalidFields[0]);
+    return false;
+  }
+
   async function submitOrder(event) {
     event.preventDefault();
-    if (!checkoutForm.reportValidity()) return;
+    if (!validateCheckoutFields()) return;
     const formData = new FormData(checkoutForm);
     if (formData.get("hasAllergies") === "yes" && !formData.getAll("allergens").length && !String(formData.get("otherAllergy") || "").trim()) {
-      say("Indica al menos una condición, alergia o intolerancia");
-      $("#otherAllergy").focus();
+      showCheckoutErrors(["Indica al menos una condición, alergia o intolerancia"], $("#otherAllergy"));
       return;
     }
     const stockValidation = await validateStock();
@@ -1235,7 +1292,7 @@
     const hasAllergies = checkoutForm.elements.hasAllergies.value === "yes";
     $("#allergyDetails").hidden = !hasAllergies;
     $("#crossContamination").required = hasAllergies;
-    $$('[name^="allergyNote:"]').forEach(field => { field.required = hasAllergies; });
+    $$('[name^="allergyNote:"]').forEach(field => { field.required = false; });
   }
 
   $("#cartButton").addEventListener("click", openCart);
@@ -1244,6 +1301,14 @@
   backToCart.addEventListener("click", showCartStep);
   backdrop.addEventListener("click", closeCart);
   checkoutForm.addEventListener("submit", submitOrder);
+  checkoutForm.addEventListener("input", event => {
+    event.target.removeAttribute?.("aria-invalid");
+    event.target.closest?.(".field,.checkout-option-panel,.allergy-panel")?.classList.remove("checkout-invalid");
+  });
+  checkoutForm.addEventListener("change", event => {
+    event.target.removeAttribute?.("aria-invalid");
+    event.target.closest?.(".field,.checkout-option-panel,.allergy-panel")?.classList.remove("checkout-invalid");
+  });
   $("#fulfillment").addEventListener("change", () => {
     toggleAddress();
     setupRequestedDate();

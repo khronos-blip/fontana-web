@@ -302,7 +302,7 @@
 
     .drawer-backdrop{position:fixed;inset:0;background:rgba(28,14,28,.48);z-index:60;opacity:0;pointer-events:none;transition:.25s ease;backdrop-filter:blur(3px)}
     .drawer-backdrop.open{opacity:1;pointer-events:auto}
-    .drawer{position:fixed;right:0;top:0;bottom:0;width:min(440px,100%);background:var(--cream);z-index:61;transform:translateX(102%);transition:.34s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(40,20,39,.2)}
+    .drawer{position:fixed;right:0;top:0;bottom:0;width:min(440px,100%);max-width:100vw;overflow:hidden;background:var(--cream);z-index:61;transform:translateX(102%);transition:.34s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(40,20,39,.2)}
     .drawer.open{transform:none}
     .drawer-head{height:90px;padding:0 28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
     .drawer-heading{display:flex;align-items:center;gap:10px}.back{border:0;background:var(--lilac-soft);color:var(--plum);width:36px;height:36px;border-radius:50%;font-size:1.1rem}
@@ -315,7 +315,10 @@
     .qty{display:flex;align-items:center;gap:10px;margin-top:7px}.qty button{border:0;background:var(--lilac-soft);width:25px;height:25px;border-radius:50%;color:var(--plum);font-weight:800}
     .remove{border:0;background:transparent;color:var(--muted);font-size:1.2rem}
     .drawer-foot{padding:24px 28px;border-top:1px solid var(--line);background:#fff}.total{display:flex;justify-content:space-between;font-weight:800;margin-bottom:17px}.drawer-foot .btn{width:100%}.drawer-foot small{display:block;text-align:center;color:var(--muted);margin-top:10px}
-    .checkout-form{padding:24px 28px 34px;overflow:auto;flex:1}.checkout-intro{margin:0 0 20px;color:var(--muted);font-size:.84rem}.form-grid{display:grid;gap:16px}.field{display:grid;gap:7px}.field label{font-size:.76rem;font-weight:800;color:var(--ink)}.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 14px;color:var(--ink)}.field textarea{min-height:82px;resize:vertical}.checkout-form .btn{width:100%;margin-top:20px}.checkout-help{display:block;text-align:center;color:var(--muted);font-size:.7rem;margin-top:10px}
+    .drawer-head,.cart-items,.drawer-foot,.checkout-form,.form-grid,.field,.allergy-panel,.checkout-option-panel,.item-allergy-list,.item-allergy-field{width:100%;min-width:0;max-width:100%}
+    .checkout-form{padding:24px 28px 34px;overflow-y:auto;overflow-x:hidden;flex:1}.checkout-intro{margin:0 0 20px;color:var(--muted);font-size:.84rem}.form-grid{display:grid;gap:16px}.field{display:grid;gap:7px}.field label{font-size:.76rem;font-weight:800;color:var(--ink)}.field input,.field select,.field textarea{display:block;width:100%;min-width:0;max-width:100%;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 14px;color:var(--ink)}.field textarea{min-height:82px;resize:vertical}.checkout-form .btn{width:100%;margin-top:20px}.checkout-help{display:block;text-align:center;color:var(--muted);font-size:.7rem;margin-top:10px}
+    .checkout-validation{margin:0 0 16px;padding:12px 14px;border-left:4px solid #e18189;border-radius:10px;background:rgba(225,129,137,.13);color:#fff;font-size:.76rem;font-weight:800;line-height:1.45}
+    .checkout-invalid{border-color:rgba(225,129,137,.82)!important;box-shadow:0 0 0 2px rgba(225,129,137,.14)}
     [hidden]{display:none!important}
     .toast{position:fixed;z-index:80;left:50%;bottom:25px;transform:translate(-50%,30px);background:#211321;color:#fff;border-radius:999px;padding:13px 20px;font-size:.82rem;opacity:0;pointer-events:none;transition:.3s ease;box-shadow:0 12px 35px rgba(0,0,0,.22)}.toast.show{opacity:1;transform:translate(-50%,0)}
 
@@ -490,9 +493,14 @@
     .allergy-status{color:var(--accent);font-size:.72rem;font-weight:800}
     .schedule-note{margin:0;color:rgba(248,241,245,.58);font-size:.7rem;line-height:1.45}
     .item-allergy-list{display:grid;gap:12px;margin-top:14px}
-    .item-allergy-field{display:grid;gap:6px;padding:12px;border:1px solid var(--night-line);border-radius:14px;background:rgba(255,255,255,.025)}
-    .item-allergy-field label{font-size:.72rem;font-weight:800;color:var(--accent)}
-    .item-allergy-field textarea{min-height:70px}
+    .item-allergy-field{display:block;padding:0;border:1px solid var(--night-line);border-radius:14px;background:rgba(255,255,255,.025);overflow:hidden}
+    .item-allergy-field[open]{border-color:rgba(217,174,220,.5)}
+    .item-allergy-field summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;cursor:pointer;list-style:none;color:var(--accent);font-size:.72rem;font-weight:800}
+    .item-allergy-field summary::-webkit-details-marker{display:none}
+    .item-allergy-field summary:after{content:"+";flex:0 0 auto;font-size:1rem}.item-allergy-field[open] summary:after{content:"−"}
+    .item-allergy-field summary small{margin-left:auto;color:rgba(255,255,255,.58);font-size:.6rem;font-weight:700;text-align:right}
+    .item-allergy-content{display:grid;gap:7px;padding:0 12px 12px}.item-allergy-content label{font-size:.68rem;font-weight:800;color:var(--paper)}
+    .item-allergy-content textarea{min-height:70px}.item-allergy-content small{overflow-wrap:anywhere;color:rgba(255,255,255,.66)}
 
     @media(max-width:960px){
       .nav-inner{height:auto;min-height:104px;display:grid;grid-template-columns:1fr auto;grid-template-rows:58px auto;gap:0 12px;padding:6px 0 10px}
@@ -678,7 +686,7 @@
     .operations-notice{position:relative;z-index:24;padding:12px 20px;background:var(--plum-dark);color:#fff;text-align:center;font-size:.82rem;font-weight:800;letter-spacing:.01em;box-shadow:0 8px 24px rgba(79,22,81,.18)}
     .operations-notice[hidden]{display:none}
     .product-temporarily-unavailable .product-media img{filter:saturate(.72);opacity:.72}.cart-item-unavailable{border-color:rgba(110,35,111,.36);background:#fff1f1}.cart-unavailable-copy{display:block!important;margin-top:5px;color:#9a2828!important;font-weight:800}.drawer-foot .btn:disabled{cursor:not-allowed;opacity:.45}
-    @media(max-width:700px){.operations-notice{padding:10px 16px;font-size:.74rem}}
+    @media(max-width:700px){.operations-notice{padding:10px 16px;font-size:.74rem}.drawer-head{padding:0 18px}.checkout-form{padding:18px 16px 30px}.checkout-form input,.checkout-form select,.checkout-form textarea{font-size:16px}.checkout-form fieldset{min-inline-size:0}.item-allergy-field summary{gap:7px}.item-allergy-field summary small{font-size:.55rem}}
   </style>
 </head>
 <body>
@@ -878,8 +886,9 @@
     </div>
     <div class="cart-items" id="cartItems"></div>
     <div class="drawer-foot" id="cartFooter"><div class="total"><span>Total estimado</span><span id="cartTotal">$0,00</span></div><button class="btn btn-green" id="continueCheckout" type="button">Continuar pedido</button><small>El pago se confirma directamente con Fontana.</small></div>
-    <form class="checkout-form" id="checkoutForm" hidden>
+    <form class="checkout-form" id="checkoutForm" novalidate hidden>
       <p class="checkout-intro">Completa tus datos. Prepararemos el pedido para enviarlo directamente al WhatsApp de Fontana.</p>
+      <div class="checkout-validation" id="checkoutValidation" role="alert" hidden></div>
       <div class="form-grid">
         <div class="field"><label for="customerName">Nombre y apellido</label><input id="customerName" name="name" autocomplete="name" required></div>
         <div class="field"><label for="customerPhone">Teléfono de contacto</label><input id="customerPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>
