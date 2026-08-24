@@ -256,7 +256,11 @@ window.FONTANA_CONFIG = {
     panzerottis: { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
     "tequenos-fit": { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
     raviolis: { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
-    "nuggets-rora": { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" }
+    "nuggets-rora": { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
+    "agua-minalba-600": { minimumBusinessDays: 0, label: "Bebidas: disponibles para el mismo día según stock" },
+    "agua-minalba-limon": { minimumBusinessDays: 0, label: "Bebidas: disponibles para el mismo día según stock" },
+    "tevia-durazno": { minimumBusinessDays: 0, label: "Bebidas: disponibles para el mismo día según stock" },
+    sanpellegrino: { minimumBusinessDays: 0, label: "Bebidas: disponibles para el mismo día según stock" }
   },
   paymentMethods: [
     "Pago Móvil",

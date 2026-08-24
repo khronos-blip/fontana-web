@@ -323,7 +323,10 @@
     .drawer-head,.cart-items,.drawer-foot,.checkout-form,.form-grid,.field,.allergy-panel,.checkout-option-panel,.item-allergy-list,.item-allergy-field{width:100%;min-width:0;max-width:100%}
     .checkout-form{padding:24px 28px 34px;overflow-y:auto;overflow-x:hidden;flex:1}.checkout-intro{margin:0 0 20px;color:var(--muted);font-size:.84rem}.form-grid{display:grid;gap:16px}.field{display:grid;gap:7px}.field label{font-size:.76rem;font-weight:800;color:var(--ink)}.field input,.field select,.field textarea{display:block;width:100%;min-width:0;max-width:100%;border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px 14px;color:var(--ink)}.field textarea{min-height:82px;resize:vertical}.checkout-form .btn{width:100%;margin-top:20px}.checkout-help{display:block;text-align:center;color:var(--muted);font-size:.7rem;margin-top:10px}
     .checkout-validation{margin:0 0 16px;padding:12px 14px;border-left:4px solid #e18189;border-radius:10px;background:rgba(225,129,137,.13);color:#fff;font-size:.76rem;font-weight:800;line-height:1.45}
-    .checkout-invalid{border-color:rgba(225,129,137,.82)!important;box-shadow:0 0 0 2px rgba(225,129,137,.14)}
+    .checkout-form input[aria-invalid="true"],.checkout-form select[aria-invalid="true"],.checkout-form textarea[aria-invalid="true"]{border-color:#ef646f!important;box-shadow:0 0 0 2px rgba(239,100,111,.28)!important}
+    .checkout-invalid{border-color:#ef646f!important;box-shadow:0 0 0 2px rgba(239,100,111,.28)}
+    .checkout-preparation-guide{grid-column:1/-1;border:1px solid rgba(197,218,78,.34);border-radius:16px;background:rgba(255,255,255,.06);padding:14px;display:grid;gap:10px}
+    .checkout-preparation-guide h4{margin:0;color:#fff;font-size:.84rem}.checkout-preparation-list{display:grid;gap:8px}.checkout-preparation-row{display:grid;gap:3px;border-left:3px solid var(--green);padding:2px 0 2px 10px}.checkout-preparation-row.prepared{border-left-color:#d9a9df}.checkout-preparation-row.pending{border-left-color:#e18189}.checkout-preparation-row strong{color:#fff;font-size:.74rem}.checkout-preparation-row span,.checkout-preparation-note{color:rgba(255,255,255,.68);font-size:.7rem;line-height:1.45}.checkout-preparation-note{margin:0;padding-top:2px}
     @media(min-width:900px){
       .drawer{width:min(620px,100vw)}
       .checkout-form{padding:26px 32px 38px}
@@ -909,6 +912,11 @@
         <div class="field"><label for="customerPhone">Teléfono de contacto</label><input id="customerPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>
         <div class="field"><label for="fulfillment">¿Cómo lo recibirás?</label><select id="fulfillment" name="fulfillment" required></select></div>
         <div class="field field-wide" id="addressGroup" hidden><label for="customerAddress">Dirección de entrega</label><textarea id="customerAddress" name="address" autocomplete="street-address" placeholder="Urbanización, calle, edificio/casa y referencia"></textarea></div>
+        <section class="checkout-preparation-guide" id="checkoutPreparationGuide" aria-labelledby="checkoutPreparationTitle">
+          <h4 id="checkoutPreparationTitle">Tiempo de preparación de este pedido</h4>
+          <div class="checkout-preparation-list" id="checkoutPreparationList"></div>
+          <p class="checkout-preparation-note" id="checkoutPreparationNote" hidden></p>
+        </section>
         <div class="field"><label id="requestedDateLabel" for="requestedDate">Fecha deseada</label><input id="requestedDate" name="requestedDate" type="date" required><p class="schedule-note" id="requestedDateNotice"></p></div>
         <div class="field"><label for="paymentMethod">Forma de pago</label><select id="paymentMethod" name="payment" required></select><p class="schedule-note" id="paymentNotice">Los datos se envían por WhatsApp. Se requiere el 100% del pago por adelantado.</p></div>
         <fieldset class="checkout-option-panel" id="birthdayCandlePanel" hidden>

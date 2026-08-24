@@ -1025,7 +1025,34 @@
     return result;
   }
 
+  function renderCheckoutPreparationGuide() {
+    const groups = { sameDay: [], prepared: [], pending: [] };
+    cart.forEach(item => {
+      const leadTime = config.leadTimesByProduct?.[item.productId || item.id];
+      if (!leadTime || !Number.isFinite(Number(leadTime.minimumBusinessDays))) groups.pending.push(item.name);
+      else if (Number(leadTime.minimumBusinessDays) === 0) groups.sameDay.push(item.name);
+      else groups.prepared.push({ name:item.name, days:Number(leadTime.minimumBusinessDays) });
+    });
+    const unique = values => [...new Set(values)];
+    const rows = [];
+    const sameDayNames = unique(groups.sameDay);
+    if (sameDayNames.length) rows.push(`<div class="checkout-preparation-row same-day"><strong>Puede pedirse para el mismo día</strong><span>${escapeHtml(sameDayNames.join(", "))}. Sujeto a stock y confirmación de Fontana.</span></div>`);
+    const preparationDays = [...new Set(groups.prepared.map(item => item.days))].sort((a, b) => a - b);
+    preparationDays.forEach(days => {
+      const names = unique(groups.prepared.filter(item => item.days === days).map(item => item.name));
+      rows.push(`<div class="checkout-preparation-row prepared"><strong>Mínimo ${days} ${days === 1 ? "día" : "días"} de preparación</strong><span>${escapeHtml(names.join(", "))}.</span></div>`);
+    });
+    const pendingNames = unique(groups.pending);
+    if (pendingNames.length) rows.push(`<div class="checkout-preparation-row pending"><strong>Tiempo por confirmar</strong><span>${escapeHtml(pendingNames.join(", "))}.</span></div>`);
+    $("#checkoutPreparationList").innerHTML = rows.join("");
+    const note = $("#checkoutPreparationNote");
+    const mixedLeadTimes = sameDayNames.length && groups.prepared.length;
+    note.textContent = mixedLeadTimes ? "Al combinar productos, la fecha disponible corresponde al que requiere más preparación." : "";
+    note.hidden = !mixedLeadTimes;
+  }
+
   function setupRequestedDate() {
+    renderCheckoutPreparationGuide();
     const leadTimes = cart
       .map(item => config.leadTimesByProduct?.[item.productId || item.id])
       .filter(Boolean);
@@ -1148,33 +1175,17 @@
     return { message, orderId };
   }
 
-  function checkoutFieldLabel(field) {
-    const labels = {
-      customerName: "Nombre y apellido",
-      customerPhone: "Teléfono de contacto",
-      fulfillment: "Cómo recibirás el pedido",
-      customerAddress: "Dirección de entrega",
-      requestedDate: "Fecha deseada",
-      paymentMethod: "Forma de pago",
-      crossContamination: "Confirmación de revisión por Fontana"
-    };
-    if (labels[field.id]) return labels[field.id];
-    const legend = field.closest("fieldset")?.querySelector("legend")?.textContent?.trim();
-    if (legend) return legend;
-    const label = field.id ? checkoutForm.querySelector(`label[for="${CSS.escape(field.id)}"]`) : field.closest("label");
-    return label?.textContent?.replace(/\(opcional\)/gi, "").trim() || "Un dato obligatorio";
+  function invalidCheckoutContainer(field) {
+    return field.closest(".checkout-option-panel,.allergy-panel");
   }
 
-  function showCheckoutErrors(labels, firstField) {
-    const uniqueLabels = [...new Set(labels.filter(Boolean))];
-    const message = `Falta completar: ${uniqueLabels.join(" · ")}.`;
+  function showCheckoutErrors(firstField) {
     const summary = $("#checkoutValidation");
-    summary.textContent = message;
-    summary.hidden = false;
-    say(message);
+    summary.textContent = "";
+    summary.hidden = true;
     if (!firstField) return;
     firstField.setAttribute("aria-invalid", "true");
-    firstField.closest(".field,.checkout-option-panel,.allergy-panel")?.classList.add("checkout-invalid");
+    invalidCheckoutContainer(firstField)?.classList.add("checkout-invalid");
     firstField.scrollIntoView({ behavior:"smooth", block:"center" });
     setTimeout(() => firstField.focus({ preventScroll:true }), 260);
   }
@@ -1189,9 +1200,9 @@
     }
     invalidFields.forEach(field => {
       field.setAttribute("aria-invalid", "true");
-      field.closest(".field,.checkout-option-panel,.allergy-panel")?.classList.add("checkout-invalid");
+      invalidCheckoutContainer(field)?.classList.add("checkout-invalid");
     });
-    showCheckoutErrors(invalidFields.map(checkoutFieldLabel), invalidFields[0]);
+    showCheckoutErrors(invalidFields[0]);
     return false;
   }
 
@@ -1200,7 +1211,7 @@
     if (!validateCheckoutFields()) return;
     const formData = new FormData(checkoutForm);
     if (formData.get("hasAllergies") === "yes" && !formData.getAll("allergens").length && !String(formData.get("otherAllergy") || "").trim()) {
-      showCheckoutErrors(["Indica al menos una condición, alergia o intolerancia"], $("#otherAllergy"));
+      showCheckoutErrors($("#otherAllergy"));
       return;
     }
     const stockValidation = await validateStock();

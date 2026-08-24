@@ -936,9 +936,13 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
   expect(fit.formScrollWidth).toBeLessThanOrEqual(fit.formWidth);
 
   await page.locator('#checkoutForm button[type="submit"]').click();
-  await expect(page.locator("#checkoutValidation")).toBeVisible();
-  await expect(page.locator("#checkoutValidation")).toContainText("Nombre y apellido");
-  await expect(page.locator("#checkoutValidation")).toContainText("Teléfono de contacto");
+  await expect(page.locator("#checkoutValidation")).toBeHidden();
+  await expect(page.locator("#customerName")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#customerPhone")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#customerName")).toHaveCSS("border-top-color", "rgb(239, 100, 111)");
+  await expect(page.locator("#checkoutPreparationGuide")).toContainText("Puede pedirse para el mismo día");
+  await expect(page.locator("#checkoutPreparationGuide")).toContainText("Mínimo 2 días de preparación");
+  await expect(page.locator("#checkoutPreparationNote")).toContainText("corresponde al que requiere más preparación");
 
   await page.locator('input[name="hasAllergies"][value="yes"]').check();
   const customization = page.locator(".item-allergy-field");
@@ -1007,7 +1011,11 @@ test("el checkout de escritorio aprovecha el ancho sin desbordar", async ({ page
   expect(layout.columns).toBe(2);
 
   await page.locator('#checkoutForm button[type="submit"]').click();
-  await expect(page.locator("#checkoutValidation")).toContainText("Nombre y apellido");
+  await expect(page.locator("#checkoutValidation")).toBeHidden();
+  await expect(page.locator("#customerName")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#customerPhone")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#checkoutPreparationGuide")).toContainText("Puede pedirse para el mismo día");
+  await expect(page.locator("#checkoutPreparationGuide")).toContainText("Mínimo 2 días de preparación");
   await page.locator('input[name="hasAllergies"][value="yes"]').check();
   await expect(page.locator(".item-allergy-field")).toHaveCount(1);
   await expect(page.locator(".item-allergy-field")).not.toHaveAttribute("open", "");
