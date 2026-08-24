@@ -923,6 +923,8 @@ test("el checkout de escritorio aprovecha el ancho sin desbordar", async ({ page
   await page.locator('[data-product-id="agua-minalba-600"] .add').click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
+  await expect(page.locator("#checkoutForm")).toBeVisible();
+  await page.waitForTimeout(500);
 
   const layout = await page.locator("#drawer").evaluate(drawer => {
     const form = drawer.querySelector("#checkoutForm");
