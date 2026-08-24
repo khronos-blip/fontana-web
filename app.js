@@ -21,6 +21,7 @@
   const storageKey = "fontana-cart-v1";
   let cart = readCart();
   let stockValidationPending = false;
+  const productAddQueues = new Map();
 
   async function readAdminState() {
     try {
@@ -496,28 +497,22 @@
     renderCart();
   }
 
-  async function addProduct(card) {
+  function productSelection(card) {
     const selectedVariant = $(".product-variant", card)?.value || "";
     const sizeSelect = $(".product-size", card);
     const selectedSize = sizeSelect?.value || "";
     if ($(".product-variant", card) && !selectedVariant) {
-      say("Este sabor está agotado");
-      return;
+      return { error: "Este sabor está agotado" };
     }
     const preorder = card.dataset.preorder === "true";
     const selectedChoices = [selectedSize, selectedVariant, preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean);
     const choiceSlug = selectedChoices.join("-").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = choiceSlug ? `${card.dataset.id}-${choiceSlug}` : card.dataset.id;
     const selectedPrice = sizeSelect ? Number(sizeSelect.selectedOptions[0]?.dataset.price) : Number(card.dataset.price);
-    if (!preorder) {
-      const validation = await validateStock([{kind:"product",productId:card.dataset.productId || card.dataset.id,size:selectedSize,variant:selectedVariant,quantity:1}]);
-      if (!validation.ok) { say(validation.error); return; }
-    }
-    const found = cart.find(item => item.id === id);
-    if (found) {
-      found.qty += 1;
-    } else {
-      cart.push({
+    return {
+      id,
+      preorder,
+      item: {
         id,
         productId: card.dataset.productId || id,
         category: card.dataset.category || "",
@@ -527,11 +522,166 @@
         ingredients: productIngredients(card.dataset.id),
         choices: selectedChoices.join(" · ") || undefined,
         inventory: { kind:"product", productId:card.dataset.productId || card.dataset.id, size:selectedSize, variant:selectedVariant, preorder },
-        qty: 1
-      });
+        qty: 0
+      }
+    };
+  }
+
+  function addItemQuantity(item, quantity) {
+    if (quantity <= 0) return;
+    const found = cart.find(entry => entry.id === item.id);
+    if (found) found.qty += quantity;
+    else cart.push({...item, qty:quantity});
+  }
+
+  function proposedCart(item, quantity) {
+    const proposal = cart.map(entry => ({...entry, inventory:{...entry.inventory}}));
+    const found = proposal.find(entry => entry.id === item.id);
+    if (found) found.qty += quantity;
+    else proposal.push({...item, inventory:{...item.inventory}, qty:quantity});
+    return proposal;
+  }
+
+  async function maximumValidAddition(item, requested) {
+    const fullValidation = await validateStock([], proposedCart(item, requested));
+    if (fullValidation.ok) return {quantity:requested};
+    if (/No pudimos|momento|Inténtalo/i.test(fullValidation.error || "")) return {quantity:0,error:fullValidation.error};
+    let low = 0;
+    let high = requested - 1;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      const validation = await validateStock([], proposedCart(item, middle));
+      if (validation.ok) low = middle;
+      else high = middle - 1;
     }
+    return {quantity:low,error:fullValidation.error};
+  }
+
+  function displayedProductQuantity(selection) {
+    if (!selection || selection.error) return 0;
+    const committed = Number(cart.find(item => item.id === selection.id)?.qty || 0);
+    const queue = productAddQueues.get(selection.id);
+    return committed + Number(queue?.pending || 0) + Math.max(0, Number(queue?.inFlight || 0) - Number(queue?.cancelInFlight || 0));
+  }
+
+  function syncProductQuantityControls() {
+    $$(".product-quantity-control").forEach(control => {
+      const card = control.closest(".product");
+      const selection = productSelection(card);
+      const quantity = displayedProductQuantity(selection);
+      const minus = $(".product-minus", control);
+      const output = $(".product-menu-qty", control);
+      minus.hidden = quantity <= 0;
+      output.hidden = quantity <= 0;
+      output.textContent = quantity;
+      output.setAttribute("aria-label", `${quantity} en el pedido`);
+      control.classList.toggle("has-quantity", quantity > 0);
+    });
+  }
+
+  function scheduleProductQueue(selection) {
+    let queue = productAddQueues.get(selection.id);
+    if (!queue) {
+      queue = {item:selection.item,pending:0,inFlight:0,cancelInFlight:0,processing:false,timer:null};
+      productAddQueues.set(selection.id, queue);
+    }
+    queue.item = selection.item;
+    clearTimeout(queue.timer);
+    queue.timer = setTimeout(() => processProductQueue(selection.id), 70);
+    return queue;
+  }
+
+  async function processProductQueue(id) {
+    const queue = productAddQueues.get(id);
+    if (!queue || queue.processing) return;
+    queue.processing = true;
+    clearTimeout(queue.timer);
+    while (queue.pending > 0) {
+      const requested = queue.pending;
+      queue.pending = 0;
+      queue.inFlight = requested;
+      queue.cancelInFlight = 0;
+      syncProductQuantityControls();
+      const result = await maximumValidAddition(queue.item, requested);
+      const accepted = Math.max(0, Math.min(result.quantity, requested - queue.cancelInFlight));
+      queue.inFlight = 0;
+      queue.cancelInFlight = 0;
+      if (accepted) {
+        addItemQuantity(queue.item, accepted);
+        save();
+        say(accepted === 1 ? "Añadido a tu pedido 💜" : `${accepted} unidades añadidas a tu pedido 💜`);
+      }
+      if (accepted < requested && result.error) say(`${result.error} Se añadió únicamente la cantidad disponible.`);
+    }
+    queue.processing = false;
+    if (!queue.pending && !queue.inFlight) productAddQueues.delete(id);
+    syncProductQuantityControls();
+  }
+
+  function addProduct(card) {
+    const selection = productSelection(card);
+    if (selection.error) return say(selection.error);
+    if (selection.preorder) {
+      addItemQuantity(selection.item, 1);
+      save();
+      return say("Pre-order añadido a tu pedido 💜");
+    }
+    const queue = scheduleProductQueue(selection);
+    queue.pending += 1;
+    syncProductQuantityControls();
+  }
+
+  function subtractProduct(card) {
+    const selection = productSelection(card);
+    if (selection.error) return;
+    const queue = productAddQueues.get(selection.id);
+    if (queue?.pending > 0) {
+      queue.pending -= 1;
+      if (!queue.pending && !queue.processing) {
+        clearTimeout(queue.timer);
+        productAddQueues.delete(selection.id);
+      }
+      syncProductQuantityControls();
+      return;
+    }
+    if (queue && queue.inFlight > queue.cancelInFlight) {
+      queue.cancelInFlight += 1;
+      syncProductQuantityControls();
+      return;
+    }
+    const item = cart.find(entry => entry.id === selection.id);
+    if (!item) return;
+    item.qty -= 1;
+    if (item.qty <= 0) cart = cart.filter(entry => entry.id !== selection.id);
     save();
-    say("Añadido a tu pedido 💜");
+  }
+
+  function setupProductQuantityControls() {
+    $$(".product .add").forEach(button => {
+      const card = button.closest(".product");
+      if (card.dataset.preorder === "true") {
+        button.addEventListener("click", () => addProduct(card));
+        return;
+      }
+      const control = document.createElement("div");
+      control.className = "product-quantity-control";
+      const minus = document.createElement("button");
+      minus.type = "button";
+      minus.className = "product-minus";
+      minus.hidden = true;
+      minus.textContent = "−";
+      minus.setAttribute("aria-label", `Restar ${card.dataset.name}`);
+      const output = document.createElement("output");
+      output.className = "product-menu-qty";
+      output.hidden = true;
+      output.textContent = "0";
+      button.before(control);
+      control.append(minus, output, button);
+      button.addEventListener("click", () => addProduct(card));
+      minus.addEventListener("click", () => subtractProduct(card));
+      $$(".product-size,.product-variant", card).forEach(select => select.addEventListener("change", syncProductQuantityControls));
+    });
+    syncProductQuantityControls();
   }
 
   function fonkiePrice(total, flavorCount) {
@@ -804,6 +954,7 @@
           <button type="button" class="remove" onclick="changeQty('${item.id}',-${item.qty})" aria-label="Eliminar">×</button>
         </div>`).join("")
       : `<div class="empty"><b>Tu pedido está vacío</b><span>Agrega una delicia del menú para comenzar.</span></div>`;
+    syncProductQuantityControls();
   }
 
   function isElectricityBlockedCartItem(item) {
@@ -1141,7 +1292,7 @@
   setupCatalogGroups();
   const stockTodayFilter = $('.filter[data-filter="immediate"]');
   if (stockTodayFilter && !stockTodayOpen) stockTodayFilter.hidden = true;
-  $$(".add").forEach(button => button.addEventListener("click", () => addProduct(button.closest(".product"))));
+  setupProductQuantityControls();
   $$(".filter").forEach(button => button.addEventListener("click", () => {
     $$(".filter").forEach(item => item.classList.remove("active"));
     button.classList.add("active");

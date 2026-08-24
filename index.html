@@ -209,6 +209,11 @@
     .diet{font-size:.68rem;color:var(--green);font-weight:800}
     .add{border:0;background:var(--plum);color:#fff;width:42px;height:42px;border-radius:50%;font-size:1.35rem;display:grid;place-items:center}
     .add:hover{background:var(--plum-dark);transform:rotate(90deg)}
+    .product-quantity-control{display:flex;align-items:center;justify-content:flex-end;gap:7px;min-width:42px}
+    .product-minus{width:34px;height:34px;border:1px solid rgba(110,35,111,.18);border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.66);color:var(--plum);font-size:1.15rem;font-weight:800}
+    .product-minus:hover{border-color:var(--plum);background:#fff}
+    .product-menu-qty{min-width:16px;color:var(--plum-dark);font-size:.78rem;font-weight:900;text-align:center;font-variant-numeric:tabular-nums}
+    .product-minus[hidden],.product-menu-qty[hidden]{display:none}
     .product-quote{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:8px 13px;border-radius:13px;background:var(--plum);color:#fff;font-size:.64rem;font-weight:900;letter-spacing:.045em;text-align:center;text-transform:uppercase}
     .product-quote:hover{background:var(--plum-dark)}
     .product-unpriced .product-footer{display:grid;align-items:stretch}
@@ -650,6 +655,7 @@
       .builder-dietary-seals .product-dietary-seal{flex:0 1 64px}
       .diet{font-size:.58rem}
       .add{width:36px;height:36px;border-radius:11px;font-size:1.15rem}
+      .product-quantity-control{gap:4px;min-width:36px}.product-minus{width:30px;height:30px;border-radius:10px;font-size:1rem}.product-menu-qty{min-width:12px;font-size:.68rem}
       .menu-section{padding-bottom:56px}
       .story{padding:58px 0 78px}
       .location{padding:26px 0 20px}

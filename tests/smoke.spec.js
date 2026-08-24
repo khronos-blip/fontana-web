@@ -79,6 +79,68 @@ test("checkout ofrece vela de cumpleaños solo cuando el pedido incluye una tort
   expect(await page.evaluate(() => window.__copiedOrder)).not.toContain("Vela de cumpleaños");
 });
 
+test("el menú acumula clics rápidos, respeta el stock y permite restar desde la tarjeta", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version: 2,
+      settings: { productionWithElectricity: true, stockTodayOpen: true },
+      products: [{
+        id: "ballerine",
+        category: "cakes",
+        name: "Torta Ballerine",
+        price: 12,
+        image: "assets/ballerine-fontana-pro.jpg",
+        description: "Individual para 1–2 personas.",
+        ingredients: "Harina de almendra, monkfruit y huevo.",
+        weight: "180 G APROX.",
+        status: "available",
+        stockQuantity: 3,
+        visible: true
+      }],
+      builders: {}
+    }));
+  });
+  await openPreview(page);
+  const card = page.locator('[data-product-id="ballerine"]');
+  const plus = card.locator(".add");
+  const minus = card.locator(".product-minus");
+  const quantity = card.locator(".product-menu-qty");
+
+  await expect(minus).toBeHidden();
+  await plus.evaluate(button => {
+    for (let index = 0; index < 5; index += 1) button.click();
+  });
+  await expect(page.locator("#cartCount")).toHaveText("3");
+  await expect(quantity).toHaveText("3");
+  await expect(minus).toBeVisible();
+  await expect(page.locator("#toast")).toContainText("cantidad disponible");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await card.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("controles-rapidos-producto-movil.png"), fullPage: false });
+
+  await minus.click();
+  await expect(quantity).toHaveText("2");
+  await minus.click();
+  await minus.click();
+  await expect(page.locator("#cartCount")).toHaveText("0");
+  await expect(minus).toBeHidden();
+  await expect(quantity).toBeHidden();
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.reload();
+  const desktopCard = page.locator('[data-product-id="ballerine"]');
+  await desktopCard.locator(".add").evaluate(button => {
+    button.click();
+    button.click();
+  });
+  await expect(desktopCard.locator(".product-menu-qty")).toHaveText("2");
+  await expect(desktopCard.locator(".product-minus")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await desktopCard.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("controles-rapidos-producto-escritorio.png"), fullPage: false });
+});
+
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
