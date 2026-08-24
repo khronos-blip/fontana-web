@@ -949,6 +949,16 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
   await openPreview(page);
   await page.waitForLoadState("networkidle");
   const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
+  await availableCake.evaluate(card => {
+    const presentation = document.createElement("select");
+    presentation.className = "product-size";
+    const option = document.createElement("option");
+    option.value = "25 CM";
+    option.dataset.price = card.dataset.price;
+    option.textContent = "25 CM";
+    presentation.appendChild(option);
+    card.appendChild(presentation);
+  });
   await availableCake.locator(".add").click();
   await page.locator('[data-product-id="agua-minalba-600"] .add').click();
   await page.locator("#cartButton").click();

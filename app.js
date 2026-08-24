@@ -520,7 +520,7 @@
       preorder,
       item: {
         id,
-        productId: card.dataset.productId || id,
+        productId: card.dataset.productId || card.dataset.id,
         category: card.dataset.category || "",
         name: card.dataset.name,
         price: selectedPrice,
@@ -1030,7 +1030,7 @@
   }
 
   function itemLeadTime(item) {
-    const leadTime = config.leadTimesByProduct?.[item.productId || item.id];
+    const leadTime = config.leadTimesByProduct?.[item.inventory?.productId || item.productId || item.id];
     const days = Number(leadTime?.minimumBusinessDays);
     return Number.isFinite(days) ? Math.max(0, days) : null;
   }
