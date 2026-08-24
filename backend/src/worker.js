@@ -151,6 +151,14 @@ function stockSlug(value) {
   return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 70) || "base";
 }
 
+function automaticPreorderForProduct(product) {
+  return product?.category === "salado";
+}
+
+function automaticPreorderForBuilder(kind) {
+  return kind === "fonkies" || kind === "fomb";
+}
+
 function deriveInventoryDefinitions(state) {
   const definitions = [];
   for (const product of state?.products || []) {
@@ -221,6 +229,7 @@ function applyPublicAvailability(state, inventory, operations = { electricityEna
     return rows.some(row => row.available > 0);
   };
   for (const product of publicState.products || []) {
+    if (automaticPreorderForProduct(product)) product.allowPreorder = true;
     product.requiresElectricity = product.requiresElectricity === true;
     product.temporarilyUnavailable = !operations.electricityEnabled && product.requiresElectricity;
     const candidates = byProduct.get(product.id) || [];
@@ -241,6 +250,7 @@ function applyPublicAvailability(state, inventory, operations = { electricityEna
   for (const kind of ["fonkies", "fomb"]) {
     const builder = publicState.builders?.[kind];
     if (!builder) continue;
+    builder.allowPreorder = true;
     builder.requiresElectricity = builder.requiresElectricity === true || (kind === "fonkies" && !Object.prototype.hasOwnProperty.call(builder, "requiresElectricity"));
     builder.temporarilyUnavailable = !operations.electricityEnabled && builder.requiresElectricity;
     const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
@@ -306,7 +316,8 @@ function resolveReservationCart(state, requestedItems, operations) {
       if ((product.sizes || []).length && !size) throw new Error("invalid_option");
       if ((product.variants || []).length && !variant) throw new Error("invalid_option");
       const unavailable = product.status === "sold-out" || size?.status === "sold-out" || variant?.status === "sold-out";
-      const preorder = Boolean(requested.preorder && product.allowPreorder);
+      const preorderAllowed = automaticPreorderForProduct(product) || product.allowPreorder === true;
+      const preorder = Boolean(requested.preorder && unavailable && preorderAllowed);
       if (unavailable && !preorder) throw new Error("unavailable_product");
       const sku = ["product", product.id, size ? stockSlug(size.name) : "base", variant ? stockSlug(variant.name) : "base"].join(":");
       const definition = definitionMap.get(sku);
@@ -326,18 +337,21 @@ function resolveReservationCart(state, requestedItems, operations) {
     const requestedFlavors = Array.isArray(requested.flavors) ? requested.flavors : [];
     const flavors = requestedFlavors.map(item => ({name:String(item.name || ""),quantity:parsePositiveInteger(item.quantity)}));
     if (!flavors.length || flavors.some(item => !item.quantity || !(builder.flavors || []).some(flavor => flavor.name === item.name))) throw new Error("invalid_option");
-    const preorder = Boolean(requested.preorder && builder.allowPreorder);
-    if (builder.status === "sold-out" && !preorder) throw new Error("unavailable_product");
-    for (const selected of flavors) {
+    const preorderAllowed = automaticPreorderForBuilder(kind) || builder.allowPreorder === true;
+    const resolvedFlavors = flavors.map(selected => {
       const flavor = builder.flavors.find(item => item.name === selected.name);
-      if (flavor.status === "sold-out" && !preorder) throw new Error("unavailable_product");
-    }
+      const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
+      const preorder = Boolean(requested.preorder && unavailable && preorderAllowed);
+      if (unavailable && !preorder) throw new Error("unavailable_product");
+      return {...selected, preorder};
+    });
+    const preorder = resolvedFlavors.some(item => item.preorder);
     const selectedTotal = flavors.reduce((sum,item) => sum + item.quantity, 0);
     let unitPriceCents;
     if (kind === "fonkies") {
       const minimum = Math.max(1, Number(builder.minimumQuantity || 4));
       if (selectedTotal < minimum) throw new Error("invalid_quantity");
-      const base = flavors.length === 1 ? Number(builder.singlePrice || 15) : Number(builder.mixedPrice || 17);
+      const base = resolvedFlavors.length === 1 ? Number(builder.singlePrice || 15) : Number(builder.mixedPrice || 17);
       unitPriceCents = Math.round((base + Math.max(0, selectedTotal - minimum) * Number(builder.extraPrice || 3.5)) * 100);
     } else {
       const boxSize = parsePositiveInteger(requested.boxSize, 200);
@@ -348,9 +362,9 @@ function resolveReservationCart(state, requestedItems, operations) {
     }
     const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
     const name = `${kind === "fonkies" ? "Caja de Fonkies" : "Caja de Fomb"} · ${selectedTotal} unidades`;
-    const optionSummary = flavors.map(item => `${item.quantity} ${item.name}`).join(", ");
-    snapshotItems.push({kind,productId,name,quantity,unitPriceCents,optionSummary,flavors,boxSize:Number(requested.boxSize || 0),extraCount:Number(requested.extraCount || 0),preorder});
-    if (!preorder) for (const selected of flavors) {
+    const optionSummary = resolvedFlavors.map(item => `${item.quantity} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", ");
+    snapshotItems.push({kind,productId,name,quantity,unitPriceCents,optionSummary,flavors:resolvedFlavors,boxSize:Number(requested.boxSize || 0),extraCount:Number(requested.extraCount || 0),preorder});
+    for (const selected of resolvedFlavors.filter(item => !item.preorder)) {
       const definition = definitionMap.get(`builder:${kind}:${stockSlug(selected.name)}`);
       if (!definition) throw new Error("invalid_option");
       addDemand(definition, selected.quantity * quantity);
@@ -375,7 +389,6 @@ function resolveStockChecks(state, requestedChecks, operations) {
   for (const requested of requestedChecks) {
     const quantity = parsePositiveInteger(requested.quantity);
     if (!quantity) throw new Error("invalid_quantity");
-    if (requested.preorder === true) continue;
     const kind = String(requested.kind || "product");
     if (kind === "product") {
       const product = products.get(String(requested.productId || ""));
@@ -387,6 +400,10 @@ function resolveStockChecks(state, requestedChecks, operations) {
       const variant = (product.variants || []).find(option => option.name === variantName) || null;
       if ((product.sizes || []).length && !size) throw new Error("invalid_option");
       if ((product.variants || []).length && !variant) throw new Error("invalid_option");
+      const unavailable = product.status === "sold-out" || size?.status === "sold-out" || variant?.status === "sold-out";
+      const preorder = requested.preorder === true && unavailable && (automaticPreorderForProduct(product) || product.allowPreorder === true);
+      if (unavailable && !preorder) throw new Error("unavailable_product");
+      if (preorder) continue;
       const sku = ["product", product.id, size ? stockSlug(size.name) : "base", variant ? stockSlug(variant.name) : "base"].join(":");
       const definition = definitionMap.get(sku);
       if (!definition) throw new Error("invalid_product");
@@ -399,7 +416,12 @@ function resolveStockChecks(state, requestedChecks, operations) {
     const requiresElectricity = builder.requiresElectricity === true || (kind === "fonkies" && !Object.prototype.hasOwnProperty.call(builder, "requiresElectricity"));
     if (!operations.electricityEnabled && requiresElectricity) throw new Error("temporarily_unavailable");
     const flavorName = String(requested.flavor || "");
-    if (!(builder.flavors || []).some(flavor => flavor.name === flavorName)) throw new Error("invalid_option");
+    const flavor = (builder.flavors || []).find(item => item.name === flavorName);
+    if (!flavor) throw new Error("invalid_option");
+    const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
+    const preorder = requested.preorder === true && unavailable && (automaticPreorderForBuilder(kind) || builder.allowPreorder === true);
+    if (unavailable && !preorder) throw new Error("unavailable_product");
+    if (preorder) continue;
     const definition = definitionMap.get(`builder:${kind}:${stockSlug(flavorName)}`);
     if (!definition) throw new Error("invalid_option");
     addDemand(definition, quantity);
@@ -416,7 +438,8 @@ async function validateOrderStock(request, env) {
   const inventory = await loadInventoryMap(env);
   const operations = await readOperationalState(env);
   let demands;
-  try { demands = resolveStockChecks(state, body.checks, operations); }
+  const publicState = applyPublicAvailability(state, inventory, operations);
+  try { demands = resolveStockChecks(publicState, body.checks, operations); }
   catch (error) {
     const temporary = error.message === "temporarily_unavailable";
     return json({error:temporary ? "La producción de este producto está temporalmente pausada." : "No pudimos comprobar esta selección.",code:error.message},409);
@@ -442,7 +465,8 @@ async function reserveOrder(request, env) {
   const inventory = await loadInventoryMap(env);
   const operations = await readOperationalState(env);
   let cart;
-  try { cart = resolveReservationCart(state, body.items, operations); }
+  const publicState = applyPublicAvailability(state, inventory, operations);
+  try { cart = resolveReservationCart(publicState, body.items, operations); }
   catch (error) { return json({error:error.message === "temporarily_unavailable" ? "La producción de uno de los productos del carrito está temporalmente pausada. Retíralo para continuar; no lo eliminamos automáticamente." : "El carrito cambió o contiene una opción no disponible. Actualiza la página e inténtalo de nuevo.",code:error.message},409); }
   const trackedDemands = cart.demands.filter(item => inventory.get(item.definition.sku)?.trackStock);
   const clientHash = await sha256(`${request.headers.get("CF-Connecting-IP") || "local"}:${request.headers.get("User-Agent") || ""}`);

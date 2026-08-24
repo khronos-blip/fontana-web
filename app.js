@@ -22,6 +22,15 @@
   let cart = readCart();
   let stockValidationPending = false;
   const productAddQueues = new Map();
+  const automaticPreorderCategories = new Set(["salado"]);
+
+  function productAllowsAutomaticPreorder(product) {
+    return automaticPreorderCategories.has(String(product?.category || ""));
+  }
+
+  function builderAllowsAutomaticPreorder(kind) {
+    return kind === "fonkies" || kind === "fomb";
+  }
 
   async function readAdminState() {
     try {
@@ -51,7 +60,7 @@
     config.dynamicCatalog = [
       ...adminState.products.filter(product => !product.deleted && product.visible !== false),
       ...newlyConfiguredProducts
-    ];
+    ].map(product => productAllowsAutomaticPreorder(product) ? {...product, allowPreorder:true} : product);
     config.dynamicCatalog.forEach(product => {
       if (!product.id || !Number.isFinite(Number(product.minimumBusinessDays))) return;
       config.leadTimesByProduct ||= {};
@@ -84,13 +93,15 @@
     for (const item of items) {
       const inventory = item.inventory || {};
       const itemQuantity = Math.max(0, Number(item.qty || 0));
-      if (!itemQuantity || inventory.preorder) continue;
+      if (!itemQuantity) continue;
       if (inventory.kind === "product") {
+        if (inventory.preorder) continue;
         checks.push({kind:"product",productId:inventory.productId || item.productId,size:inventory.size || "",variant:inventory.variant || "",quantity:itemQuantity});
         continue;
       }
       if (inventory.kind !== "fonkies" && inventory.kind !== "fomb") continue;
       for (const flavor of inventory.flavors || []) {
+        if (flavor.preorder) continue;
         const perBox = Math.max(0, Number(flavor.quantity ?? flavor.qty ?? 0));
         if (perBox) checks.push({kind:inventory.kind,flavor:flavor.name,quantity:perBox * itemQuantity});
       }
@@ -149,7 +160,7 @@
       productId:item.inventory?.productId || item.productId,
       size:item.inventory?.size || "",
       variant:item.inventory?.variant || "",
-      flavors:(item.inventory?.flavors || []).map(flavor => ({name:flavor.name,quantity:Number(flavor.quantity ?? flavor.qty ?? 0)})),
+      flavors:(item.inventory?.flavors || []).map(flavor => ({name:flavor.name,quantity:Number(flavor.quantity ?? flavor.qty ?? 0),preorder:Boolean(flavor.preorder)})),
       boxSize:item.inventory?.boxSize,
       extraCount:item.inventory?.extraCount,
       preorder:Boolean(item.inventory?.preorder)
@@ -278,7 +289,12 @@
   function applyAdminBuilders() {
     if (!adminState?.builders) {
       const fonkieBuilder = $(".fonkie-builder");
-      if (fonkieBuilder && !productionWithElectricity) fonkieBuilder.dataset.temporarilyUnavailable = "true";
+      const fombBuilder = $(".fomb-builder");
+      if (fonkieBuilder) {
+        fonkieBuilder.dataset.preorder = "true";
+        if (!productionWithElectricity) fonkieBuilder.dataset.temporarilyUnavailable = "true";
+      }
+      if (fombBuilder) fombBuilder.dataset.preorder = "true";
       return;
     }
     const fonkies = adminState.builders.fonkies;
@@ -287,7 +303,7 @@
       fonkieBuilder.dataset.promo = String(Boolean(fonkies.promo));
       fonkieBuilder.dataset.immediate = String(stockTodayOpen && Boolean(fonkies.immediate));
       fonkieBuilder.dataset.new = String(Boolean(fonkies.isNew));
-      fonkieBuilder.dataset.preorder = String(Boolean(fonkies.allowPreorder));
+      fonkieBuilder.dataset.preorder = String(builderAllowsAutomaticPreorder("fonkies") || Boolean(fonkies.allowPreorder));
       fonkieBuilder.dataset.glutenFree = String(fonkies.glutenFree !== false);
       fonkieBuilder.dataset.sugarFree = String(fonkies.sugarFree !== false);
       fonkieBuilder.dataset.lactoseFree = String(fonkies.lactoseFree !== false);
@@ -301,8 +317,8 @@
       const chooser = $(".fonkie-flavors", fonkieBuilder);
       const count = $(".gallery-label-meta span", fonkieBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="fonkie-gallery-card${sold ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Agotado" : ""}</span></figure>`; }).join("");
-      if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Agotado" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}" ${sold ? "disabled" : ""}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${sold ? "disabled" : ""}>+</button></div></div>`; }).join("");
+      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="fonkie-gallery-card${sold ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
+      if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`; }).join("");
       const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       fonkieBuilder.dataset.ingredients = availableIngredients;
       if (fonkies.image) fonkieBuilder.dataset.image = fonkies.image;
@@ -314,7 +330,7 @@
       fombBuilder.dataset.promo = String(Boolean(fomb.promo));
       fombBuilder.dataset.immediate = String(stockTodayOpen && Boolean(fomb.immediate));
       fombBuilder.dataset.new = String(Boolean(fomb.isNew));
-      fombBuilder.dataset.preorder = String(Boolean(fomb.allowPreorder));
+      fombBuilder.dataset.preorder = String(builderAllowsAutomaticPreorder("fomb") || Boolean(fomb.allowPreorder));
       fombBuilder.dataset.glutenFree = String(fomb.glutenFree !== false);
       fombBuilder.dataset.sugarFree = String(fomb.sugarFree !== false);
       fombBuilder.dataset.lactoseFree = String(fomb.lactoseFree !== false);
@@ -328,8 +344,8 @@
       const chooser = $(".fomb-flavors", fombBuilder);
       const count = $(".gallery-label-meta span", fombBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="builder-gallery-card${sold ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Agotado" : ""}</span></figure>`; }).join("");
-      if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Agotado" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}" ${sold ? "disabled" : ""}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${sold ? "disabled" : ""}>+</button></div></div>`; }).join("");
+      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="builder-gallery-card${sold ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
+      if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`; }).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
       if (sizeOptions) sizeOptions.innerHTML = sizes.map((size, index) => `<label class="fomb-size-option"><input type="radio" name="fombSize" value="${Number(size.quantity)}" data-price="${Number(size.price)}" ${index === 0 ? "checked" : ""}> Caja de ${Number(size.quantity)} · ${money(Number(size.price))}</label>`).join("");
@@ -382,7 +398,8 @@
       const availableSizes = sizes.filter(size => size.status !== "sold-out" && size.stockQuantity !== 0);
       const temporarilyUnavailable = Boolean(product.temporarilyUnavailable || (!productionWithElectricity && product.requiresElectricity));
       const soldOut = product.status === "sold-out" || product.stockQuantity === 0 || (variants.length > 0 && availableVariants.length === 0) || (sizes.length > 0 && availableSizes.length === 0);
-      const preorder = soldOut && Boolean(product.allowPreorder);
+      const preorderAllowed = productAllowsAutomaticPreorder(product) || Boolean(product.allowPreorder);
+      const preorder = soldOut && preorderAllowed;
       const description = String(product.description || "Disponibilidad sujeta a confirmación por WhatsApp.");
       const ingredients = String(product.ingredients || "");
       const dietary = resolvedDietary(product);
@@ -404,13 +421,15 @@
       const cartImage = product.image || "assets/logo.png";
       const variantControl = variants.length ? `<div class="product-variants"><label for="variant-${escapeHtml(productId)}">${escapeHtml(product.variantLabel || "Elige el sabor")}</label><select class="product-variant" id="variant-${escapeHtml(productId)}" ${soldOut && !preorder ? "disabled" : ""}>${variants.map(variant => {
         const optionSold = variant.status === "sold-out" || variant.stockQuantity === 0;
-        const unavailable = optionSold && !preorder;
-        return `<option value="${unavailable ? "" : escapeHtml(variant.name)}" ${unavailable ? "disabled" : ""}>${escapeHtml(variant.name)}${optionSold ? preorder ? " · Pre-order" : " · Agotado" : ""}</option>`;
+        const optionPreorder = optionSold && preorderAllowed;
+        const unavailable = optionSold && !optionPreorder;
+        return `<option value="${unavailable ? "" : escapeHtml(variant.name)}" data-sold-out="${optionSold}" ${unavailable ? "disabled" : ""}>${escapeHtml(variant.name)}${optionSold ? optionPreorder ? " · Pre-Order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
       const sizeControl = sizes.length ? `<div class="product-variants"><label for="size-${escapeHtml(productId)}">${escapeHtml(product.sizeLabel || "Elige la presentación")}</label><select class="product-size" id="size-${escapeHtml(productId)}" ${soldOut && !preorder ? "disabled" : ""}>${sizes.map(size => {
         const optionSold = size.status === "sold-out" || size.stockQuantity === 0;
-        const unavailable = optionSold && !preorder;
-        return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${optionSold ? preorder ? " · Pre-order" : " · Agotado" : ""}</option>`;
+        const optionPreorder = optionSold && preorderAllowed;
+        const unavailable = optionSold && !optionPreorder;
+        return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" data-sold-out="${optionSold}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${optionSold ? optionPreorder ? " · Pre-Order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
       const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => { const statusClass = badge === "TEMPORALMENTE NO DISPONIBLE" || badge === "AGOTADO" ? " status-unavailable" : badge === "PRE-ORDER" ? " status-preorder" : ""; return `<span class="product-tag${index ? " secondary" : ""}${statusClass}">${escapeHtml(badge)}</span>`; }).join("")}</div>` : "";
       const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
@@ -419,7 +438,7 @@
         ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">Consultar por WhatsApp</a>`
         : "";
       const footerCopy = product.weight || product.availabilityLabel;
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${stockTodayOpen && Boolean(product.immediate)}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${stockTodayOpen && Boolean(product.immediate)}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
@@ -510,8 +529,11 @@
     if ($(".product-variant", card) && !selectedVariant) {
       return { error: "Este sabor está agotado" };
     }
-    const preorder = card.dataset.preorder === "true";
-    const selectedChoices = [selectedSize, selectedVariant, preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean);
+    const selectedVariantOption = $(".product-variant", card)?.selectedOptions?.[0];
+    const selectedSizeOption = sizeSelect?.selectedOptions?.[0];
+    const selectedOptionSoldOut = selectedVariantOption?.dataset.soldOut === "true" || selectedSizeOption?.dataset.soldOut === "true";
+    const preorder = card.dataset.preorderAllowed === "true" && (card.dataset.soldOut === "true" || selectedOptionSoldOut);
+    const selectedChoices = [selectedSize, selectedVariant, preorder ? "PRE-ORDER · 2 días hábiles" : ""].filter(Boolean);
     const choiceSlug = selectedChoices.join("-").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = choiceSlug ? `${card.dataset.id}-${choiceSlug}` : card.dataset.id;
     const selectedPrice = sizeSelect ? Number(sizeSelect.selectedOptions[0]?.dataset.price) : Number(card.dataset.price);
@@ -703,23 +725,25 @@
     if (!builder) return;
     const rows = $$(".fonkie-flavor", builder);
     const addButton = $("#addFonkieBox");
-    const preorder = builder.dataset.preorder === "true" && builder.dataset.soldOut === "true";
+    const preorderAllowed = builder.dataset.preorder === "true";
     const temporaryUnavailable = builder.dataset.temporarilyUnavailable === "true";
-    const unavailable = temporaryUnavailable || (builder.dataset.soldOut === "true" && !preorder);
+    const unavailable = temporaryUnavailable || (builder.dataset.soldOut === "true" && !preorderAllowed);
     const minimum = Math.max(1, Number(adminState?.builders?.fonkies?.minimumQuantity || 4));
     $("#fonkieIngredients div").textContent = builder.dataset.ingredients;
     const builderIntro = $(".fonkie-builder-head p", builder);
-    if (builderIntro) builderIntro.textContent = `Elige los sabores y las cantidades. Mínimo ${minimum} unidades.`;
+    if (builderIntro) builderIntro.textContent = `Elige sabores y cantidades. Con stock: entrega inmediata. Sin stock: Pre-Order de 2 días hábiles. Mínimo ${minimum} unidades.`;
 
     function selectedFlavors() {
       return rows.map(row => ({
         name: row.dataset.flavor,
-        qty: Number($("output", row).value || $("output", row).textContent || 0)
+        qty: Number($("output", row).value || $("output", row).textContent || 0),
+        preorder: row.dataset.soldOut === "true"
       })).filter(item => item.qty > 0);
     }
 
     function updateBuilder() {
       const selected = selectedFlavors();
+      const preorder = selected.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
       const total = selected.reduce((sum, item) => sum + item.qty, 0);
       const price = fonkiePrice(total, selected.length);
       $("#fonkieChoiceCount").textContent = `${total} ${total === 1 ? "elegido" : "elegidos"}`;
@@ -746,9 +770,11 @@
       const previous = Number(output.value || output.textContent || 0);
       const delta = Number(button.dataset.delta);
       const next = Math.max(0, previous + delta);
-      if (delta > 0 && !preorder) {
+      const row = button.closest(".fonkie-flavor");
+      const flavorPreorder = preorderAllowed && row.dataset.soldOut === "true";
+      if (delta > 0 && !flavorPreorder) {
         stockValidationPending = true;
-        const draft = rows.map(row => ({
+        const draft = rows.filter(row => row.dataset.soldOut !== "true").map(row => ({
           kind:"fonkies",flavor:row.dataset.flavor,
           quantity:row === button.closest(".fonkie-flavor") ? next : Number($("output", row).value || $("output", row).textContent || 0)
         }));
@@ -768,12 +794,14 @@
         say(`Mínimo ${minimum} galletas para armar tu caja`);
         return;
       }
-      if (!preorder) {
-        const validation = await validateStock(selected.map(item => ({kind:"fonkies",flavor:item.name,quantity:item.qty})));
+      const preorder = selected.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
+      const stocked = selected.filter(item => !item.preorder);
+      if (stocked.length) {
+        const validation = await validateStock(stocked.map(item => ({kind:"fonkies",flavor:item.name,quantity:item.qty})));
         if (!validation.ok) { say(stockLimitNotice(validation.error, "la caja de Fonkies")); return; }
       }
       const price = fonkiePrice(total, selected.length);
-      const choices = [selected.map(item => `${item.qty} ${item.name}`).join(", "), preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean).join(" · ");
+      const choices = [selected.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), preorder ? "PRE-ORDER · 2 días hábiles" : ""].filter(Boolean).join(" · ");
       const id = `fonkie-box-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
       const found = cart.find(item => item.id === id);
       if (found) {
@@ -787,7 +815,7 @@
           image: builder.dataset.image,
           ingredients: productIngredients("fonkie-box"),
           choices,
-          inventory: { kind:"fonkies", flavors:selected, preorder },
+          inventory: { kind:"fonkies", flavors:selected.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder})), preorder },
           qty: 1
         });
       }
@@ -804,17 +832,20 @@
     const sizeInputs = $$('input[name="fombSize"]', builder);
     const extrasOutput = $("#fombExtraCount");
     const addButton = $("#addFombBox");
-    const preorder = builder.dataset.preorder === "true" && builder.dataset.soldOut === "true";
+    const preorderAllowed = builder.dataset.preorder === "true";
     const temporaryUnavailable = builder.dataset.temporarilyUnavailable === "true";
-    const unavailable = temporaryUnavailable || (builder.dataset.soldOut === "true" && !preorder);
+    const unavailable = temporaryUnavailable || (builder.dataset.soldOut === "true" && !preorderAllowed);
     const rows = $$(".fomb-flavor", builder);
     let extras = 0;
     $("#fombIngredients div").textContent = builder.dataset.ingredients;
+    const builderIntro = $(".builder-head p", builder);
+    if (builderIntro) builderIntro.textContent = "Elige sabores y cantidades. Con stock: entrega inmediata. Sin stock: Pre-Order de 2 días hábiles.";
 
     function selectedFlavors() {
       return rows.map(row => ({
         name: row.dataset.flavor,
-        qty: Number($("output", row).value || $("output", row).textContent || 0)
+        qty: Number($("output", row).value || $("output", row).textContent || 0),
+        preorder: row.dataset.soldOut === "true"
       })).filter(item => item.qty > 0);
     }
 
@@ -830,6 +861,7 @@
 
     function updateBuilder() {
       const current = selection();
+      const preorder = current.flavors.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
       extrasOutput.value = String(extras);
       extrasOutput.textContent = String(extras);
       $("#fombChoiceCount").textContent = `${current.selectedTotal} ${current.selectedTotal === 1 ? "elegido" : "elegidos"}`;
@@ -844,7 +876,7 @@
       } else {
         const type = current.flavors.length === 1 ? "Caja de un solo sabor" : "Caja mixta";
         $("#fombRule").textContent = `${type}${extras ? ` · ${current.size} + ${extras} extra${extras === 1 ? "" : "s"}` : ""}.`;
-        $("#fombValidation").textContent = "Tu caja está lista para agregar al carrito.";
+        $("#fombValidation").textContent = preorder ? "Tu solicitud de Pre-Order está lista para 2 días hábiles." : "Tu caja está lista para agregar al carrito.";
       }
       $("#fombTotal").textContent = money(current.price);
       addButton.disabled = remaining !== 0 || unavailable;
@@ -869,9 +901,11 @@
       if (delta > 0 && current.selectedTotal >= current.total) return;
       const previous = Number(output.value || output.textContent || 0);
       const next = Math.max(0, previous + delta);
-      if (delta > 0 && !preorder) {
+      const row = button.closest(".fomb-flavor");
+      const flavorPreorder = preorderAllowed && row.dataset.soldOut === "true";
+      if (delta > 0 && !flavorPreorder) {
         stockValidationPending = true;
-        const draft = rows.map(row => ({
+        const draft = rows.filter(row => row.dataset.soldOut !== "true").map(row => ({
           kind:"fomb",flavor:row.dataset.flavor,
           quantity:row === button.closest(".fomb-flavor") ? next : Number($("output", row).value || $("output", row).textContent || 0)
         }));
@@ -890,11 +924,13 @@
         say(`Selecciona exactamente ${current.total} bombones para armar tu caja`);
         return;
       }
-      if (!preorder) {
-        const validation = await validateStock(current.flavors.map(item => ({kind:"fomb",flavor:item.name,quantity:item.qty})));
+      const preorder = current.flavors.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
+      const stocked = current.flavors.filter(item => !item.preorder);
+      if (stocked.length) {
+        const validation = await validateStock(stocked.map(item => ({kind:"fomb",flavor:item.name,quantity:item.qty})));
         if (!validation.ok) { say(stockLimitNotice(validation.error, "la caja Fomb")); return; }
       }
-      const choices = [current.flavors.map(item => `${item.qty} ${item.name}`).join(", "), preorder ? "PRE-ORDER · Sujeto a confirmación" : ""].filter(Boolean).join(" · ");
+      const choices = [current.flavors.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), preorder ? "PRE-ORDER · 2 días hábiles" : ""].filter(Boolean).join(" · ");
       const id = `fomb-box-${current.size}-${extras}-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
       const found = cart.find(item => item.id === id);
       if (found) {
@@ -908,7 +944,7 @@
           image: builder.dataset.image,
           ingredients: builder.dataset.ingredients,
           choices,
-          inventory: { kind:"fomb", flavors:current.flavors, boxSize:current.size, extraCount:extras, preorder },
+          inventory: { kind:"fomb", flavors:current.flavors.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder})), boxSize:current.size, extraCount:extras, preorder },
           qty: 1
         });
       }
@@ -1030,6 +1066,7 @@
   }
 
   function itemLeadTime(item) {
+    if (item.inventory?.preorder) return 2;
     const leadTime = config.leadTimesByProduct?.[item.inventory?.productId || item.productId || item.id];
     const days = Number(leadTime?.minimumBusinessDays);
     return Number.isFinite(days) ? Math.max(0, days) : null;

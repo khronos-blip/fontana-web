@@ -113,6 +113,7 @@ window.FONTANA_CONFIG = {
       ingredients: "Harina de arroz, harina de yuca, ghee, huevo, leche sin lactosa, jamón sin gluten y psyllium.",
       weight: "3 UNIDADES",
       availabilityLabel: "CONGELADO · STOCK O ENCARGO",
+      allowPreorder: true,
       status: "available"
     },
     {
@@ -125,6 +126,7 @@ window.FONTANA_CONFIG = {
       ingredients: "Harina de garbanzo, harina de papa, 20 % maicena, huevo y aceite de oliva. Rellenos: ricotta de cabra y espinaca; carne; mozzarella, salsa y pecorino.",
       weight: "3 UNIDADES",
       availabilityLabel: "CONGELADO · STOCK O ENCARGO",
+      allowPreorder: true,
       variantLabel: "Elige el relleno",
       variants: [
         { name: "Carne", status: "available" },
@@ -143,6 +145,7 @@ window.FONTANA_CONFIG = {
       ingredients: "Harina de yuca, maicena, huevo, aceite de oliva, sal y queso de búfala.",
       weight: "12 UNIDADES",
       availabilityLabel: "CONGELADO · STOCK O ENCARGO",
+      allowPreorder: true,
       status: "available"
     },
     {
@@ -155,6 +158,7 @@ window.FONTANA_CONFIG = {
       ingredients: "Masa de harina de arroz, harina de yuca, maicena, huevo, aceite de oliva y sal. Relleno de ricotta de cabra y espinaca o carne.",
       weight: "180 G / 300 G",
       availabilityLabel: "CONGELADO · STOCK O ENCARGO",
+      allowPreorder: true,
       sizeLabel: "Elige la presentación",
       sizes: [
         { name: "180 g", price: 15, status: "available" },
@@ -177,6 +181,7 @@ window.FONTANA_CONFIG = {
       ingredients: "Ingredientes pendientes de confirmar con Fontana.",
       weight: "20 UNIDADES",
       availabilityLabel: "CONGELADO · STOCK O ENCARGO",
+      allowPreorder: true,
       status: "available"
     },
     {
@@ -244,19 +249,19 @@ window.FONTANA_CONFIG = {
     "mini-cake": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
     "layer-cake": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
     "torta-personalizada": { minimumBusinessDays: 2, label: "Tortas: mínimo 2 días de anticipación" },
-    fonkie: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
-    "fonkie-mix": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
-    "fonkie-box": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
-    "fomb-box": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
-    bombones: { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
-    "bombones-12": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
+    fonkie: { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    "fonkie-mix": { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    "fonkie-box": { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    "fomb-box": { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    bombones: { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    "bombones-12": { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
     "pasta-ricotta": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
     "pasta-carne": { minimumBusinessDays: 0, label: "Disponible por stock; pedidos especiales o personalizados: 2–3 días hábiles" },
-    "cachito-fit": { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
-    panzerottis: { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
-    "tequenos-fit": { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
-    raviolis: { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
-    "nuggets-rora": { minimumBusinessDays: 0, label: "Salados: disponibles por stock o encargo" },
+    "cachito-fit": { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    panzerottis: { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    "tequenos-fit": { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    raviolis: { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
+    "nuggets-rora": { minimumBusinessDays: 0, label: "Stock activo: disponibilidad inmediata. Sin stock: Pre-Order de 2 días hábiles" },
     "agua-minalba-600": { minimumBusinessDays: 0, label: "Bebidas: disponibles para el mismo día según stock" },
     "agua-minalba-limon": { minimumBusinessDays: 0, label: "Bebidas: disponibles para el mismo día según stock" },
     "tevia-durazno": { minimumBusinessDays: 0, label: "Bebidas: disponibles para el mismo día según stock" },

@@ -92,7 +92,7 @@
       stockQuantity: product.stockQuantity === null || product.stockQuantity === "" || product.stockQuantity === undefined ? null : Math.max(0, Number(product.stockQuantity)),
       isNew: Boolean(product.isNew), promo: Boolean(product.promo), immediate: Boolean(product.immediate),
       requiresElectricity: product.requiresElectricity === true,
-      allowPreorder: Boolean(product.allowPreorder), customLabels: Array.isArray(product.customLabels) ? product.customLabels : [],
+      allowPreorder: product.category === "salado" || Boolean(product.allowPreorder), customLabels: Array.isArray(product.customLabels) ? product.customLabels : [],
       variants: (product.variants || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))})),
       sizes: (product.sizes || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))}))
     }));
@@ -107,7 +107,7 @@
         eggFree: Object.prototype.hasOwnProperty.call(builder, "eggFree") ? Boolean(builder.eggFree) : kind === "fomb",
         visible: builder.visible !== false, status: builder.status === "sold-out" ? "sold-out" : "available",
         stockQuantity: builder.stockQuantity === null || builder.stockQuantity === "" || builder.stockQuantity === undefined ? null : Math.max(0, Number(builder.stockQuantity)),
-        isNew: Boolean(builder.isNew), promo: Boolean(builder.promo), immediate: Boolean(builder.immediate), allowPreorder: Boolean(builder.allowPreorder),
+        isNew: Boolean(builder.isNew), promo: Boolean(builder.promo), immediate: Boolean(builder.immediate), allowPreorder: true,
         requiresElectricity: Object.prototype.hasOwnProperty.call(builder, "requiresElectricity") ? Boolean(builder.requiresElectricity) : kind === "fonkies",
         flavors: (builder.flavors || []).map(flavor => ({...flavor, stockQuantity: flavor.stockQuantity === null || flavor.stockQuantity === "" || flavor.stockQuantity === undefined ? null : Math.max(0, Number(flavor.stockQuantity))}))
       };
