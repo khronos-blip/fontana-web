@@ -1492,18 +1492,31 @@
       });
       title.classList.add("menu-title-ready");
     }
-    if (!("IntersectionObserver" in window)) {
+    let observer;
+    const reveal = () => {
+      if (intro.classList.contains("menu-intro-visible")) return;
       intro.classList.add("menu-intro-visible");
       section?.classList.add("menu-entry-visible");
+      observer?.disconnect();
+      window.removeEventListener("scroll", revealIfNear);
+      window.removeEventListener("pageshow", revealIfNear);
+    };
+    const revealIfNear = () => {
+      const bounds = intro.getBoundingClientRect();
+      if (bounds.top <= window.innerHeight * 1.25 && bounds.bottom >= 0) reveal();
+    };
+    if (!("IntersectionObserver" in window)) {
+      reveal();
       return;
     }
-    const observer = new IntersectionObserver(entries => {
+    observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return;
-      intro.classList.add("menu-intro-visible");
-      section?.classList.add("menu-entry-visible");
-      observer.disconnect();
-    }, { threshold: 0.35 });
+      reveal();
+    }, { rootMargin: "0px 0px 25% 0px", threshold: 0.01 });
     observer.observe(intro);
+    window.addEventListener("scroll", revealIfNear, { passive: true });
+    window.addEventListener("pageshow", revealIfNear);
+    requestAnimationFrame(revealIfNear);
   }
 
   function setupHeroLeafMotion() {

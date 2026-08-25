@@ -1271,6 +1271,14 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   expect(browserErrors).toEqual([]);
 });
 
+test("Elige tu antojo se prepara en la primera carga de escritorio", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await openPreview(page);
+  await expect(page.locator(".menu-intro")).toHaveClass(/menu-intro-visible/);
+  await expect(page.locator(".menu-title-letter").first()).toHaveCSS("opacity", "1");
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
 test("el bloque negro fue eliminado y el footer centra la marca", async ({ page }) => {
   await openPreview(page);
   await expect(page.locator(".pillars")).toHaveCount(0);
