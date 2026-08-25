@@ -17,6 +17,15 @@ async function openFlavorChoice(page, builderSelector) {
   await expect(panel).toHaveAttribute("open", "");
 }
 
+async function openProductCard(page, selector) {
+  const card = typeof selector === "string" ? page.locator(selector) : selector;
+  if (!(await card.evaluate(element => element.classList.contains("product-flipped")))) {
+    await card.locator(".product-front").click();
+  }
+  await expect(card).toHaveClass(/product-flipped/);
+  return card;
+}
+
 async function fillCheckout(page, { allergies = false, birthdayCandle = false } = {}) {
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
@@ -39,7 +48,8 @@ async function fillCheckout(page, { allergies = false, birthdayCandle = false } 
 
 test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   await openPreview(page);
-  await page.locator('[data-id="pistacho"] .add').click();
+  const cake = await openProductCard(page, '[data-id="pistacho"]');
+  await cake.locator(".add").click();
   await expect(page.locator("#cartCount")).toHaveText("1");
   await fillCheckout(page);
   await page.locator('#checkoutForm button[type="submit"]').click();
@@ -61,7 +71,8 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
 
 test("checkout ofrece vela de cumpleaños solo cuando el pedido incluye una torta", async ({ page }) => {
   await openPreview(page);
-  await page.locator('[data-id="pistacho"] .add').click();
+  const cake = await openProductCard(page, '[data-id="pistacho"]');
+  await cake.locator(".add").click();
   await fillCheckout(page, { birthdayCandle: true });
   await expect(page.locator("#birthdayCandlePanel")).toBeVisible();
   await expect(page.locator('input[name="birthdayCandle"]')).toHaveCount(2);
@@ -72,7 +83,8 @@ test("checkout ofrece vela de cumpleaños solo cuando el pedido incluye una tort
   await page.evaluate(() => localStorage.removeItem("fontana-cart-v1"));
   await page.reload();
   await page.getByRole("button", { name: "Bebida" }).click();
-  await page.locator('[data-product-id="agua-minalba-600"] .add').click();
+  const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
+  await drink.locator(".add").click();
   await fillCheckout(page);
   await expect(page.locator("#birthdayCandlePanel")).toBeHidden();
   await page.locator('#checkoutForm button[type="submit"]').click();
@@ -108,6 +120,7 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
   const quantity = card.locator(".product-menu-qty");
 
   await expect(minus).toBeHidden();
+  await card.locator(".product-front").click();
   await plus.evaluate(button => {
     for (let index = 0; index < 5; index += 1) button.click();
   });
@@ -138,6 +151,28 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await desktopCard.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("controles-rapidos-producto-escritorio.png"), fullPage: false });
+});
+
+test("las tarjetas de producto giran para mostrar y ocultar sus detalles", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const card = page.locator('[data-product-id="pistacho-clasico"]');
+  const front = card.locator(".product-front");
+  const back = card.locator(".product-back");
+
+  await expect(front).toBeVisible();
+  await expect(back).toBeHidden();
+  await front.click();
+  await expect(card).toHaveClass(/product-flipped/);
+  await expect(front).toHaveAttribute("aria-expanded", "true");
+  await expect(back).toBeVisible();
+  await expect(back.locator(".product-safety")).toBeVisible();
+  await expect(back.locator(".add")).toBeVisible();
+
+  await back.locator(".product-flip-close").click();
+  await expect(card).not.toHaveClass(/product-flipped/);
+  await expect(front).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
@@ -312,6 +347,8 @@ test("salados con stock cero pasan a Pre-Order y las tortas no cambian", async (
   const salado = page.locator('[data-product-id="salado-cero"]');
   await expect(salado.locator(".product-tags")).toContainText("PRE-ORDER");
   await expect(salado.locator(".add")).toHaveText("PRE-ORDER");
+  await salado.locator(".product-front").click();
+  await expect(salado).toHaveClass(/product-flipped/);
   await salado.locator(".add").click();
   await expect(page.locator("#cartCount")).toHaveText("1");
   await expect(page.locator('[data-product-id="torta-cero"] .add')).toHaveCount(0);
@@ -772,12 +809,14 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
     "Carne",
     "Ricotta de cabra y espinaca"
   ]);
+  await openProductCard(page, panzerottis);
   await panzerottis.locator(".product-variant").selectOption({ label: "Mozzarella, salsa y pecorino" });
   await panzerottis.locator(".add").click();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item h4")).toContainText("Panzerottis");
   await expect(page.locator(".cart-choices")).toHaveText("Mozzarella, salsa y pecorino");
   await page.locator("#closeCart").click();
+  await openProductCard(page, raviolis);
   await raviolis.locator(".product-size").selectOption({ label: "300 g · USD 20,00" });
   await raviolis.locator(".product-variant").selectOption({ label: "Carne" });
   await raviolis.locator(".add").click();
@@ -805,7 +844,8 @@ test("un sabor salado agotado cambia automáticamente a Pre-Order", async ({ pag
 
 test("las tortas bloquean hoy y mañana y exigen dos días de anticipación", async ({ page }) => {
   await openPreview(page);
-  await page.locator('[data-id="pistacho"] .add').click();
+  const cake = await openProductCard(page, '[data-id="pistacho"]');
+  await cake.locator(".add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   const expectedMinimumDate = await page.evaluate(() => {
@@ -905,6 +945,7 @@ test("el panel publica stock, etiquetas y pre-order sin romper el carrito", asyn
   await expect(ballerine.locator(".product-tags")).toContainText("PRE-ORDER");
   await expect(ballerine.locator(".product-tags")).toContainText("NUEVO");
   await expect(ballerine.locator(".product-tags")).toContainText("EDICIÓN ESPECIAL");
+  await openProductCard(page, ballerine);
   await ballerine.locator(".add").click();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días hábiles");
@@ -1026,8 +1067,10 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
     presentation.appendChild(option);
     card.appendChild(presentation);
   });
+  await openProductCard(page, availableCake);
   await availableCake.locator(".add").click();
-  await page.locator('[data-product-id="agua-minalba-600"] .add').click();
+  const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
+  await drink.locator(".add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#customerName")).toHaveCSS("font-size", "16px");
@@ -1074,8 +1117,10 @@ test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async 
   await openPreview(page);
   await page.waitForLoadState("networkidle");
   const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
+  await openProductCard(page, availableCake);
   await availableCake.locator(".add").click();
-  await page.locator('[data-product-id="agua-minalba-600"] .add').click();
+  const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
+  await drink.locator(".add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
 
@@ -1124,6 +1169,7 @@ test("una personalización vacía no agrega instrucciones al pedido", async ({ p
   await openPreview(page);
   await page.waitForLoadState("networkidle");
   const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
+  await openProductCard(page, availableCake);
   await availableCake.locator(".add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
@@ -1147,8 +1193,10 @@ test("el checkout de escritorio aprovecha el ancho sin desbordar", async ({ page
   await openPreview(page);
   await page.waitForLoadState("networkidle");
   const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
+  await openProductCard(page, availableCake);
   await availableCake.locator(".add").click();
-  await page.locator('[data-product-id="agua-minalba-600"] .add').click();
+  const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
+  await drink.locator(".add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#checkoutForm")).toBeVisible();
@@ -1314,6 +1362,7 @@ test("Layer Cake se consulta por WhatsApp sin precio inventado ni carrito", asyn
   await expect(layerCake.locator("img")).toHaveAttribute("src", "assets/layer-cake-fontana-pro.png");
   await expect(layerCake.locator(".product-safety")).toHaveCount(0);
   await expect(layerCake.locator(".add")).toHaveCount(0);
+  await openProductCard(page, layerCake);
   const quote = layerCake.getByRole("link", { name: "Consultar Layer Cake · Torta en capas por WhatsApp" });
   await expect(quote).toHaveAttribute("href", /https:\/\/wa\.me\/584244350800\?text=/);
   await expect(quote).toHaveAttribute("target", "_blank");
@@ -1335,6 +1384,7 @@ test("la torta personalizada usa la foto original y la experiencia muestra la ca
   await expect(customCake.getByRole("heading")).toHaveText("Torta completa personalizada");
   await expect(customCake.locator("img")).toHaveAttribute("src", "assets/torta-personalizada-fontana-pro-v2.jpg");
   await expect(customCake.locator(".price")).toHaveText("Cotizar");
+  await openProductCard(page, customCake);
   await expect(customCake.getByRole("link", { name: "Consultar Torta completa personalizada por WhatsApp" })).toBeVisible();
 
   const experience = page.locator(".experience-banner");
@@ -1408,7 +1458,8 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
     });
   });
   await openPreview(page);
-  await page.locator('[data-id="pistacho"] .add').click();
+  const cake = await openProductCard(page, '[data-id="pistacho"]');
+  await cake.locator(".add").click();
   await fillCheckout(page, { allergies: true });
   for (const option of ["Diabético", "Celíaco", "Leche", "Lactosa"]) {
     await page.getByLabel(option, { exact: true }).check();

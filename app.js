@@ -379,6 +379,74 @@
     });
   }
 
+  function setupProductCardFlips() {
+    $$(".product").forEach(card => {
+      if (card.classList.contains("product-flip-ready")) return;
+      const media = $(".product-media", card);
+      const body = $(".product-body", card);
+      const title = $(".product-top h3", body)?.textContent?.trim() || card.dataset.name || "Producto Fontana";
+      const price = $(".product-top .price", body)?.textContent?.trim() || "";
+      if (!media || !body) return;
+
+      const inner = document.createElement("div");
+      inner.className = "product-flip-inner";
+      const front = document.createElement("div");
+      front.className = "product-face product-front";
+      front.tabIndex = 0;
+      front.setAttribute("role", "button");
+      front.setAttribute("aria-expanded", "false");
+      front.setAttribute("aria-label", `Ver detalles de ${title}`);
+      const frontBody = document.createElement("div");
+      frontBody.className = "product-front-body";
+      frontBody.innerHTML = `<div class="product-front-copy"><span class="product-front-name" role="heading" aria-level="3">${escapeHtml(title)}</span>${price ? `<span class="product-front-price">${escapeHtml(price)}</span>` : ""}</div><span class="product-flip-hint">Ver detalles <b aria-hidden="true">↻</b></span>`;
+      front.append(media, frontBody);
+
+      const back = document.createElement("div");
+      back.className = "product-face product-back";
+      back.setAttribute("aria-hidden", "true");
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "product-flip-close";
+      close.setAttribute("aria-label", `Volver a la foto de ${title}`);
+      close.innerHTML = `<span aria-hidden="true">↻</span> Ver foto`;
+      back.append(close, body);
+      inner.append(front, back);
+      card.append(inner);
+      card.classList.add("product-flip-ready");
+
+      const resize = () => {
+        const activeFace = card.classList.contains("product-flipped") ? back : front;
+        inner.style.height = `${Math.ceil(activeFace.scrollHeight)}px`;
+      };
+      const setFlipped = (flipped, restoreFocus = false) => {
+        card.classList.toggle("product-flipped", flipped);
+        front.setAttribute("aria-expanded", String(flipped));
+        front.setAttribute("aria-hidden", String(flipped));
+        back.setAttribute("aria-hidden", String(!flipped));
+        requestAnimationFrame(resize);
+        if (restoreFocus) front.focus({ preventScroll: true });
+      };
+      const open = () => setFlipped(true);
+      front.addEventListener("click", open);
+      front.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        open();
+      });
+      close.addEventListener("click", event => {
+        event.stopPropagation();
+        setFlipped(false, true);
+      });
+      media.querySelector("img")?.addEventListener("load", resize, { once: true });
+      if (typeof ResizeObserver === "function") {
+        const resizeObserver = new ResizeObserver(resize);
+        resizeObserver.observe(front);
+        resizeObserver.observe(back);
+      }
+      requestAnimationFrame(resize);
+    });
+  }
+
   function renderDynamicCatalog() {
     const products = Array.isArray(config.dynamicCatalog) ? config.dynamicCatalog : [];
     const container = $("#products");
@@ -1661,6 +1729,7 @@
   setupElectricityNotice();
   setupWhatsappChatLink();
   enhanceProductSafety();
+  setupProductCardFlips();
   setupFonkieBuilder();
   setupFombBuilder();
   setupFitDialog();
