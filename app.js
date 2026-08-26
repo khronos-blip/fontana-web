@@ -786,9 +786,6 @@
         if (isInteractiveTarget(event.target) || event.target.closest(".product-media")) return;
         open(front);
       });
-      $(".add", body)?.addEventListener("click", () => {
-        if (card.classList.contains("product-expanded")) close();
-      });
       media.querySelector("img")?.addEventListener("load", resize, { once: true });
       requestAnimationFrame(resize);
     });

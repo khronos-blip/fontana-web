@@ -24,12 +24,25 @@ async function openFlavorChoice(page, builderSelector) {
 
 async function openProductCard(page, selector) {
   const card = typeof selector === "string" ? page.locator(selector) : selector;
+  const expanded = page.locator(".product-expanded");
+  const alreadyExpanded = await card.evaluate(element => element.classList.contains("product-expanded"));
+  if (!alreadyExpanded && await expanded.count()) {
+    await expanded.locator(".product-expanded-media").click();
+    await expect(expanded).toHaveCount(0, { timeout: 1500 });
+  }
   await expect(card).toHaveClass(/product-flip-ready/, { timeout: 10_000 });
   if (!(await card.evaluate(element => element.classList.contains("product-flipped")))) {
     await card.locator(".product-media").first().click();
   }
   await expect(card).toHaveClass(/product-flipped/);
   return card;
+}
+
+async function closeProductCard(page) {
+  const expanded = page.locator(".product-expanded");
+  if (!await expanded.count()) return;
+  await expanded.locator(".product-expanded-media").click();
+  await expect(expanded).toHaveCount(0, { timeout: 1500 });
 }
 
 async function seekPhysicalCardTurn(locator, currentTime = 430) {
@@ -237,6 +250,20 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   expect(expandedBox.x).toBeGreaterThanOrEqual(27);
   expect(expandedBox.y).toBeGreaterThanOrEqual(51);
 
+  const expandedPlus = back.locator(".add");
+  const expandedMinus = back.locator(".product-minus");
+  const expandedQuantity = back.locator(".product-menu-qty");
+  await expandedPlus.click();
+  await expect(expandedQuantity).toHaveText("1");
+  await expect(expandedMinus).toBeVisible();
+  await expect(card).toHaveClass(/product-expanded/);
+  await expect(card).not.toHaveClass(/product-expanded-closing/);
+  await expandedMinus.click();
+  await expect(page.locator("#cartCount")).toHaveText("0");
+  await expect(expandedMinus).toBeHidden();
+  await expect(card).toHaveClass(/product-expanded/);
+  await expect(card).not.toHaveClass(/product-expanded-closing/);
+
   await back.locator(".product-expanded-media").click();
   await expect(card).toHaveClass(/product-expanded-closing/);
   await seekPhysicalCardTurn(card);
@@ -278,6 +305,15 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   expect(desktopExpandedBox.height).toBeLessThanOrEqual(781);
   expect(desktopExpandedBox.x).toBeGreaterThanOrEqual(79);
   expect(desktopExpandedBox.y).toBeGreaterThanOrEqual(59);
+  const desktopBack = desktopCard.locator(".product-back");
+  await desktopBack.locator(".add").click();
+  await expect(desktopBack.locator(".product-menu-qty")).toHaveText("1");
+  await expect(desktopCard).toHaveClass(/product-expanded/);
+  await expect(desktopCard).not.toHaveClass(/product-expanded-closing/);
+  await desktopBack.locator(".product-minus").click();
+  await expect(page.locator("#cartCount")).toHaveText("0");
+  await expect(desktopCard).toHaveClass(/product-expanded/);
+  await expect(desktopCard).not.toHaveClass(/product-expanded-closing/);
   await page.locator(".product-flip-backdrop").click({ position: { x: 4, y: 4 } });
   await expect(desktopCard).not.toHaveClass(/product-flipped/);
 });
@@ -1097,6 +1133,7 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
   await openProductCard(page, panzerottis);
   await panzerottis.locator(".product-variant").selectOption({ label: "Mozzarella, salsa y pecorino" });
   await panzerottis.locator(".product-back .add").click();
+  await closeProductCard(page);
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item h4")).toContainText("Panzerottis");
   await expect(page.locator(".cart-choices")).toHaveText("Mozzarella, salsa y pecorino");
@@ -1105,6 +1142,7 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
   await raviolis.locator(".product-size").selectOption({ label: "300 g · USD 20,00" });
   await raviolis.locator(".product-variant").selectOption({ label: "Carne" });
   await raviolis.locator(".product-back .add").click();
+  await closeProductCard(page);
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" })).toContainText("USD 20,00");
   await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" }).locator(".cart-choices")).toHaveText("300 g · Carne");
@@ -1131,6 +1169,7 @@ test("las tortas bloquean hoy y mañana y exigen dos días de anticipación", as
   await openPreview(page);
   const cake = await openProductCard(page, '[data-id="pistacho"]');
   await cake.locator(".product-back .add").click();
+  await closeProductCard(page);
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   const expectedMinimumDate = await page.evaluate(() => {
@@ -1232,6 +1271,7 @@ test("el panel publica stock, etiquetas y pre-order sin romper el carrito", asyn
   await expect(ballerine.locator(".product-tags")).toContainText("EDICIÓN ESPECIAL");
   await openProductCard(page, ballerine);
   await ballerine.locator(".product-back .add").click();
+  await closeProductCard(page);
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días hábiles");
 });
@@ -1356,6 +1396,7 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
   await availableCake.locator(".product-back .add").click();
   const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
   await drink.locator(".product-back .add").click();
+  await closeProductCard(page);
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#customerName")).toHaveCSS("font-size", "16px");
@@ -1406,6 +1447,7 @@ test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async 
   await availableCake.locator(".product-back .add").click();
   const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
   await drink.locator(".product-back .add").click();
+  await closeProductCard(page);
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
 
@@ -1456,6 +1498,7 @@ test("una personalización vacía no agrega instrucciones al pedido", async ({ p
   const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
   await openProductCard(page, availableCake);
   await availableCake.locator(".product-back .add").click();
+  await closeProductCard(page);
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await page.locator("#customerName").fill("Andrea Pérez");
@@ -1482,6 +1525,7 @@ test("el checkout de escritorio aprovecha el ancho sin desbordar", async ({ page
   await availableCake.locator(".product-back .add").click();
   const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
   await drink.locator(".product-back .add").click();
+  await closeProductCard(page);
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#checkoutForm")).toBeVisible();
