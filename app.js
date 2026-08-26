@@ -6,6 +6,18 @@
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
   const adminStorageKey = "fontana-admin-catalog-v1";
   const localMode = ["localhost", "127.0.0.1"].includes(location.hostname);
+  let storefrontReady = false;
+  const pendingProductOpens = new Map();
+  document.addEventListener("click", event => {
+    if (storefrontReady) return;
+    const media = event.target.closest?.(".product-media");
+    const product = media?.closest?.(".product");
+    if (!product) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const id = product.dataset.productId || product.dataset.id;
+    if (id) pendingProductOpens.set(id, Boolean(product.dataset.productId));
+  }, true);
   let adminStateVerified = false;
   const adminState = await readAdminState();
   const productionWithElectricity = localMode ? adminState?.settings?.productionWithElectricity !== false : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
@@ -380,68 +392,143 @@
   }
 
   function setupProductCardFlips() {
+    let activeCard = null;
+    let activePlaceholder = null;
+    let restoreTarget = null;
+    let activeCloser = null;
+    const backdrop = document.createElement("div");
+    backdrop.className = "product-flip-backdrop";
+    backdrop.hidden = true;
+    document.body.append(backdrop);
+    backdrop.addEventListener("click", () => activeCloser?.());
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") activeCloser?.();
+    });
+
+    const isInteractiveTarget = target => Boolean(target.closest("button, a, input, select, textarea, label, summary, details"));
+
     $$(".product").forEach(card => {
       if (card.classList.contains("product-flip-ready")) return;
       const media = $(".product-media", card);
       const body = $(".product-body", card);
       const title = $(".product-top h3", body)?.textContent?.trim() || card.dataset.name || "Producto Fontana";
-      const price = $(".product-top .price", body)?.textContent?.trim() || "";
       if (!media || !body) return;
 
       const inner = document.createElement("div");
       inner.className = "product-flip-inner";
       const front = document.createElement("div");
       front.className = "product-face product-front";
-      front.tabIndex = 0;
-      front.setAttribute("role", "button");
-      front.setAttribute("aria-expanded", "false");
-      front.setAttribute("aria-label", `Ver detalles de ${title}`);
-      const frontBody = document.createElement("div");
-      frontBody.className = "product-front-body";
-      frontBody.innerHTML = `<div class="product-front-copy"><span class="product-front-name" role="heading" aria-level="3">${escapeHtml(title)}</span>${price ? `<span class="product-front-price">${escapeHtml(price)}</span>` : ""}</div><span class="product-flip-hint">Ver detalles <b aria-hidden="true">↻</b></span>`;
-      front.append(media, frontBody);
+      media.tabIndex = 0;
+      media.setAttribute("role", "button");
+      media.setAttribute("aria-expanded", "false");
+      media.setAttribute("aria-label", `Ampliar ${title}`);
+      const hint = document.createElement("span");
+      hint.className = "product-expand-hint";
+      hint.setAttribute("aria-hidden", "true");
+      hint.textContent = "Ampliar ↻";
+      media.append(hint);
+      front.append(media, body);
 
       const back = document.createElement("div");
       back.className = "product-face product-back";
       back.setAttribute("aria-hidden", "true");
-      const close = document.createElement("button");
-      close.type = "button";
-      close.className = "product-flip-close";
-      close.setAttribute("aria-label", `Volver a la foto de ${title}`);
-      close.innerHTML = `<span aria-hidden="true">↻</span> Ver foto`;
-      back.append(close, body);
+      back.tabIndex = -1;
       inner.append(front, back);
       card.append(inner);
       card.classList.add("product-flip-ready");
+      let frontSnapshot = null;
 
       const resize = () => {
-        const activeFace = card.classList.contains("product-flipped") ? back : front;
-        inner.style.height = `${Math.ceil(activeFace.scrollHeight)}px`;
+        if (card.classList.contains("product-expanded")) return;
+        inner.style.height = `${Math.ceil(front.scrollHeight)}px`;
       };
-      const setFlipped = (flipped, restoreFocus = false) => {
-        card.classList.toggle("product-flipped", flipped);
-        front.setAttribute("aria-expanded", String(flipped));
-        front.setAttribute("aria-hidden", String(flipped));
-        back.setAttribute("aria-hidden", String(!flipped));
-        requestAnimationFrame(resize);
-        if (restoreFocus) front.focus({ preventScroll: true });
+
+      const open = trigger => {
+        if (activeCard || card.classList.contains("product-expanded")) return;
+        restoreTarget = trigger || media;
+        const rect = card.getBoundingClientRect();
+        activePlaceholder = document.createElement("div");
+        activePlaceholder.className = "product-flip-placeholder";
+        activePlaceholder.style.height = `${Math.ceil(rect.height)}px`;
+        card.before(activePlaceholder);
+        activeCard = card;
+        activeCloser = close;
+        const imageUrl = $("img", media)?.currentSrc || $("img", media)?.src || "";
+        frontSnapshot = document.createElement("div");
+        frontSnapshot.className = "product-media product-front-snapshot";
+        frontSnapshot.setAttribute("aria-expanded", "true");
+        frontSnapshot.setAttribute("aria-hidden", "true");
+        if (imageUrl) frontSnapshot.style.backgroundImage = `url("${imageUrl.replace(/"/g, "\\\"")}")`;
+        front.replaceChildren(frontSnapshot);
+        media.classList.add("product-expanded-media");
+        media.setAttribute("aria-label", `Cerrar vista ampliada de ${title}`);
+        hint.textContent = "Toca la foto para cerrar";
+        body.classList.add("product-expanded-body");
+        back.append(media, body);
+        backdrop.hidden = false;
+        document.body.classList.add("product-modal-open");
+        card.classList.add("product-expanded");
+        front.setAttribute("aria-hidden", "true");
+        back.setAttribute("aria-hidden", "false");
+        media.setAttribute("aria-expanded", "true");
+        requestAnimationFrame(() => {
+          backdrop.classList.add("visible");
+          card.classList.add("product-expanded-open", "product-flipped");
+          back.focus({ preventScroll: true });
+        });
       };
-      const open = () => setFlipped(true);
-      front.addEventListener("click", open);
-      front.addEventListener("keydown", event => {
+
+      const close = (immediate = false) => {
+        if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
+        card.classList.add("product-expanded-closing");
+        card.classList.remove("product-expanded-open", "product-flipped");
+        backdrop.classList.remove("visible");
+        const restore = () => {
+          activePlaceholder?.remove();
+          activePlaceholder = null;
+          activeCard = null;
+          activeCloser = null;
+          card.classList.remove("product-expanded", "product-expanded-closing");
+          document.body.classList.remove("product-modal-open");
+          backdrop.hidden = true;
+          media.classList.remove("product-expanded-media");
+          media.setAttribute("aria-label", `Ampliar ${title}`);
+          hint.textContent = "Ampliar ↻";
+          body.classList.remove("product-expanded-body");
+          front.replaceChildren(media, body);
+          frontSnapshot = null;
+          front.setAttribute("aria-hidden", "false");
+          back.setAttribute("aria-hidden", "true");
+          media.setAttribute("aria-expanded", "false");
+          resize();
+          restoreTarget?.focus?.({ preventScroll: true });
+          restoreTarget = null;
+        };
+        if (immediate) restore();
+        else window.setTimeout(restore, 560);
+      };
+
+      media.addEventListener("click", event => {
+        event.stopPropagation();
+        if (card.classList.contains("product-expanded")) close();
+        else open(media);
+      });
+      media.addEventListener("keydown", event => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
-        open();
+        open(media);
       });
-      close.addEventListener("click", event => {
-        event.stopPropagation();
-        setFlipped(false, true);
+      front.addEventListener("click", event => {
+        if (isInteractiveTarget(event.target) || event.target.closest(".product-media")) return;
+        open(front);
+      });
+      $(".add", body)?.addEventListener("click", () => {
+        if (card.classList.contains("product-expanded")) close(true);
       });
       media.querySelector("img")?.addEventListener("load", resize, { once: true });
       if (typeof ResizeObserver === "function") {
         const resizeObserver = new ResizeObserver(resize);
         resizeObserver.observe(front);
-        resizeObserver.observe(back);
       }
       requestAnimationFrame(resize);
     });
@@ -1730,6 +1817,12 @@
   setupWhatsappChatLink();
   enhanceProductSafety();
   setupProductCardFlips();
+  storefrontReady = true;
+  pendingProductOpens.forEach((usesProductId, id) => {
+    const attribute = usesProductId ? "data-product-id" : "data-id";
+    document.querySelector(`[${attribute}="${CSS.escape(id)}"] .product-media`)?.click();
+  });
+  pendingProductOpens.clear();
   setupFonkieBuilder();
   setupFombBuilder();
   setupFitDialog();

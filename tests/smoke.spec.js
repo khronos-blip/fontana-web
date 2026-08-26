@@ -20,13 +20,18 @@ async function openFlavorChoice(page, builderSelector) {
 async function openProductCard(page, selector) {
   const card = typeof selector === "string" ? page.locator(selector) : selector;
   if (!(await card.evaluate(element => element.classList.contains("product-flipped")))) {
-    await card.locator(".product-front").click();
+    await card.locator(".product-media").first().click();
   }
   await expect(card).toHaveClass(/product-flipped/);
   return card;
 }
 
 async function fillCheckout(page, { allergies = false, birthdayCandle = false } = {}) {
+  const expandedPhoto = page.locator(".product-expanded .product-expanded-media");
+  if (await expandedPhoto.isVisible()) {
+    await expandedPhoto.click();
+    await expect(page.locator(".product-expanded")).toHaveCount(0);
+  }
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await page.locator("#customerName").fill("Andrea Pérez");
@@ -49,7 +54,7 @@ async function fillCheckout(page, { allergies = false, birthdayCandle = false } 
 test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   await openPreview(page);
   const cake = await openProductCard(page, '[data-id="pistacho"]');
-  await cake.locator(".add").click();
+  await cake.locator(".product-back .add").click();
   await expect(page.locator("#cartCount")).toHaveText("1");
   await fillCheckout(page);
   await page.locator('#checkoutForm button[type="submit"]').click();
@@ -72,7 +77,7 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
 test("checkout ofrece vela de cumpleaños solo cuando el pedido incluye una torta", async ({ page }) => {
   await openPreview(page);
   const cake = await openProductCard(page, '[data-id="pistacho"]');
-  await cake.locator(".add").click();
+  await cake.locator(".product-back .add").click();
   await fillCheckout(page, { birthdayCandle: true });
   await expect(page.locator("#birthdayCandlePanel")).toBeVisible();
   await expect(page.locator('input[name="birthdayCandle"]')).toHaveCount(2);
@@ -84,7 +89,7 @@ test("checkout ofrece vela de cumpleaños solo cuando el pedido incluye una tort
   await page.reload();
   await page.getByRole("button", { name: "Bebida" }).click();
   const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
-  await drink.locator(".add").click();
+  await drink.locator(".product-back .add").click();
   await fillCheckout(page);
   await expect(page.locator("#birthdayCandlePanel")).toBeHidden();
   await page.locator('#checkoutForm button[type="submit"]').click();
@@ -115,12 +120,11 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
   });
   await openPreview(page);
   const card = page.locator('[data-product-id="ballerine"]');
-  const plus = card.locator(".add");
-  const minus = card.locator(".product-minus");
-  const quantity = card.locator(".product-menu-qty");
+  const plus = card.locator(".product-front .add");
+  const minus = card.locator(".product-front .product-minus");
+  const quantity = card.locator(".product-front .product-menu-qty");
 
   await expect(minus).toBeHidden();
-  await card.locator(".product-front").click();
   await plus.evaluate(button => {
     for (let index = 0; index < 5; index += 1) button.click();
   });
@@ -142,18 +146,18 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
 
   await page.setViewportSize({ width: 1366, height: 900 });
   const desktopCard = page.locator('[data-product-id="ballerine"]');
-  await desktopCard.locator(".add").evaluate(button => {
+  await desktopCard.locator(".product-front .add").evaluate(button => {
     button.click();
     button.click();
   });
-  await expect(desktopCard.locator(".product-menu-qty")).toHaveText("2");
-  await expect(desktopCard.locator(".product-minus")).toBeVisible();
+  await expect(desktopCard.locator(".product-front .product-menu-qty")).toHaveText("2");
+  await expect(desktopCard.locator(".product-front .product-minus")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await desktopCard.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("controles-rapidos-producto-escritorio.png"), fullPage: false });
 });
 
-test("las tarjetas de producto giran para mostrar y ocultar sus detalles", async ({ page }) => {
+test("las tarjetas conservan la compra al frente y crecen al girar", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   const card = page.locator('[data-product-id="pistacho-clasico"]');
@@ -162,16 +166,24 @@ test("las tarjetas de producto giran para mostrar y ocultar sus detalles", async
 
   await expect(front).toBeVisible();
   await expect(back).toBeHidden();
-  await front.click();
+  await expect(front.locator(".product-safety")).toBeVisible();
+  await expect(front.locator(".add")).toBeVisible();
+  const compactBox = await card.boundingBox();
+  await front.locator(".product-media").click();
   await expect(card).toHaveClass(/product-flipped/);
-  await expect(front).toHaveAttribute("aria-expanded", "true");
+  await expect(front.locator(".product-media")).toHaveAttribute("aria-expanded", "true");
   await expect(back).toBeVisible();
+  await expect(back.locator(".product-expanded-media img")).toBeVisible();
   await expect(back.locator(".product-safety")).toBeVisible();
   await expect(back.locator(".add")).toBeVisible();
+  await page.waitForTimeout(650);
+  const expandedBox = await card.boundingBox();
+  expect(expandedBox.width).toBeGreaterThan(compactBox.width * 1.8);
+  expect(expandedBox.height).toBeGreaterThan(compactBox.height * 1.4);
 
-  await back.locator(".product-flip-close").click();
+  await back.locator(".product-expanded-media").click();
   await expect(card).not.toHaveClass(/product-flipped/);
-  await expect(front).toBeFocused();
+  await expect(front.locator(".product-media")).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
@@ -346,10 +358,10 @@ test("salados con stock cero pasan a Pre-Order y las tortas no cambian", async (
   await openPreview(page);
   const salado = page.locator('[data-product-id="salado-cero"]');
   await expect(salado.locator(".product-tags")).toContainText("PRE-ORDER");
-  await expect(salado.locator(".add")).toHaveText("PRE-ORDER");
-  await salado.locator(".product-front").click();
+  await expect(salado.locator(".product-front .add")).toHaveText("PRE-ORDER");
+  await salado.locator(".product-media").first().click();
   await expect(salado).toHaveClass(/product-flipped/);
-  await salado.locator(".add").click();
+  await salado.locator(".product-back .add").click();
   await expect(page.locator("#cartCount")).toHaveText("1");
   await expect(page.locator('[data-product-id="torta-cero"] .add')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -811,7 +823,7 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
   ]);
   await openProductCard(page, panzerottis);
   await panzerottis.locator(".product-variant").selectOption({ label: "Mozzarella, salsa y pecorino" });
-  await panzerottis.locator(".add").click();
+  await panzerottis.locator(".product-back .add").click();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item h4")).toContainText("Panzerottis");
   await expect(page.locator(".cart-choices")).toHaveText("Mozzarella, salsa y pecorino");
@@ -819,7 +831,7 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
   await openProductCard(page, raviolis);
   await raviolis.locator(".product-size").selectOption({ label: "300 g · USD 20,00" });
   await raviolis.locator(".product-variant").selectOption({ label: "Carne" });
-  await raviolis.locator(".add").click();
+  await raviolis.locator(".product-back .add").click();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" })).toContainText("USD 20,00");
   await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" }).locator(".cart-choices")).toHaveText("300 g · Carne");
@@ -845,7 +857,7 @@ test("un sabor salado agotado cambia automáticamente a Pre-Order", async ({ pag
 test("las tortas bloquean hoy y mañana y exigen dos días de anticipación", async ({ page }) => {
   await openPreview(page);
   const cake = await openProductCard(page, '[data-id="pistacho"]');
-  await cake.locator(".add").click();
+  await cake.locator(".product-back .add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   const expectedMinimumDate = await page.evaluate(() => {
@@ -946,7 +958,7 @@ test("el panel publica stock, etiquetas y pre-order sin romper el carrito", asyn
   await expect(ballerine.locator(".product-tags")).toContainText("NUEVO");
   await expect(ballerine.locator(".product-tags")).toContainText("EDICIÓN ESPECIAL");
   await openProductCard(page, ballerine);
-  await ballerine.locator(".add").click();
+  await ballerine.locator(".product-back .add").click();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días hábiles");
 });
@@ -1068,9 +1080,9 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
     card.appendChild(presentation);
   });
   await openProductCard(page, availableCake);
-  await availableCake.locator(".add").click();
+  await availableCake.locator(".product-back .add").click();
   const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
-  await drink.locator(".add").click();
+  await drink.locator(".product-back .add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#customerName")).toHaveCSS("font-size", "16px");
@@ -1118,9 +1130,9 @@ test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async 
   await page.waitForLoadState("networkidle");
   const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
   await openProductCard(page, availableCake);
-  await availableCake.locator(".add").click();
+  await availableCake.locator(".product-back .add").click();
   const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
-  await drink.locator(".add").click();
+  await drink.locator(".product-back .add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
 
@@ -1170,7 +1182,7 @@ test("una personalización vacía no agrega instrucciones al pedido", async ({ p
   await page.waitForLoadState("networkidle");
   const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
   await openProductCard(page, availableCake);
-  await availableCake.locator(".add").click();
+  await availableCake.locator(".product-back .add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await page.locator("#customerName").fill("Andrea Pérez");
@@ -1194,9 +1206,9 @@ test("el checkout de escritorio aprovecha el ancho sin desbordar", async ({ page
   await page.waitForLoadState("networkidle");
   const availableCake = page.locator('[data-category="cakes"]').filter({ has: page.locator(".add") }).first();
   await openProductCard(page, availableCake);
-  await availableCake.locator(".add").click();
+  await availableCake.locator(".product-back .add").click();
   const drink = await openProductCard(page, '[data-product-id="agua-minalba-600"]');
-  await drink.locator(".add").click();
+  await drink.locator(".product-back .add").click();
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#checkoutForm")).toBeVisible();
@@ -1459,7 +1471,7 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
   });
   await openPreview(page);
   const cake = await openProductCard(page, '[data-id="pistacho"]');
-  await cake.locator(".add").click();
+  await cake.locator(".product-back .add").click();
   await fillCheckout(page, { allergies: true });
   for (const option of ["Diabético", "Celíaco", "Leche", "Lactosa"]) {
     await page.getByLabel(option, { exact: true }).check();
