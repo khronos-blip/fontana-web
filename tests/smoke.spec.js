@@ -466,7 +466,7 @@ test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({
   }
 });
 
-test("las tarjetas de cada categoría conservan altura y pie simétricos", async ({ page }) => {
+test("las tarjetas conservan altura y pie simétricos dentro de cada fila visual", async ({ page }) => {
   for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
     await page.setViewportSize(viewport);
     await openPreview(page);
@@ -475,17 +475,24 @@ test("las tarjetas de cada categoría conservan altura y pie simétricos", async
     await expect.poll(() => page.locator(".catalog-group-grid").evaluateAll(grids => grids.filter(grid => (
       grid.querySelectorAll(".product:not(.hidden)").length > 1
     )).length), { timeout: 15_000 }).toBeGreaterThan(2);
-    const geometries = await page.locator(".catalog-group-grid").evaluateAll(grids => grids.map(grid => {
+    const geometries = await page.locator(".catalog-group-grid").evaluateAll(grids => grids.flatMap(grid => {
       const cards = [...grid.querySelectorAll(".product:not(.hidden)")];
-      return cards.map(card => {
+      const rows = [];
+      cards.forEach(card => {
+        const top = Math.round(card.getBoundingClientRect().top);
+        const row = rows.find(candidate => Math.abs(candidate.top - top) <= 2);
+        if (row) row.cards.push(card);
+        else rows.push({ top, cards: [card] });
+      });
+      return rows.filter(row => row.cards.length > 1).map(row => row.cards.map(card => {
         const box = card.getBoundingClientRect();
         const footer = card.querySelector(".product-front .product-footer")?.getBoundingClientRect();
         return {
           height: Math.round(box.height),
           footerBottom: footer ? Math.round(box.bottom - footer.bottom) : null
         };
-      });
-    }).filter(group => group.length > 1));
+      }));
+    }));
     expect(geometries.length).toBeGreaterThan(2);
     for (const geometry of geometries) {
       expect(Math.max(...geometry.map(item => item.height)) - Math.min(...geometry.map(item => item.height))).toBeLessThanOrEqual(1);
@@ -494,6 +501,37 @@ test("las tarjetas de cada categoría conservan altura y pie simétricos", async
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }
+});
+
+test("Salados compacta el frente y conserva todas las opciones al ampliar", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await page.getByRole("button", { name: "Salado" }).click();
+  const raviolis = page.locator('[data-product-id="raviolis"]');
+  const tequenos = page.locator('[data-product-id="tequenos-fit"]');
+  const nuggets = page.locator('[data-product-id="nuggets-rora"]');
+  await expect(raviolis.locator(".product-front .product-variants")).toHaveCount(2);
+  await expect(raviolis.locator(".product-front .product-variants").first()).toBeHidden();
+  await expect(raviolis.locator(".product-selection-summary")).toBeVisible();
+  await expect(raviolis.locator(".product-selection-summary strong")).toHaveText("180 g · Carne");
+
+  const tequenosBox = await tequenos.boundingBox();
+  const raviolisBox = await raviolis.boundingBox();
+  expect(Math.abs(tequenosBox.height - raviolisBox.height)).toBeLessThanOrEqual(1);
+
+  await raviolis.locator(".product-selection-summary").click();
+  await expect(raviolis).toHaveClass(/product-expanded/);
+  await expect(raviolis.locator(".product-back .product-variants")).toHaveCount(2);
+  await expect(raviolis.locator(".product-back .product-variants").first()).toBeVisible();
+  await raviolis.locator(".product-back .product-size").selectOption("300 g");
+  await raviolis.locator(".product-back .product-variant").selectOption("Carne");
+  await raviolis.locator(".product-expanded-media").click();
+  await expect(raviolis).not.toHaveClass(/product-expanded/, { timeout: 1500 });
+  await expect(raviolis.locator(".product-selection-summary strong")).toHaveText("300 g · Carne");
+
+  const nuggetsBox = await nuggets.boundingBox();
+  expect(nuggetsBox.height).toBeLessThan(raviolisBox.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
@@ -842,16 +880,25 @@ test("el nombre entra en ola y las hojas aparecen detrás de la F sin fuente", a
   expect(secondTransform[0]).not.toBe(secondTransform[1]);
   expect(secondShapes).not.toEqual(firstShapes);
   await page.waitForTimeout(800);
-  await expect(wordSlices.last()).toHaveCSS("opacity", "1");
+  await expect(page.locator(".hero-logo-wordmark")).toHaveCSS("visibility", "hidden");
+  await expect(logo).toHaveCSS("clip-path", /^inset\(0px(?: 0px 0%)?\)$/);
   await expect(leafStage).toHaveCSS("opacity", "1");
   await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-movil.png"), fullPage: false });
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: testInfo.outputPath("hojas-asomandose-escritorio.png"), fullPage: false });
 
+  await page.evaluate(() => window.scrollTo(0, document.querySelector(".hero").offsetHeight + 120));
+  await expect(leaves.first()).toHaveCSS("animation-play-state", "paused");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(leaves.first()).toHaveCSS("animation-play-state", "running");
+
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(wordSlices.first()).toHaveCSS("animation-name", "none");
-  await expect(wordSlices.first()).toHaveCSS("opacity", "1");
+  await expect(wordSlices.first()).toHaveCSS("opacity", "0");
+  await expect(wordSlices.first()).toHaveCSS("visibility", "hidden");
+  await expect(page.locator(".hero-logo-wordmark")).toHaveCSS("visibility", "hidden");
+  await expect(logo).toHaveCSS("clip-path", "none");
   await expect(leafStage).toHaveCSS("animation-name", "none");
   await expect(leafStage).toHaveCSS("opacity", "1");
   await expect(leaves.first()).toHaveCSS("animation-name", "none");
@@ -1648,12 +1695,29 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   expect(browserErrors).toEqual([]);
 });
 
-test("Elige tu antojo se prepara en la primera carga de escritorio", async ({ page }) => {
-  await page.setViewportSize({ width: 1366, height: 900 });
-  await openPreview(page);
-  await expect(page.locator(".menu-intro")).toHaveClass(/menu-intro-visible/);
-  await expect(page.locator(".menu-title-letter").first()).toHaveCSS("opacity", "1");
-  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+test("Elige tu antojo se activa al entrar en pantalla, no antes", async ({ page }) => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    const intro = page.locator(".menu-intro");
+    await expect(intro).not.toHaveClass(/menu-intro-visible/);
+    const initial = await intro.evaluate(element => ({
+      top: element.getBoundingClientRect().top,
+      viewportHeight: window.innerHeight,
+      scrollY: window.scrollY
+    }));
+    expect(initial.top).toBeGreaterThan(initial.viewportHeight);
+    expect(initial.scrollY).toBe(0);
+
+    await intro.scrollIntoViewIfNeeded();
+    await expect(intro).toHaveClass(/menu-intro-visible/);
+    await expect(page.locator(".menu-title-letter").first()).toHaveCSS("animation-name", "menu-letter-in");
+    const activation = await intro.evaluate(element => ({
+      top: element.getBoundingClientRect().top,
+      viewportHeight: window.innerHeight
+    }));
+    expect(activation.top).toBeLessThanOrEqual(activation.viewportHeight * 0.88 + 2);
+  }
 });
 
 test("el bloque negro fue eliminado y el footer centra la marca", async ({ page }) => {
@@ -1664,6 +1728,10 @@ test("el bloque negro fue eliminado y el footer centra la marca", async ({ page 
   await expect(page.locator(".nav .brand-seal")).toHaveCount(1);
   await expect(page.locator(".nav .brand-symbol, .nav .brand-wordmark")).toHaveCount(0);
   await expect(page.locator("#cartButton .hamburger-icon")).toBeVisible();
+  await page.locator("img").evaluateAll(images => images.forEach(image => {
+    image.loading = "eager";
+  }));
+  await expect.poll(async () => page.locator("img").evaluateAll(images => images.filter(image => !image.complete).length)).toBe(0);
   const brokenImages = await page.locator("img").evaluateAll(images => images.filter(image => !image.naturalWidth).map(image => image.getAttribute("src")));
   expect(brokenImages).toEqual([]);
 });

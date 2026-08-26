@@ -329,7 +329,7 @@
       const chooser = $(".fonkie-flavors", fonkieBuilder);
       const count = $(".gallery-label-meta span", fonkieBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="fonkie-gallery-card${sold ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
+      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="fonkie-gallery-card${sold ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`; }).join("");
       const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       fonkieBuilder.dataset.ingredients = availableIngredients;
@@ -356,7 +356,7 @@
       const chooser = $(".fomb-flavors", fombBuilder);
       const count = $(".gallery-label-meta span", fombBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="builder-gallery-card${sold ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
+      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="builder-gallery-card${sold ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`; }).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
@@ -405,11 +405,30 @@
         inner.style.height = "";
         if (front) front.style.height = "auto";
       });
-      const tallest = Math.max(...cards.map(card => Math.ceil($(".product-front", card)?.scrollHeight || 0)));
-      if (tallest > 0) cards.forEach(card => {
-        const inner = $(".product-flip-inner", card);
-        if (inner) inner.style.height = `${tallest}px`;
-      });
+      const isSaladoGrid = grid.closest('[data-catalog-group="salado"]');
+      if (isSaladoGrid) {
+        const rows = [];
+        cards.forEach(card => {
+          const top = Math.round(card.offsetTop);
+          const row = rows.find(candidate => Math.abs(candidate.top - top) <= 2);
+          if (row) row.cards.push(card);
+          else rows.push({ top, cards: [card] });
+        });
+        rows.forEach(row => {
+          const tallest = Math.max(...row.cards.map(card => Math.ceil($(".product-front", card)?.scrollHeight || 0)));
+          if (tallest <= 0) return;
+          row.cards.forEach(card => {
+            const inner = $(".product-flip-inner", card);
+            if (inner) inner.style.height = `${tallest}px`;
+          });
+        });
+      } else {
+        const tallest = Math.max(...cards.map(card => Math.ceil($(".product-front", card)?.scrollHeight || 0)));
+        if (tallest > 0) cards.forEach(card => {
+          const inner = $(".product-flip-inner", card);
+          if (inner) inner.style.height = `${tallest}px`;
+        });
+      }
       cards.forEach(card => {
         const front = $(".product-front", card);
         if (front) front.style.height = "";
@@ -786,6 +805,20 @@
         if (isInteractiveTarget(event.target) || event.target.closest(".product-media")) return;
         open(front);
       });
+      $(".product-selection-summary", card)?.addEventListener("click", event => {
+        event.stopPropagation();
+        open(event.currentTarget);
+      });
+      card.addEventListener("change", event => {
+        if (!event.target.matches(".product-size,.product-variant")) return;
+        const selection = $$(".product-size,.product-variant", body)
+          .map(control => control.value)
+          .filter(Boolean)
+          .join(" · ");
+        $$(".product-selection-summary strong", card).forEach(summary => {
+          summary.textContent = selection;
+        });
+      });
       media.querySelector("img")?.addEventListener("load", resize, { once: true });
       requestAnimationFrame(resize);
     });
@@ -1080,7 +1113,7 @@
       if (stockTodayOpen && product.immediate) badges.push("STOCK DE HOY");
       (Array.isArray(product.customLabels) ? product.customLabels : []).forEach(label => { if (label) badges.push(String(label).slice(0,40)); });
       const image = product.image
-        ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(name)}">`
+        ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(name)}" loading="lazy" decoding="async">`
         : `<div class="product-placeholder"><div><b>${escapeHtml(name)}</b><small>Foto por actualizar</small></div></div>`;
       const sizePrices = availableSizes.map(size => Number(size.price)).filter(value => Number.isFinite(value));
       const minimumSizePrice = sizePrices.length ? Math.min(...sizePrices) : null;
@@ -1099,6 +1132,12 @@
         const unavailable = optionSold && !optionPreorder;
         return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" data-sold-out="${optionSold}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${optionSold ? optionPreorder ? " · Pre-Order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
+      const compactSelection = category === "salado" && (sizes.length || variants.length)
+        ? `<button type="button" class="product-selection-summary" aria-label="Elegir presentación y opciones de ${escapeHtml(name)}"><span>Tu selección</span><strong>${escapeHtml([
+            sizes.find(size => size.status !== "sold-out" && size.stockQuantity !== 0)?.name || sizes[0]?.name,
+            variants.find(variant => variant.status !== "sold-out" && variant.stockQuantity !== 0)?.name || variants[0]?.name
+          ].filter(Boolean).join(" · "))}</strong><em>Ver opciones</em></button>`
+        : "";
       const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => { const statusClass = badge === "TEMPORALMENTE NO DISPONIBLE" || badge === "AGOTADO" ? " status-unavailable" : badge === "PRE-ORDER" ? " status-preorder" : ""; return `<span class="product-tag${index ? " secondary" : ""}${statusClass}">${escapeHtml(badge)}</span>`; }).join("")}</div>` : "";
       const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
       const quoteText = `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
@@ -1106,7 +1145,7 @@
         ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">Consultar por WhatsApp</a>`
         : "";
       const footerCopy = product.weight || product.availabilityLabel;
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${stockTodayOpen && Boolean(product.immediate)}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${stockTodayOpen && Boolean(product.immediate)}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
@@ -2171,34 +2210,42 @@
       intro.classList.add("menu-intro-visible");
       section?.classList.add("menu-entry-visible");
       observer?.disconnect();
-      window.removeEventListener("scroll", revealIfNear);
-      window.removeEventListener("pageshow", revealIfNear);
     };
-    const revealIfNear = () => {
-      const bounds = intro.getBoundingClientRect();
-      if (bounds.top <= window.innerHeight * 1.25 && bounds.bottom >= 0) reveal();
-    };
-    if (!("IntersectionObserver" in window)) {
+    if (typeof window.IntersectionObserver !== "function") {
       reveal();
       return;
     }
     observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return;
       reveal();
-    }, { rootMargin: "0px 0px 25% 0px", threshold: 0.01 });
+    }, { rootMargin: "0px 0px -12% 0px", threshold: 0.05 });
     observer.observe(intro);
-    window.addEventListener("scroll", revealIfNear, { passive: true });
-    window.addEventListener("pageshow", revealIfNear);
-    requestAnimationFrame(revealIfNear);
   }
 
   function setupHeroLeafMotion() {
     const leaves = $(".hero-logo-leaves");
+    const mark = leaves?.closest(".hero-logo-mark");
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!leaves || !reducedMotion || typeof leaves.pauseAnimations !== "function") return;
-    const syncMotion = () => reducedMotion.matches ? leaves.pauseAnimations() : leaves.unpauseAnimations();
+    if (!leaves || !mark || !reducedMotion || typeof leaves.pauseAnimations !== "function") return;
+    let intersectsViewport = true;
+    const syncMotion = () => {
+      const shouldPause = reducedMotion.matches || document.hidden || !intersectsViewport;
+      mark.classList.toggle("hero-motion-paused", shouldPause);
+      if (shouldPause) leaves.pauseAnimations();
+      else leaves.unpauseAnimations();
+    };
     syncMotion();
     reducedMotion.addEventListener?.("change", syncMotion);
+    document.addEventListener("visibilitychange", syncMotion);
+    if (typeof window.IntersectionObserver === "function") {
+      const observer = new IntersectionObserver(entries => {
+        const entry = entries[0];
+        if (!entry) return;
+        intersectsViewport = entry.isIntersecting;
+        syncMotion();
+      }, { threshold: 0 });
+      observer.observe(mark);
+    }
   }
 
   function setupTestimonialsCarousel() {
