@@ -1,7 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://fontanasingluten.com/</loc>
-    <lastmod>2026-08-20</lastmod>
+    <lastmod>2026-08-26</lastmod>
+    <image:image><image:loc>https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/manjar-naranja.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/zanahoria-fontana-v2.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/pistacho-fontana-v4.webp</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/chocolate-fontana-v2.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/vanilla-chips-fontana-v2.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/lemon-fontana-v2.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/fonkie-dark-chocolate-chips-fontana-pro.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/fomb-pistachio-fontana-pro.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/layer-cake-fontana-pro.webp</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/panzerottis-fontana-pro.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/tequenos-fit-fontana-pro.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/ravioli-fontana-pro.jpg</image:loc></image:image>
+    <image:image><image:loc>https://fontanasingluten.com/assets/nuggets-rora-fontana-pro.jpg</image:loc></image:image>
   </url>
 </urlset>

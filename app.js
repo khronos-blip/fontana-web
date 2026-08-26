@@ -35,6 +35,15 @@
   let stockValidationPending = false;
   const productAddQueues = new Map();
   const automaticPreorderCategories = new Set(["salado"]);
+  const optimizedAssetPaths = new Map([
+    ["assets/pistacho-fontana-v4.png", "assets/pistacho-fontana-v4.webp"],
+    ["assets/layer-cake-fontana-pro.png", "assets/layer-cake-fontana-pro.webp"]
+  ]);
+
+  function optimizedProductImage(image) {
+    const path = String(image || "");
+    return optimizedAssetPaths.get(path) || path;
+  }
 
   function productAllowsAutomaticPreorder(product) {
     return automaticPreorderCategories.has(String(product?.category || ""));
@@ -72,7 +81,10 @@
     config.dynamicCatalog = [
       ...adminState.products.filter(product => !product.deleted && product.visible !== false),
       ...newlyConfiguredProducts
-    ].map(product => productAllowsAutomaticPreorder(product) ? {...product, allowPreorder:true} : product);
+    ].map(product => {
+      const normalized = {...product, image:optimizedProductImage(product.image)};
+      return productAllowsAutomaticPreorder(normalized) ? {...normalized, allowPreorder:true} : normalized;
+    });
     config.dynamicCatalog.forEach(product => {
       if (!product.id || !Number.isFinite(Number(product.minimumBusinessDays))) return;
       config.leadTimesByProduct ||= {};

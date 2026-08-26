@@ -6,29 +6,35 @@
   <meta name="theme-color" content="#6e236f">
   <meta name="apple-mobile-web-app-title" content="Fontana">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
-  <meta name="description" content="Tortas, galletas, bombones y opciones saladas sin gluten en Carabobo. Pickup en Mañongo, delivery y pedidos directos por WhatsApp.">
+  <meta name="description" content="Tortas, Fonkies, bombones y opciones saladas sin gluten en Carabobo. Pickup en Mañongo, delivery y pedidos directos por WhatsApp.">
   <link rel="canonical" href="https://fontanasingluten.com/">
+  <link rel="alternate" hreflang="es-VE" href="https://fontanasingluten.com/">
+  <link rel="alternate" hreflang="x-default" href="https://fontanasingluten.com/">
   <link rel="icon" type="image/png" href="assets/fontana-logo-official.png?v=20260822">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/fontana-logo-official.png?v=20260822">
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preload" as="image" href="assets/fontana-logo-official-reverse-base.png" fetchpriority="high">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
-  <meta property="og:title" content="Fontana sin gluten en Carabobo | Postres y comidas fit">
-  <meta property="og:description" content="Tortas, galletas, bombones y opciones saladas sin gluten. Pickup en Mañongo, delivery en Carabobo y pedidos por WhatsApp.">
+  <meta property="og:title" content="Postres sin gluten en Carabobo | Fontana">
+  <meta property="og:description" content="Tortas, Fonkies, bombones y opciones saladas sin gluten. Pickup en Mañongo, delivery en Carabobo y pedidos por WhatsApp.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://fontanasingluten.com/">
   <meta property="og:site_name" content="Fontana sin gluten">
   <meta property="og:locale" content="es_VE">
   <meta property="og:image" content="https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg">
+  <meta property="og:image:secure_url" content="https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg">
+  <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1448">
   <meta property="og:image:height" content="1086">
   <meta property="og:image:alt" content="Torta Fontana de pistacho y frambuesa">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Fontana sin gluten en Carabobo">
-  <meta name="twitter:description" content="Tortas, galletas, bombones y opciones saladas sin gluten con pickup en Mañongo y delivery en Carabobo.">
+  <meta name="twitter:title" content="Postres sin gluten en Carabobo | Fontana">
+  <meta name="twitter:description" content="Tortas, Fonkies, bombones y opciones saladas sin gluten con pickup en Mañongo y delivery en Carabobo.">
   <meta name="twitter:image" content="https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg">
-  <title>Fontana sin gluten en Carabobo | Postres y comidas fit</title>
+  <meta name="twitter:image:alt" content="Torta Fontana de pistacho y frambuesa">
+  <title>Postres sin gluten en Carabobo | Fontana</title>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -39,19 +45,49 @@
         "url": "https://fontanasingluten.com/",
         "name": "Fontana sin gluten",
         "alternateName": "Fontana",
-        "inLanguage": "es-VE"
+        "inLanguage": "es-VE",
+        "publisher": { "@id": "https://fontanasingluten.com/#business" }
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://fontanasingluten.com/#webpage",
+        "url": "https://fontanasingluten.com/",
+        "name": "Postres sin gluten en Carabobo | Fontana",
+        "description": "Tortas, Fonkies, bombones y opciones saladas sin gluten en Carabobo, con pickup en Mañongo y delivery.",
+        "inLanguage": "es-VE",
+        "isPartOf": { "@id": "https://fontanasingluten.com/#website" },
+        "about": { "@id": "https://fontanasingluten.com/#business" },
+        "primaryImageOfPage": {
+          "@type": "ImageObject",
+          "url": "https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg",
+          "width": 1448,
+          "height": 1086,
+          "caption": "Torta Fontana de pistacho y frambuesa"
+        }
       },
       {
         "@type": "FoodEstablishment",
         "@id": "https://fontanasingluten.com/#business",
         "name": "Fontana sin gluten",
         "url": "https://fontanasingluten.com/",
-        "description": "Tortas, galletas, bombones y opciones saladas sin gluten con pickup en Mañongo y delivery en Carabobo.",
+        "mainEntityOfPage": { "@id": "https://fontanasingluten.com/#webpage" },
+        "description": "Tortas, Fonkies, bombones y opciones saladas sin gluten con pickup en Mañongo y delivery en Carabobo.",
         "image": "https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg",
         "logo": "https://fontanasingluten.com/assets/fontana-seal-transparent.png",
         "telephone": "+58 424-4350800",
         "servesCuisine": "Cocina sin gluten",
         "hasMenu": "https://fontanasingluten.com/#menu",
+        "hasOfferCatalog": {
+          "@type": "OfferCatalog",
+          "name": "Menú Fontana",
+          "itemListElement": [
+            { "@type": "OfferCatalog", "name": "Tortas sin gluten" },
+            { "@type": "OfferCatalog", "name": "Fonkies" },
+            { "@type": "OfferCatalog", "name": "Bombones" },
+            { "@type": "OfferCatalog", "name": "Opciones saladas sin gluten" },
+            { "@type": "OfferCatalog", "name": "Bebidas" }
+          ]
+        },
         "sameAs": [
           "https://www.instagram.com/fontanasingluten/"
         ],
@@ -793,7 +829,7 @@
   <div class="topbar">DELIVERY EN TODO CARABOBO + PICKUP EN MAÑONGO · 9:30 AM — 6:00 PM</div>
   <nav class="nav" id="nav">
     <div class="container nav-inner">
-      <a class="brand" href="#inicio" aria-label="Fontana, inicio"><img class="brand-seal" src="assets/fontana-seal-transparent.png" alt="Fontana"></a>
+      <a class="brand" href="#inicio" aria-label="Fontana, inicio"><img class="brand-seal" src="assets/fontana-seal-transparent.png" alt="Fontana" width="1080" height="1080"></a>
       <div class="nav-links"><a href="#menu">Menú</a><a href="#para-ti">¿Es para ti?</a><a href="#resenas">Reseñas</a><a href="#ubicacion">Ubicación</a></div>
       <div class="nav-actions">
         <a class="btn btn-primary" href="#menu">Ver delicias</a>
@@ -811,9 +847,9 @@
     <header class="hero" id="inicio">
       <div class="container hero-grid">
         <div class="hero-copy">
-          <h1 class="sr-only">Fontana sin gluten: postres y comidas fit en Carabobo</h1>
+          <h1 class="sr-only">Fontana sin gluten: postres en Carabobo</h1>
           <div class="hero-logo-mark">
-            <img class="hero-logo" src="assets/fontana-logo-official-reverse-base.png" alt="Fontana">
+            <img class="hero-logo" src="assets/fontana-logo-official-reverse-base.png" alt="Fontana" width="1080" height="1080" fetchpriority="high">
             <div class="hero-logo-wordmark" aria-hidden="true">
               <span class="hero-logo-word-slice" style="--slice-left:12%;--slice-right:76%;--wave-index:0"></span>
               <span class="hero-logo-word-slice" style="--slice-left:24%;--slice-right:64%;--wave-index:1"></span>
@@ -858,7 +894,7 @@
           <article class="product" data-category="cakes" data-id="pistacho" data-name="Torta de Pistacho y Frambuesa" data-price="60" data-image="assets/pistachio-raspberry-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho, frambuesa, semillas de amapola, alulosa y chocolate blanco vegano sin azúcar"><div class="product-media"><img src="assets/pistachio-raspberry-fontana-v2.jpg" alt="Torta de pistacho y frambuesa" loading="lazy" decoding="async"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho &amp; Frambuesa</h3><span class="price">$60</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho y Frambuesa">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="naranja" data-name="Torta de Manjar de Naranja" data-price="47" data-image="assets/manjar-naranja.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de yuca (10 %), monkfruit, aceite de coco, huevo, naranja, semillas de amapola y alulosa"><div class="product-media"><img src="assets/manjar-naranja.jpg" alt="Torta de manjar de naranja" loading="lazy" decoding="async"></div><div class="product-body"><div class="product-top"><h3>Torta de Manjar de Naranja</h3><span class="price">$47</span></div><p>Naranja, harina de almendra, semillas de amapola y alulosa.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Manjar de Naranja">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="zanahoria" data-name="Torta de Zanahoria" data-price="47" data-image="assets/zanahoria-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, zanahoria, canela, jengibre, glaseado vegano y almendras"><div class="product-media"><img src="assets/zanahoria-fontana-v2.jpg" alt="Torta de zanahoria" loading="lazy" decoding="async"></div><div class="product-body"><div class="product-top"><h3>Torta de Zanahoria</h3><span class="price">$47</span></div><p>Zanahoria, canela, jengibre, almendras y glaseado vegano.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Zanahoria">+</button></div></div></article>
-          <article class="product" data-category="cakes" data-id="pistacho-clasico" data-product-id="pistacho-clasico" data-name="Torta de Pistacho" data-price="55" data-image="assets/pistacho-fontana-v4.png" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho y glaseado vegano"><div class="product-media"><img src="assets/pistacho-fontana-v4.png" alt="Torta de pistacho" loading="lazy" decoding="async"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho</h3><span class="price">$55</span></div><p>Pistacho, harina de almendra y glaseado vegano.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho">+</button></div></div></article>
+          <article class="product" data-category="cakes" data-id="pistacho-clasico" data-product-id="pistacho-clasico" data-name="Torta de Pistacho" data-price="55" data-image="assets/pistacho-fontana-v4.webp" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho y glaseado vegano"><div class="product-media"><img src="assets/pistacho-fontana-v4.webp" alt="Torta de pistacho" loading="lazy" decoding="async"></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho</h3><span class="price">$55</span></div><p>Pistacho, harina de almendra y glaseado vegano.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Agregar Torta de Pistacho">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="chocolate" data-name="Torta de Triple Chocolate" data-price="47" data-image="assets/chocolate-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, cacao, chocolate vegano endulzado con monkfruit y chispas de chocolate vegano endulzadas con monkfruit"><div class="product-media"><img src="assets/chocolate-fontana-v2.jpg" alt="Torta de triple chocolate" loading="lazy" decoding="async"></div><div class="product-body"><div class="product-top"><h3>Torta de Triple Chocolate</h3><span class="price">$47</span></div><p>Chocolate vegano 70% cacao, harina de almendra y monk fruit.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Agregar Torta de Triple Chocolate">+</button></div></div></article>
           <article class="product" data-category="cakes" data-id="vainilla" data-name="Torta de Vainilla con Chispas de Chocolate" data-price="47" data-image="assets/vanilla-chips-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa y chispas de chocolate vegano endulzadas con monkfruit"><div class="product-media"><img src="assets/vanilla-chips-fontana-v2.jpg" alt="Torta de vainilla con chispas de chocolate" loading="lazy" decoding="async"></div><div class="product-body"><div class="product-top"><h3>Torta de Vainilla con Chispas</h3><span class="price">$47</span></div><p>Vainilla, harina de almendra y chispas de chocolate vegano.</p><div class="product-footer"><span class="diet">BAJO ENCARGO</span><button class="add" aria-label="Agregar Torta de Vainilla con Chispas">+</button></div></div></article>
           <article class="fonkie-builder" data-category="fonkies" data-id="fonkie-box" data-image="assets/fonkie-dark-chocolate-chips-fontana-pro.jpg" data-ingredients="Chips de Chocolate Oscuro: harina de almendra, huevo, aceite de coco, chocolate vegano oscuro y monkfruit. Chispa de Chocolate Blanco: ingredientes pendientes de confirmar con Fontana. Pistacho con Chocolate Blanco: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, pistacho y monkfruit. Triple Chocolate Fudge: harina de almendra, huevo, aceite de coco, chocolate vegano oscuro, cacao y monkfruit. Nutella Fit: harina de almendra, huevo, aceite de coco, nutella artesanal de cacao y avellana, aceite de oliva, alulosa y monkfruit. Almond Caramel: harina de almendra, huevo, aceite de coco, cacao, caramelo de almendra y monkfruit. Cinnamon Roll: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit y canela. Kinder Bueno: harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit, avellana y cacao. Chips Ahoy Fit: harina de arroz, harina de yuca, ghee, crema de dátiles, monkfruit, chispas de chocolate vegano y huevo">
@@ -922,7 +958,7 @@
         </div>
         <p class="demo-note">Precios expresados en USD. Disponibilidad y pedidos especiales sujetos a confirmación por WhatsApp.</p>
         <figure class="experience-banner">
-          <div class="experience-photo-wrap"><img class="experience-photo" src="assets/caja-experiencia-fontana-original.jpg" alt="Caja de regalo Fontana con torta, Fonkie y bombones" loading="lazy" decoding="async"></div>
+          <div class="experience-photo-wrap"><img class="experience-photo" src="assets/caja-experiencia-fontana-original.jpg" alt="Caja de regalo Fontana con torta, Fonkie y bombones" width="853" height="1280" loading="lazy" decoding="async"></div>
           <figcaption class="experience-copy"><span class="eyebrow">Una experiencia Fontana</span><blockquote>“Abre la caja, cierra los ojos y disfruta el verdadero sabor de Fontana.”</blockquote></figcaption>
         </figure>
       </div>
@@ -930,12 +966,12 @@
 
     <section class="story" id="historia"><div class="container story-grid">
       <div class="story-copy"><span class="eyebrow">La esencia detrás del sabor</span><h2>No aceptamos que “saludable” signifique aburrido.</h2><p>En el taller de Fontana cada receta empieza con una obsesión: lograr una textura increíble y un sabor que haga olvidar todo lo que quitamos. Horneamos en pequeños lotes, cuidando cada ingrediente y cada detalle.</p><div class="checks"><div class="check"><span>✓</span>Harina 100% de almendra</div><div class="check"><span>✓</span>Chocolate vegano</div><div class="check"><span>✓</span>Bajo índice glucémico</div><div class="check"><span>✓</span>Producción artesanal</div></div><a class="btn btn-light" href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Conoce nuestra historia en Instagram</a></div>
-      <aside class="founder-note" aria-label="Dueña y creadora de Fontana"><div class="founder-portrait"><img src="assets/fundadora-fontana-editorial-v2.jpg" alt="Dueña y creadora de Fontana" loading="lazy" decoding="async"></div><div class="founder-copy"><span class="eyebrow">El rostro detrás de Fontana</span><h3>Su creadora.</h3><p>La dueña y creadora de Fontana, presente como la firma humana detrás de esta historia.</p></div></aside>
+      <aside class="founder-note" aria-label="Dueña y creadora de Fontana"><div class="founder-portrait"><img src="assets/fundadora-fontana-editorial-v2.jpg" alt="Dueña y creadora de Fontana" width="1092" height="1440" loading="lazy" decoding="async"></div><div class="founder-copy"><span class="eyebrow">El rostro detrás de Fontana</span><h3>Su creadora.</h3><p>La dueña y creadora de Fontana, presente como la firma humana detrás de esta historia.</p></div></aside>
     </div></section>
 
     <section class="location" id="ubicacion"><div class="container"><div class="location-card">
       <div class="location-copy"><span class="eyebrow">Tu momento Fontana</span><h2>Mañongo.</h2><p>Ven por tu postre favorito, descubre lo recién salido del taller o retira tu pedido. Tenemos delivery en todo Carabobo; el costo y los detalles del pickup se confirman por WhatsApp.</p><div class="hours"><div><b>Lunes a domingo</b><span>9:30 am — 6:00 pm</span></div><div><b>Modalidad</b><span>Pickup + delivery</span></div></div></div>
-      <div class="location-visual"><div class="map-orbit"><div class="pin"><img src="assets/logo.png" alt="Fontana"></div></div></div>
+      <div class="location-visual"><div class="map-orbit"><div class="pin"><img src="assets/logo.png" alt="Fontana" width="121" height="120" loading="lazy" decoding="async"></div></div></div>
     </div></div></section>
 
     <section class="testimonials" id="resenas"><div class="container"><div class="section-head"><div><span class="eyebrow">Lo dicen los Fontana lovers</span><h2>Amor al primer bocado</h2></div></div><div class="quotes testimonials-carousel" aria-label="Reseñas de clientes" aria-roledescription="carrusel">
@@ -952,7 +988,7 @@
     <section class="final"><div class="container final-inner"><span class="eyebrow">Haz espacio para algo rico</span><h2>Tu próximo antojo ya tiene nombre.</h2><p>Explora el menú, arma tu pedido y recíbelo en Carabobo o retíralo en Mañongo.</p><a class="btn btn-primary" href="#menu">Elegir mi favorito</a></div></section>
   </main>
 
-  <footer><div class="container"><div class="footer-grid"><div class="footer-brand"><a class="brand" href="#inicio" aria-label="Fontana, volver al inicio"><img class="footer-logo" src="assets/fontana-logo-official-reverse.png" alt="Fontana"></a><p>Cocina de autor de alta calidad. Sin gluten, sin azúcar refinada y sin lactosa.</p></div><div><div class="footer-title">Descubre</div><div class="footer-links"><a href="#menu">Menú</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a></div></div><div><div class="footer-title">Conecta</div><div class="footer-links"><a href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Instagram ↗</a><a href="#ubicacion">Mañongo</a><span>Lun–Dom · 9:30am–6pm</span></div></div></div><div class="footer-bottom"><span>© 2026 Fontana. Todos los derechos reservados.</span><span>Pedidos sujetos a confirmación</span></div></div></footer>
+  <footer><div class="container"><div class="footer-grid"><div class="footer-brand"><a class="brand" href="#inicio" aria-label="Fontana, volver al inicio"><img class="footer-logo" src="assets/fontana-logo-official-reverse.png" alt="Fontana" width="1080" height="1080" loading="lazy" decoding="async"></a><p>Cocina de autor de alta calidad. Sin gluten, sin azúcar refinada y sin lactosa.</p></div><div><div class="footer-title">Descubre</div><div class="footer-links"><a href="#menu">Menú</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a></div></div><div><div class="footer-title">Conecta</div><div class="footer-links"><a href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Instagram ↗</a><a href="#ubicacion">Mañongo</a><span>Lun–Dom · 9:30am–6pm</span></div></div></div><div class="footer-bottom"><span>© 2026 Fontana. Todos los derechos reservados.</span><span>Pedidos sujetos a confirmación</span></div></div></footer>
 
   <dialog class="fit-dialog" id="para-ti" aria-labelledby="fitTitle">
     <button class="fit-dialog-close" id="closeFitDialog" type="button" aria-label="Cerrar ¿Es para ti?">×</button>

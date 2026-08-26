@@ -818,7 +818,7 @@ test("el selector móvil de Fonkies distribuye los sabores en dos columnas", asy
 test("la torta de pistacho mantiene el producto centrado en su tarjeta", async ({ page }) => {
   await openPreview(page);
   const image = page.locator('[data-product-id="pistacho-clasico"] .product-media img');
-  await expect(image).toHaveAttribute("src", "assets/pistacho-fontana-v4.png");
+  await expect(image).toHaveAttribute("src", "assets/pistacho-fontana-v4.webp");
   await expect(image).toHaveCSS("object-position", "50% 50%");
   await expect(image).toHaveCSS("transform", "matrix(1.25, 0, 0, 1.25, 0, 0)");
 });
@@ -1807,7 +1807,7 @@ test("Layer Cake se consulta por WhatsApp sin precio inventado ni carrito", asyn
   await expect(layerCake).toBeVisible();
   await expect(layerCake.getByRole("heading")).toHaveText("Layer Cake · Torta en capas");
   await expect(layerCake.locator(".price")).toHaveText("Cotizar");
-  await expect(layerCake.locator("img")).toHaveAttribute("src", "assets/layer-cake-fontana-pro.png");
+  await expect(layerCake.locator("img")).toHaveAttribute("src", "assets/layer-cake-fontana-pro.webp");
   await expect(layerCake.locator(".product-safety")).toHaveCount(0);
   await expect(layerCake.locator(".add")).toHaveCount(0);
   await openProductCard(page, layerCake);
@@ -1926,21 +1926,30 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
 
 test("SEO público es indexable y mantiene privado el panel", async ({ page, request }) => {
   await page.goto("/");
-  await expect(page).toHaveTitle("Fontana sin gluten en Carabobo | Postres y comidas fit");
+  await expect(page).toHaveTitle("Postres sin gluten en Carabobo | Fontana");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /index,follow/);
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /sin gluten en Carabobo/);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://fontanasingluten.com/");
+  await expect(page.locator('link[rel="alternate"][hreflang="es-VE"]')).toHaveAttribute("href", "https://fontanasingluten.com/");
+  await expect(page.locator('meta[property="og:image:type"]')).toHaveAttribute("content", "image/jpeg");
   await expect(page.locator("h1")).toContainText("Fontana sin gluten");
 
   const structuredData = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent());
   expect(structuredData["@graph"].some(item => item["@type"] === "WebSite" && item.name === "Fontana sin gluten")).toBe(true);
+  expect(structuredData["@graph"].some(item => item["@type"] === "WebPage" && item.primaryImageOfPage?.width === 1448)).toBe(true);
   expect(structuredData["@graph"].some(item => item["@type"] === "FoodEstablishment" && item.address.addressLocality === "Mañongo")).toBe(true);
 
   const robots = await request.get("/robots.txt");
   expect(robots.ok()).toBe(true);
-  expect(await robots.text()).toContain("Sitemap: https://fontanasingluten.com/sitemap.xml");
+  const robotsText = await robots.text();
+  expect(robotsText).toContain("Sitemap: https://fontanasingluten.com/sitemap.xml");
+  expect(robotsText).toContain("Disallow: /admin/");
   const sitemap = await request.get("/sitemap.xml");
   expect(sitemap.ok()).toBe(true);
-  expect(await sitemap.text()).toContain("<loc>https://fontanasingluten.com/</loc>");
+  const sitemapText = await sitemap.text();
+  expect(sitemapText).toContain("<loc>https://fontanasingluten.com/</loc>");
+  expect(sitemapText).toContain('xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"');
+  expect(sitemapText).toContain("<image:loc>https://fontanasingluten.com/assets/pistacho-fontana-v4.webp</image:loc>");
 
   await page.goto("/admin/");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);

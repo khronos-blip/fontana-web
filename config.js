@@ -84,7 +84,7 @@ window.FONTANA_CONFIG = {
       category: "cakes",
       name: "Layer Cake · Torta en capas",
       price: null,
-      image: "assets/layer-cake-fontana-pro.png",
+      image: "assets/layer-cake-fontana-pro.webp",
       description: "Torta personalizada en capas. El sabor y el presupuesto se coordinan directamente por WhatsApp.",
       ingredients: "",
       weight: "PERSONALIZADA",
