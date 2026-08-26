@@ -1928,6 +1928,7 @@ test("SEO público es indexable y mantiene privado el panel", async ({ page, req
   await page.goto("/");
   await expect(page).toHaveTitle("Postres sin gluten en Carabobo | Fontana");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /index,follow/);
+  await expect(page.locator('meta[name="google-site-verification"]')).toHaveAttribute("content", "P8eJAN1O83e_F3FfoQuvlA60BWmrvrYRkxTK9jUVHJo");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /sin gluten en Carabobo/);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://fontanasingluten.com/");
   await expect(page.locator('link[rel="alternate"][hreflang="es-VE"]')).toHaveAttribute("href", "https://fontanasingluten.com/");
