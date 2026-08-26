@@ -971,8 +971,22 @@
       requestAnimationFrame(() => backdrop.classList.add("visible"));
       media.addEventListener("click", () => close());
       choose.addEventListener("click", () => {
-        matchingPlusButton(source, kind, name)?.click();
-        close(true);
+        const plus = matchingPlusButton(source, kind, name);
+        const row = plus?.closest(".fonkie-flavor, .fomb-flavor");
+        if (!plus || !row || choose.disabled) return;
+        const originalLabel = choose.textContent;
+        choose.disabled = true;
+        choose.textContent = "Comprobando disponibilidad…";
+        row.addEventListener("fontana:flavor-change", event => {
+          if (active !== state) return;
+          if (event.detail?.success) {
+            close(true);
+            return;
+          }
+          choose.disabled = false;
+          choose.textContent = originalLabel;
+        }, { once: true });
+        plus.click();
       });
       motion.finished.then(() => {
         if (active !== state || state.closing) return;
@@ -1401,12 +1415,13 @@
     }
 
     $$(".fonkie-stepper button", builder).forEach(button => button.addEventListener("click", async () => {
-      if (stockValidationPending) return;
-      const output = $("output", button.closest(".fonkie-flavor"));
+      const row = button.closest(".fonkie-flavor");
+      const reportChange = success => row.dispatchEvent(new CustomEvent("fontana:flavor-change", { bubbles: true, detail: { success } }));
+      if (stockValidationPending) { reportChange(false); return; }
+      const output = $("output", row);
       const previous = Number(output.value || output.textContent || 0);
       const delta = Number(button.dataset.delta);
       const next = Math.max(0, previous + delta);
-      const row = button.closest(".fonkie-flavor");
       const flavorPreorder = preorderAllowed && row.dataset.soldOut === "true";
       if (delta > 0 && !flavorPreorder) {
         stockValidationPending = true;
@@ -1416,11 +1431,12 @@
         }));
         const validation = await validateStock(draft);
         stockValidationPending = false;
-        if (!validation.ok) { say(stockLimitNotice(validation.error, button.closest(".fonkie-flavor").dataset.flavor)); return; }
+        if (!validation.ok) { say(stockLimitNotice(validation.error, row.dataset.flavor)); reportChange(false); return; }
       }
       output.value = String(next);
       output.textContent = String(next);
       updateBuilder();
+      reportChange(true);
     }));
 
     addButton.addEventListener("click", async () => {
@@ -1530,14 +1546,15 @@
     sizeInputs.forEach(input => input.addEventListener("change", updateBuilder));
 
     $$(".fomb-flavor .fonkie-stepper button", builder).forEach(button => button.addEventListener("click", async () => {
-      if (stockValidationPending) return;
+      const row = button.closest(".fomb-flavor");
+      const reportChange = success => row.dispatchEvent(new CustomEvent("fontana:flavor-change", { bubbles: true, detail: { success } }));
+      if (stockValidationPending) { reportChange(false); return; }
       const current = selection();
-      const output = $("output", button.closest(".fomb-flavor"));
+      const output = $("output", row);
       const delta = Number(button.dataset.delta);
-      if (delta > 0 && current.selectedTotal >= current.total) return;
+      if (delta > 0 && current.selectedTotal >= current.total) { reportChange(false); return; }
       const previous = Number(output.value || output.textContent || 0);
       const next = Math.max(0, previous + delta);
-      const row = button.closest(".fomb-flavor");
       const flavorPreorder = preorderAllowed && row.dataset.soldOut === "true";
       if (delta > 0 && !flavorPreorder) {
         stockValidationPending = true;
@@ -1547,11 +1564,12 @@
         }));
         const validation = await validateStock(draft);
         stockValidationPending = false;
-        if (!validation.ok) { say(stockLimitNotice(validation.error, button.closest(".fomb-flavor").dataset.flavor)); return; }
+        if (!validation.ok) { say(stockLimitNotice(validation.error, row.dataset.flavor)); reportChange(false); return; }
       }
       output.value = String(next);
       output.textContent = String(next);
       updateBuilder();
+      reportChange(true);
     }));
 
     addButton.addEventListener("click", async () => {

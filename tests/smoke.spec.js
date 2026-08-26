@@ -27,6 +27,26 @@ async function openProductCard(page, selector) {
   return card;
 }
 
+async function seekPhysicalCardTurn(locator, currentTime = 430) {
+  await expect.poll(() => locator.evaluate(element => element.getAnimations()
+    .filter(animation => animation.effect?.target === element)
+    .length)).toBeGreaterThan(0);
+  await locator.evaluate((element, time) => {
+    const animation = element.getAnimations()
+      .find(candidate => candidate.effect?.target === element);
+    animation.pause();
+    animation.currentTime = time;
+  }, currentTime);
+}
+
+async function resumePhysicalCardTurn(locator) {
+  await locator.evaluate(element => {
+    const animation = element.getAnimations()
+      .find(candidate => candidate.effect?.target === element);
+    animation?.play();
+  });
+}
+
 async function fillCheckout(page, { allergies = false, birthdayCandle = false } = {}) {
   const expandedPhoto = page.locator(".product-expanded .product-expanded-media");
   if (await expandedPhoto.isVisible()) {
@@ -186,7 +206,7 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   expect(Math.abs(openingBox.y - compactBox.y)).toBeLessThanOrEqual(3);
   await expect(card).toHaveClass(/product-flipped/);
   await expect(back.locator(".product-expanded-media")).toHaveAttribute("aria-expanded", "true");
-  await page.waitForTimeout(430);
+  await seekPhysicalCardTurn(card);
   const physicalTurn = await card.evaluate(element => ({
     outerTransform: getComputedStyle(element).transform,
     innerTransform: getComputedStyle(element.querySelector(".product-flip-inner")).transform,
@@ -196,6 +216,7 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   expect(physicalTurn.innerTransform).toBe("none");
   expect(physicalTurn.width).toBeLessThan(compactBox.width * 0.45);
   await page.screenshot({ path: testInfo.outputPath("tarjeta-giro-fisico-mitad-movil.png"), fullPage: false });
+  await resumePhysicalCardTurn(card);
   await page.waitForTimeout(520);
   await expect(back).toBeVisible();
   await expect(front).toBeHidden();
@@ -212,7 +233,7 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
 
   await back.locator(".product-expanded-media").click();
   await expect(card).toHaveClass(/product-expanded-closing/);
-  await page.waitForTimeout(430);
+  await seekPhysicalCardTurn(card);
   const physicalReturn = await card.evaluate(element => ({
     outerTransform: getComputedStyle(element).transform,
     innerTransform: getComputedStyle(element.querySelector(".product-flip-inner")).transform,
@@ -222,6 +243,7 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   expect(physicalReturn.innerTransform).toBe("none");
   expect(physicalReturn.width).toBeLessThan(expandedBox.width * 0.45);
   await expect(card).toHaveClass(/product-expanded-closing/);
+  await resumePhysicalCardTurn(card);
   await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1200 });
   await expect(front.locator(".product-media")).toBeFocused();
 
@@ -231,7 +253,7 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   const desktopCompactBox = await desktopCard.boundingBox();
   await desktopCard.locator(".product-front .product-media").click();
   await expect(desktopCard).toHaveClass(/product-flipped/);
-  await page.waitForTimeout(430);
+  await seekPhysicalCardTurn(desktopCard);
   const desktopPhysicalTurn = await desktopCard.evaluate(element => ({
     outerTransform: getComputedStyle(element).transform,
     innerTransform: getComputedStyle(element.querySelector(".product-flip-inner")).transform,
@@ -241,6 +263,7 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   expect(desktopPhysicalTurn.innerTransform).toBe("none");
   expect(desktopPhysicalTurn.width).toBeLessThan(desktopCompactBox.width * 0.5);
   await page.screenshot({ path: testInfo.outputPath("tarjeta-giro-fisico-mitad-escritorio.png"), fullPage: false });
+  await resumePhysicalCardTurn(desktopCard);
   await page.waitForTimeout(520);
   const desktopExpandedBox = await desktopCard.boundingBox();
   expect(desktopExpandedBox.width).toBeGreaterThan(desktopCompactBox.width * 1.33);
@@ -283,7 +306,7 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     await expect(source).toHaveAttribute("aria-expanded", "true");
     const overlay = page.locator(".builder-flavor-flip-card");
     await expect(overlay).toBeVisible();
-    await page.waitForTimeout(430);
+    await seekPhysicalCardTurn(overlay);
     const physicalTurn = await overlay.evaluate(element => ({
       outerTransform: getComputedStyle(element).transform,
       innerTransform: getComputedStyle(element.querySelector(".builder-flavor-flip-inner")).transform,
@@ -293,6 +316,7 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     expect(physicalTurn.innerTransform).toBe("none");
     expect(physicalTurn.width).toBeLessThan(compactBox.width * 0.5);
     await page.screenshot({ path: testInfo.outputPath(item.screenshot), fullPage: false });
+    await resumePhysicalCardTurn(overlay);
     await page.waitForTimeout(520);
     await expect(overlay.locator(".builder-flavor-expanded-media img")).toBeVisible();
     await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
