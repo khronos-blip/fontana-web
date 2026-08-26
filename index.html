@@ -222,6 +222,12 @@
     .product-selection-summary span{font-size:.57rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase}.product-selection-summary strong{min-width:0;overflow:hidden;color:var(--plum-dark);font-size:.72rem;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}.product-selection-summary em{color:var(--plum);font-size:.58rem;font-style:normal;font-weight:900;white-space:nowrap}
     .product[data-category="salado"] .product-front .product-variants{display:none}
     .product[data-category="salado"] .product-front .product-selection-summary{display:grid}
+    .product[data-category="salado"] .product-front .product-body{flex:0 0 auto;padding:18px}
+    .product[data-category="salado"] .product-front .product-body>p{min-height:0;margin:7px 0 12px}
+    .product[data-category="salado"] .product-front .product-dietary-seals{margin:7px 0 10px;padding:6px 0}
+    .product[data-category="salado"] .product-front .product-safety{margin:0 0 10px}
+    .product[data-category="salado"] .product-front .product-safety summary{padding:9px 0}
+    .product[data-category="salado"] .product-front .product-footer{margin-top:0}
     .product-expanded-body .product-selection-summary{display:none}
     .product-safety{margin:-3px 0 18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
     .product-safety summary{padding:11px 0;cursor:pointer;color:var(--plum);font-size:.72rem;font-weight:800;list-style:none}
@@ -681,6 +687,7 @@
     .catalog-group-line{width:28px;height:2px;flex:0 0 auto;border-radius:999px;background:currentColor}
     .catalog-group-heading h3{margin:0;color:inherit;font-family:'DM Sans',system-ui,sans-serif;font-size:.72rem;font-weight:900;letter-spacing:.13em;line-height:1;text-transform:uppercase}
     .catalog-group-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;gap:18px}
+    [data-catalog-group="salado"] .catalog-group-grid{align-items:start}
     .catalog-group-grid>.fonkie-builder,.catalog-group-grid>.builder-panel{grid-column:1/-1}
     .testimonials-carousel{display:block;width:min(760px,100%);margin:0 auto;overflow:hidden;touch-action:pan-y}
     .testimonials-track{display:flex;align-items:stretch;will-change:transform;transition:transform .72s cubic-bezier(.22,.75,.24,1)}
@@ -714,6 +721,12 @@
       .product p{font-size:.68rem;line-height:1.4;min-height:58px;margin:7px 0 12px}
       .product-variants{margin:0 0 12px}.product-variants label{font-size:.58rem}.product-variants select{padding:9px 8px;font-size:.64rem}
       .product-selection-summary{grid-template-columns:minmax(0,1fr) auto;gap:3px 7px;margin:0 0 12px;padding:8px 9px}.product-selection-summary span{grid-column:1/-1;font-size:.48rem}.product-selection-summary strong{font-size:.62rem}.product-selection-summary em{font-size:.5rem}
+      .product[data-category="salado"] .product-front .product-body{padding:10px}
+      .product[data-category="salado"] .product-front .product-body>p{margin:5px 0 8px}
+      .product[data-category="salado"] .product-front .product-dietary-seals{margin:5px 0 8px;padding:5px 0}
+      .product[data-category="salado"] .product-front .product-dietary-seal svg{width:25px;height:25px}
+      .product[data-category="salado"] .product-front .product-safety{margin:0 0 7px}
+      .product[data-category="salado"] .product-front .product-safety summary{padding:7px 0}
       .product-safety{margin:-1px 0 12px}
       .product-safety summary{padding:9px 0;font-size:.62rem}
       .product-safety div{font-size:.62rem}

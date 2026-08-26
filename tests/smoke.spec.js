@@ -484,7 +484,7 @@ test("las tarjetas conservan altura y pie simétricos dentro de cada fila visual
         if (row) row.cards.push(card);
         else rows.push({ top, cards: [card] });
       });
-      return rows.filter(row => row.cards.length > 1).map(row => row.cards.map(card => {
+      return rows.filter(row => row.cards.length > 1 && row.cards[0]?.dataset.category !== "salado").map(row => row.cards.map(card => {
         const box = card.getBoundingClientRect();
         const footer = card.querySelector(".product-front .product-footer")?.getBoundingClientRect();
         return {
@@ -515,22 +515,10 @@ test("Salados compacta el frente y conserva todas las opciones al ampliar", asyn
   await expect(raviolis.locator(".product-selection-summary")).toBeVisible();
   await expect(raviolis.locator(".product-selection-summary strong")).toHaveText("180 g · Carne");
 
-  await expect.poll(async () => {
-    const [tequenosStable, raviolisStable] = await Promise.all([
-      tequenos.boundingBox(),
-      raviolis.boundingBox()
-    ]);
-    return Boolean(
-      tequenosStable
-      && raviolisStable
-      && tequenosStable.height > 100
-      && Math.abs(tequenosStable.height - raviolisStable.height) <= 1
-    );
-  }).toBe(true);
-
   const tequenosBox = await tequenos.boundingBox();
   const raviolisBox = await raviolis.boundingBox();
-  expect(Math.abs(tequenosBox.height - raviolisBox.height)).toBeLessThanOrEqual(1);
+  expect(tequenosBox.height).toBeGreaterThan(100);
+  expect(raviolisBox.height).toBeGreaterThan(100);
 
   await raviolis.locator(".product-selection-summary").click();
   await expect(raviolis).toHaveClass(/product-expanded/);
@@ -544,6 +532,15 @@ test("Salados compacta el frente y conserva todas las opciones al ampliar", asyn
 
   const nuggetsBox = await nuggets.boundingBox();
   expect(nuggetsBox.height).toBeLessThan(raviolisBox.height);
+  await expect(nuggets).toHaveClass(/product-row-solo/);
+  const nuggetsSpacing = await nuggets.evaluate(card => {
+    const safety = card.querySelector(".product-front .product-safety")?.getBoundingClientRect();
+    const footer = card.querySelector(".product-front .product-footer")?.getBoundingClientRect();
+    return safety && footer ? Math.round(footer.top - safety.bottom) : null;
+  });
+  expect(nuggetsSpacing).not.toBeNull();
+  expect(nuggetsSpacing).toBeLessThanOrEqual(16);
+  expect(nuggetsBox.height).toBeLessThan(440);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 

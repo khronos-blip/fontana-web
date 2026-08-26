@@ -399,6 +399,7 @@
       const cards = $$(".product-flip-ready:not(.hidden):not(.product-expanded)", grid);
       if (!cards.length) return;
       cards.forEach(card => {
+        card.classList.remove("product-row-matched", "product-row-solo");
         const inner = $(".product-flip-inner", card);
         const front = $(".product-front", card);
         if (!inner) return;
@@ -407,20 +408,11 @@
       });
       const isSaladoGrid = grid.closest('[data-catalog-group="salado"]');
       if (isSaladoGrid) {
-        const rows = [];
         cards.forEach(card => {
-          const top = Math.round(card.offsetTop);
-          const row = rows.find(candidate => Math.abs(candidate.top - top) <= 2);
-          if (row) row.cards.push(card);
-          else rows.push({ top, cards: [card] });
-        });
-        rows.forEach(row => {
-          const tallest = Math.max(...row.cards.map(card => Math.ceil($(".product-front", card)?.scrollHeight || 0)));
-          if (tallest <= 0) return;
-          row.cards.forEach(card => {
-            const inner = $(".product-flip-inner", card);
-            if (inner) inner.style.height = `${tallest}px`;
-          });
+          card.classList.add("product-row-solo");
+          const inner = $(".product-flip-inner", card);
+          const naturalHeight = Math.ceil($(".product-front", card)?.scrollHeight || 0);
+          if (inner && naturalHeight > 0) inner.style.height = `${naturalHeight}px`;
         });
       } else {
         const tallest = Math.max(...cards.map(card => Math.ceil($(".product-front", card)?.scrollHeight || 0)));
