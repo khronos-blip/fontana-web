@@ -916,13 +916,18 @@
 
       const mobile = window.matchMedia("(max-width: 640px)").matches;
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      const desktopHeightLimit = viewportHeight - 96;
+      const desktopDetailsHeight = Math.min(230, Math.max(160, desktopHeightLimit * 0.28));
       const targetWidth = mobile
         ? window.innerWidth - 32
-        : Math.min(window.innerWidth - 96, Math.max(rect.width * 1.42, 420));
-      const targetHeight = Math.min(
-        viewportHeight - (mobile ? 72 : 96),
-        Math.max(rect.height * (mobile ? 1.5 : 1.36), mobile ? 580 : 610)
-      );
+        : Math.min(
+          window.innerWidth - 96,
+          desktopHeightLimit - desktopDetailsHeight,
+          Math.max(rect.width * 1.28, 420)
+        );
+      const targetHeight = mobile
+        ? Math.min(viewportHeight - 72, Math.max(rect.height * 1.5, 580))
+        : targetWidth + desktopDetailsHeight;
       const targetX = (window.innerWidth - targetWidth) / 2;
       const targetY = (viewportHeight - targetHeight) / 2;
       const startX = rect.left + (rect.width / 2) - (targetX + (targetWidth / 2));

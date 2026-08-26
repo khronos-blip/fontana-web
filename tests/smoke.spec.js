@@ -436,6 +436,11 @@ test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en es
     await expect(overlay).toBeVisible();
     await page.waitForTimeout(920);
     await expect(overlay.locator(".builder-flavor-expanded-media img")).toHaveCSS("object-fit", "contain");
+    const desktopMediaRatio = await overlay.locator(".builder-flavor-expanded-media").evaluate(element => {
+      return element.clientWidth / element.clientHeight;
+    });
+    expect(desktopMediaRatio).toBeGreaterThan(.98);
+    expect(desktopMediaRatio).toBeLessThan(1.02);
     await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
     await expect(overlay.locator(".builder-flavor-choose")).toBeVisible();
     await overlay.locator(".builder-flavor-expanded-media").click();
