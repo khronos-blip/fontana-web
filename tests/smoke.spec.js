@@ -160,6 +160,7 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
 test("las tarjetas conservan la compra al frente y giran físicamente al ampliarse", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
+  await page.locator(".product.product-flip-ready").first().waitFor();
   const productCount = await page.locator(".product").count();
   await expect(page.locator(".product.product-flip-ready")).toHaveCount(productCount);
   const card = page.locator('[data-product-id="pistacho-clasico"]');
