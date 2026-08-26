@@ -510,6 +510,37 @@ test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({
   }
 });
 
+test("el cierre conserva la proporción de la imagen hasta el último fotograma", async ({ page }) => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    const card = page.locator('[data-product-id="pistacho-clasico"]');
+    const compactMedia = card.locator(".product-front .product-media");
+    await expect(card).toHaveClass(/product-flip-ready/, { timeout: 10_000 });
+    await card.scrollIntoViewIfNeeded();
+    const compactBox = await compactMedia.boundingBox();
+
+    await compactMedia.click();
+    await expect(card).toHaveClass(/product-flipped/);
+    await page.waitForTimeout(920);
+    await card.locator(".product-back .product-expanded-media").click();
+    await expect(card).toHaveClass(/product-expanded-closing/);
+    await seekPhysicalCardTurn(card, 1);
+
+    const snapshot = card.locator(".product-front-snapshot");
+    await expect(snapshot).toHaveCSS("flex", "0 0 auto");
+    const closingBox = await snapshot.locator(".product-media").boundingBox();
+    const compactRatio = compactBox.width / compactBox.height;
+    const closingRatio = closingBox.width / closingBox.height;
+    expect(Math.abs(closingRatio - compactRatio)).toBeLessThanOrEqual(0.005);
+
+    await resumePhysicalCardTurn(card);
+    await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1200 });
+    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  }
+});
+
 test("las tarjetas conservan altura y pie simétricos dentro de cada fila visual", async ({ page }) => {
   for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
     await page.setViewportSize(viewport);

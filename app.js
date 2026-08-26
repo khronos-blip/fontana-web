@@ -633,14 +633,14 @@
         const viewportHeight = window.visualViewport?.height || window.innerHeight;
         const horizontalMargin = mobile ? 28 : 80;
         const verticalMargin = mobile ? 52 : 60;
-        const targetWidth = Math.min(
+        const targetWidth = Math.round(Math.min(
           window.innerWidth - (horizontalMargin * 2),
           Math.max(mobile ? 280 : 520, rect.width * (mobile ? 1.55 : 1.42))
-        );
-        const targetHeight = Math.min(
+        ));
+        const targetHeight = Math.round(Math.min(
           viewportHeight - (verticalMargin * 2),
           Math.max(mobile ? 560 : 600, rect.height * (mobile ? 1.34 : 1.12))
-        );
+        ));
         const targetX = (window.innerWidth - targetWidth) / 2;
         const targetY = (viewportHeight - targetHeight) / 2;
         const startX = rect.left + (rect.width / 2) - (targetX + (targetWidth / 2));
@@ -657,8 +657,8 @@
         const backEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
         const settleTransform = `perspective(1800px) translate3d(${startX * 0.04}px, ${startY * 0.04}px, 14px) scale(.97, .97) rotateX(.35deg) rotateY(7deg) rotateZ(.18deg)`;
         const targetTransform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
-        card.style.setProperty("--product-expanded-width", `${Math.round(targetWidth)}px`);
-        card.style.setProperty("--product-expanded-height", `${Math.round(targetHeight)}px`);
+        card.style.setProperty("--product-expanded-width", `${targetWidth}px`);
+        card.style.setProperty("--product-expanded-height", `${targetHeight}px`);
         card.style.setProperty("--product-expanded-left", `${targetX}px`);
         card.style.setProperty("--product-expanded-top", `${targetY}px`);
         card.style.setProperty("--product-start-transform", startTransform);
@@ -679,6 +679,11 @@
         activeCloser = close;
         frontSnapshot = document.createElement("div");
         frontSnapshot.className = "product-front-snapshot";
+        frontSnapshot.style.width = `${rect.width}px`;
+        frontSnapshot.style.height = `${rect.height}px`;
+        frontSnapshot.style.flex = "0 0 auto";
+        frontSnapshot.style.transformOrigin = "top left";
+        frontSnapshot.style.transform = `scale(${targetWidth / rect.width}, ${targetHeight / rect.height})`;
         frontSnapshot.setAttribute("aria-expanded", "true");
         frontSnapshot.setAttribute("aria-hidden", "true");
         frontSnapshot.inert = true;
