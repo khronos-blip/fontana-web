@@ -391,6 +391,43 @@
     });
   }
 
+  let productCardHeightFrame = 0;
+
+  function syncProductCardHeights() {
+    productCardHeightFrame = 0;
+    $$(".catalog-group-grid").forEach(grid => {
+      const cards = $$(".product-flip-ready:not(.hidden):not(.product-expanded)", grid);
+      if (!cards.length) return;
+      cards.forEach(card => {
+        const inner = $(".product-flip-inner", card);
+        const front = $(".product-front", card);
+        if (!inner) return;
+        inner.style.height = "";
+        if (front) front.style.height = "auto";
+      });
+      const tallest = Math.max(...cards.map(card => Math.ceil($(".product-front", card)?.scrollHeight || 0)));
+      if (tallest > 0) cards.forEach(card => {
+        const inner = $(".product-flip-inner", card);
+        if (inner) inner.style.height = `${tallest}px`;
+      });
+      cards.forEach(card => {
+        const front = $(".product-front", card);
+        if (front) front.style.height = "";
+      });
+    });
+  }
+
+  function scheduleProductCardHeightSync() {
+    if (productCardHeightFrame) cancelAnimationFrame(productCardHeightFrame);
+    productCardHeightFrame = requestAnimationFrame(syncProductCardHeights);
+  }
+
+  window.addEventListener("resize", scheduleProductCardHeightSync);
+  document.fonts?.ready?.then(scheduleProductCardHeightSync);
+  document.addEventListener("toggle", event => {
+    if (event.target.closest?.(".product-front")) scheduleProductCardHeightSync();
+  }, true);
+
   function setupProductCardFlips() {
     let activeCard = null;
     let activePlaceholder = null;
@@ -439,8 +476,7 @@
       let frontSnapshot = null;
 
       const resize = () => {
-        if (card.classList.contains("product-expanded")) return;
-        inner.style.height = `${Math.ceil(front.scrollHeight)}px`;
+        if (!card.classList.contains("product-expanded")) scheduleProductCardHeightSync();
       };
 
       const open = trigger => {
@@ -526,12 +562,9 @@
         if (card.classList.contains("product-expanded")) close(true);
       });
       media.querySelector("img")?.addEventListener("load", resize, { once: true });
-      if (typeof ResizeObserver === "function") {
-        const resizeObserver = new ResizeObserver(resize);
-        resizeObserver.observe(front);
-      }
       requestAnimationFrame(resize);
     });
+    scheduleProductCardHeightSync();
   }
 
   function renderDynamicCatalog() {
@@ -642,6 +675,7 @@
       const visibleItems = items.filter(item => !item.classList.contains("hidden"));
       group.hidden = visibleItems.length === 0;
     });
+    scheduleProductCardHeightSync();
   }
 
   function say(message) {

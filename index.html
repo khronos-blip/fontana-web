@@ -181,7 +181,7 @@
     .product-flip-inner{position:relative;width:100%;transform-style:preserve-3d;transition:height .35s ease,transform .76s cubic-bezier(.2,.72,.2,1);will-change:height,transform}
     .product-flipped .product-flip-inner{transform:rotateY(180deg)}
     .product-face{position:absolute;inset:0 0 auto;width:100%;overflow:hidden;background:var(--cream);backface-visibility:hidden;-webkit-backface-visibility:hidden}
-    .product-front{transform:rotateY(0);outline:0}
+    .product-front{height:100%;transform:rotateY(0);outline:0;display:flex;flex-direction:column}
     .product-back{height:100%;transform:rotateY(180deg);background:var(--lilac);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px)}
     .product-flipped .product-front{pointer-events:none;visibility:hidden;transition:visibility 0s .36s}
     .product:not(.product-flipped) .product-back{pointer-events:none;visibility:hidden;transition:visibility 0s .36s}
@@ -213,7 +213,7 @@
     .product[data-product-id="pistacho-clasico"]:hover .product-media img{transform:scale(1.3)}
     .product-tag{position:absolute;left:15px;top:15px;background:rgba(255,255,255,.92);border-radius:999px;padding:6px 10px;font-size:.67rem;font-weight:800;color:var(--plum);backdrop-filter:blur(8px)}
     .product-tags{position:absolute;left:15px;right:15px;top:15px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}.product-tags .product-tag{position:static;display:block}.product-tags .product-tag.secondary{background:rgba(255,255,255,.9);color:var(--plum)}
-    .product-body{padding:22px}
+    .product-body{padding:22px;flex:1;display:flex;flex-direction:column}
     .product-top{display:flex;justify-content:space-between;gap:20px;align-items:start}
     .product h3{font-size:1.35rem}
     .price{font-weight:800;color:var(--plum);white-space:nowrap}
@@ -232,7 +232,7 @@
     .product-dietary-seal span{font-size:.5rem;font-weight:900;line-height:1.05;letter-spacing:.035em;text-align:center;text-transform:uppercase}
     .builder-dietary-seals{width:max-content;max-width:100%;margin:-7px 0 16px;padding:0;border:0}
     .builder-dietary-seals .product-dietary-seal{flex-basis:72px}
-    .product-footer{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .product-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
     .diet{font-size:.68rem;color:var(--green);font-weight:800}
     .add{border:0;background:var(--plum);color:#fff;width:42px;height:42px;border-radius:50%;font-size:1.35rem;display:grid;place-items:center}
     .add:hover{background:var(--plum-dark);transform:rotate(90deg)}
@@ -654,7 +654,7 @@
     .catalog-group:first-of-type .catalog-group-heading{margin-top:4px}
     .catalog-group-line{width:28px;height:2px;flex:0 0 auto;border-radius:999px;background:currentColor}
     .catalog-group-heading h3{margin:0;color:inherit;font-family:'DM Sans',system-ui,sans-serif;font-size:.72rem;font-weight:900;letter-spacing:.13em;line-height:1;text-transform:uppercase}
-    .catalog-group-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:18px}
+    .catalog-group-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;gap:18px}
     .catalog-group-grid>.fonkie-builder,.catalog-group-grid>.builder-panel{grid-column:1/-1}
     .testimonials-carousel{display:block;width:min(760px,100%);margin:0 auto;overflow:hidden;touch-action:pan-y}
     .testimonials-track{display:flex;align-items:stretch;will-change:transform;transition:transform .72s cubic-bezier(.22,.75,.24,1)}

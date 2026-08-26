@@ -187,6 +187,32 @@ test("las tarjetas conservan la compra al frente y crecen al girar", async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
+test("las tarjetas de cada categoría conservan altura y pie simétricos", async ({ page }) => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    await page.waitForTimeout(450);
+    const geometries = await page.locator(".catalog-group-grid").evaluateAll(grids => grids.map(grid => {
+      const cards = [...grid.querySelectorAll(".product:not(.hidden)")];
+      return cards.map(card => {
+        const box = card.getBoundingClientRect();
+        const footer = card.querySelector(".product-front .product-footer")?.getBoundingClientRect();
+        return {
+          height: Math.round(box.height),
+          footerBottom: footer ? Math.round(box.bottom - footer.bottom) : null
+        };
+      });
+    }).filter(group => group.length > 1));
+    expect(geometries.length).toBeGreaterThan(2);
+    for (const geometry of geometries) {
+      expect(Math.max(...geometry.map(item => item.height)) - Math.min(...geometry.map(item => item.height))).toBeLessThanOrEqual(1);
+      const footerOffsets = geometry.map(item => item.footerBottom).filter(value => value !== null);
+      expect(Math.max(...footerOffsets) - Math.min(...footerOffsets)).toBeLessThanOrEqual(1);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  }
+});
+
 test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
