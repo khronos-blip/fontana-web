@@ -430,7 +430,7 @@ test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en es
   ]) {
     await page.getByRole("button", { name: item.filter }).click();
     const source = page.locator(item.card).first();
-    await source.scrollIntoViewIfNeeded();
+    await expect(source).toBeVisible();
     await source.click();
     const overlay = page.locator(".builder-flavor-flip-card");
     await expect(overlay).toBeVisible();
