@@ -428,6 +428,81 @@
     if (event.target.closest?.(".product-front")) scheduleProductCardHeightSync();
   }, true);
 
+  let modalScrollCycle = 0;
+
+  function lockModalPageScroll() {
+    modalScrollCycle += 1;
+    const body = document.body;
+    const html = document.documentElement;
+    const x = window.scrollX;
+    const y = window.scrollY;
+    const scrollbarWidth = Math.max(0, window.innerWidth - html.clientWidth);
+    const state = {
+      x,
+      y,
+      htmlScrollBehavior: html.style.scrollBehavior,
+      body: {
+        position: body.style.position,
+        top: body.style.top,
+        left: body.style.left,
+        width: body.style.width,
+        overflow: body.style.overflow,
+        paddingRight: body.style.paddingRight
+      }
+    };
+    body.style.position = "fixed";
+    body.style.top = `${-y}px`;
+    body.style.left = `${-x}px`;
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
+    if (scrollbarWidth) body.style.paddingRight = `${scrollbarWidth}px`;
+    body.classList.add("product-modal-open");
+    return state;
+  }
+
+  function unlockModalPageScroll(state) {
+    document.body.classList.remove("product-modal-open");
+    if (!state) return;
+    const html = document.documentElement;
+    const cycle = ++modalScrollCycle;
+    Object.assign(document.body.style, state.body);
+    html.style.scrollBehavior = state.htmlScrollBehavior;
+    const restorePosition = () => {
+      if (modalScrollCycle !== cycle) return;
+      const scrollBehavior = html.style.scrollBehavior;
+      html.style.scrollBehavior = "auto";
+      window.scrollTo(state.x, state.y);
+      html.style.scrollBehavior = scrollBehavior;
+    };
+    restorePosition();
+    requestAnimationFrame(() => {
+      restorePosition();
+      requestAnimationFrame(() => {
+        restorePosition();
+      });
+    });
+  }
+
+  function animateModalBackdropClose(backdrop, duration) {
+    const parsedOpacity = Number.parseFloat(getComputedStyle(backdrop).opacity);
+    const opacity = Number.isFinite(parsedOpacity) ? parsedOpacity : 1;
+    return backdrop.animate([
+      { opacity, offset: 0 },
+      { opacity, offset: 0.51 },
+      { opacity: 0, offset: 1 }
+    ], {
+      duration,
+      easing: "linear",
+      fill: "forwards"
+    });
+  }
+
+  function elapsedAnimationTime(animation, maximum) {
+    const elapsed = Number(animation?.currentTime);
+    if (!Number.isFinite(elapsed)) return 0;
+    return Math.min(maximum, Math.max(0, elapsed));
+  }
+
   function setupProductCardFlips() {
     let activeCard = null;
     let activePlaceholder = null;
@@ -446,49 +521,13 @@
     const isInteractiveTarget = target => Boolean(target.closest("button, a, input, select, textarea, label, summary, details"));
 
     const lockPageScroll = () => {
-      const body = document.body;
-      const html = document.documentElement;
-      const x = window.scrollX;
-      const y = window.scrollY;
-      const scrollbarWidth = Math.max(0, window.innerWidth - html.clientWidth);
-      activeScrollState = {
-        x,
-        y,
-        htmlScrollBehavior: html.style.scrollBehavior,
-        body: {
-          position: body.style.position,
-          top: body.style.top,
-          left: body.style.left,
-          width: body.style.width,
-          overflow: body.style.overflow,
-          paddingRight: body.style.paddingRight
-        }
-      };
-      body.style.position = "fixed";
-      body.style.top = `${-y}px`;
-      body.style.left = `${-x}px`;
-      body.style.width = "100%";
-      body.style.overflow = "hidden";
-      if (scrollbarWidth) body.style.paddingRight = `${scrollbarWidth}px`;
-      body.classList.add("product-modal-open");
+      activeScrollState = lockModalPageScroll();
     };
 
     const unlockPageScroll = () => {
       const state = activeScrollState;
       activeScrollState = null;
-      document.body.classList.remove("product-modal-open");
-      if (!state) return;
-      const html = document.documentElement;
-      html.style.scrollBehavior = "auto";
-      Object.assign(document.body.style, state.body);
-      window.scrollTo(state.x, state.y);
-      requestAnimationFrame(() => {
-        window.scrollTo(state.x, state.y);
-        requestAnimationFrame(() => {
-          window.scrollTo(state.x, state.y);
-          html.style.scrollBehavior = state.htmlScrollBehavior;
-        });
-      });
+      unlockModalPageScroll(state);
     };
 
     $$(".product").forEach(card => {
@@ -517,6 +556,7 @@
       card.classList.add("product-flip-ready");
       let frontSnapshot = null;
       let cardMotion = null;
+      let backdropMotion = null;
       let faceMotions = [];
       let motionKeyframes = null;
       const motionDuration = 860;
@@ -665,12 +705,6 @@
             animateFaceSwap(true);
             cardMotion.finished.then(() => {
               if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
-              cardMotion.pause();
-              cardMotion.currentTime = motionDuration;
-              faceMotions.forEach(animation => {
-                animation.pause();
-                animation.currentTime = motionDuration;
-              });
               card.classList.remove("product-expanded-animating");
               back.focus({ preventScroll: true });
             }).catch(() => {});
@@ -681,10 +715,11 @@
       const close = (immediate = false) => {
         if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
         card.classList.add("product-expanded-closing", "product-expanded-animating");
-        backdrop.classList.remove("visible");
         const restore = () => {
           cardMotion?.cancel();
           cardMotion = null;
+          backdropMotion?.cancel();
+          backdropMotion = null;
           cancelFaceMotions();
           motionKeyframes = null;
           if (activePlaceholder?.isConnected) activePlaceholder.replaceWith(card);
@@ -700,6 +735,7 @@
           card.style.removeProperty("--product-start-transform");
           card.style.removeProperty("--product-target-transform");
           card.style.removeProperty("transform");
+          backdrop.classList.remove("visible");
           backdrop.hidden = true;
           media.classList.remove("product-expanded-media");
           media.setAttribute("aria-label", `Ampliar ${title}`);
@@ -719,31 +755,20 @@
         };
         if (immediate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) restore();
         else {
-          if (cardMotion) {
-            cardMotion.playbackRate = -1;
-            cardMotion.play();
-            faceMotions.forEach(animation => {
-              animation.playbackRate = -1;
-              animation.play();
-            });
+          const reverseDuration = elapsedAnimationTime(cardMotion, motionDuration);
+          if (!cardMotion || reverseDuration <= 16) {
+            restore();
+            return;
           }
-          else {
-            cardMotion = card.animate(motionKeyframes, {
-              duration: motionDuration,
-              easing: "cubic-bezier(.36,.08,.64,.92)",
-              fill: "forwards"
-            });
-            animateFaceSwap(true);
-            cardMotion.finish();
-            faceMotions.forEach(animation => animation.finish());
-            cardMotion.playbackRate = -1;
-            cardMotion.play();
-            faceMotions.forEach(animation => {
-              animation.playbackRate = -1;
-              animation.play();
-            });
-          }
-          cardMotion.finished.then(restore).catch(() => {});
+          backdropMotion?.cancel();
+          backdropMotion = animateModalBackdropClose(backdrop, reverseDuration);
+          cardMotion.reverse();
+          faceMotions.forEach(animation => animation.reverse());
+          Promise.all([
+            cardMotion.finished,
+            ...faceMotions.map(animation => animation.finished),
+            backdropMotion.finished
+          ]).then(restore).catch(restore);
         }
       };
 
@@ -762,7 +787,7 @@
         open(front);
       });
       $(".add", body)?.addEventListener("click", () => {
-        if (card.classList.contains("product-expanded")) close(true);
+        if (card.classList.contains("product-expanded")) close();
       });
       media.querySelector("img")?.addEventListener("load", resize, { once: true });
       requestAnimationFrame(resize);
@@ -799,6 +824,7 @@
 
     const cancelAnimations = state => {
       state.motion?.cancel();
+      state.backdropMotion?.cancel();
       state.faceMotions.forEach(animation => animation.cancel());
       state.faceMotions = [];
     };
@@ -811,15 +837,8 @@
       backdrop.classList.remove("visible");
       backdrop.hidden = true;
       active = null;
-      const html = document.documentElement;
-      const previousBehavior = html.style.scrollBehavior;
-      html.style.scrollBehavior = "auto";
-      window.scrollTo(state.scrollX, state.scrollY);
       state.source.focus({ preventScroll: true });
-      requestAnimationFrame(() => {
-        window.scrollTo(state.scrollX, state.scrollY);
-        html.style.scrollBehavior = previousBehavior;
-      });
+      unlockModalPageScroll(state.scrollState);
     };
 
     const close = (immediate = false) => {
@@ -827,18 +846,24 @@
       if (!state || state.closing) return;
       state.closing = true;
       state.overlay.classList.add("builder-flavor-flip-closing");
-      backdrop.classList.remove("visible");
       if (immediate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         cleanup(state);
         return;
       }
-      state.motion.playbackRate = -1;
-      state.motion.play();
-      state.faceMotions.forEach(animation => {
-        animation.playbackRate = -1;
-        animation.play();
-      });
-      state.motion.finished.then(() => cleanup(state)).catch(() => cleanup(state));
+      const reverseDuration = elapsedAnimationTime(state.motion, motionDuration);
+      if (reverseDuration <= 16) {
+        cleanup(state);
+        return;
+      }
+      state.backdropMotion?.cancel();
+      state.backdropMotion = animateModalBackdropClose(backdrop, reverseDuration);
+      state.motion.reverse();
+      state.faceMotions.forEach(animation => animation.reverse());
+      Promise.all([
+        state.motion.finished,
+        ...state.faceMotions.map(animation => animation.finished),
+        state.backdropMotion.finished
+      ]).then(() => cleanup(state)).catch(() => cleanup(state));
     };
 
     const open = source => {
@@ -960,15 +985,18 @@
         back,
         motion,
         faceMotions: [frontMotion, backMotion],
-        scrollX: window.scrollX,
-        scrollY: window.scrollY,
+        backdropMotion: null,
+        scrollState: lockModalPageScroll(),
         closing: false
       };
       active = state;
       source.style.visibility = "hidden";
       source.setAttribute("aria-expanded", "true");
       backdrop.hidden = false;
-      requestAnimationFrame(() => backdrop.classList.add("visible"));
+      requestAnimationFrame(() => {
+        if (active !== state || state.closing) return;
+        backdrop.classList.add("visible");
+      });
       media.addEventListener("click", () => close());
       choose.addEventListener("click", () => {
         const plus = matchingPlusButton(source, kind, name);
@@ -980,7 +1008,7 @@
         row.addEventListener("fontana:flavor-change", event => {
           if (active !== state) return;
           if (event.detail?.success) {
-            close(true);
+            close();
             return;
           }
           choose.disabled = false;
@@ -990,12 +1018,6 @@
       });
       motion.finished.then(() => {
         if (active !== state || state.closing) return;
-        motion.pause();
-        motion.currentTime = motionDuration;
-        state.faceMotions.forEach(animation => {
-          animation.pause();
-          animation.currentTime = motionDuration;
-        });
         back.setAttribute("aria-hidden", "false");
         back.focus({ preventScroll: true });
       }).catch(() => {});

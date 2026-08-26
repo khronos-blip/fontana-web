@@ -1,12 +1,17 @@
 const { test, expect } = require("@playwright/test");
 const { existsSync, readFileSync } = require("node:fs");
 
+const previewPages = new WeakSet();
+
 async function openPreview(page) {
-  await page.route("**/config.js*", async route => {
-    const response = await route.fetch({ maxRetries: 2 });
-    const body = (await response.text()).replace("previewMode: false", "previewMode: true");
-    await route.fulfill({ response, body });
-  });
+  if (!previewPages.has(page)) {
+    await page.route("**/config.js*", async route => {
+      const response = await route.fetch({ maxRetries: 2 });
+      const body = (await response.text()).replace("previewMode: false", "previewMode: true");
+      await route.fulfill({ response, body });
+    });
+    previewPages.add(page);
+  }
   await page.goto("/");
 }
 
@@ -19,7 +24,7 @@ async function openFlavorChoice(page, builderSelector) {
 
 async function openProductCard(page, selector) {
   const card = typeof selector === "string" ? page.locator(selector) : selector;
-  await expect(card).toHaveClass(/product-flip-ready/);
+  await expect(card).toHaveClass(/product-flip-ready/, { timeout: 10_000 });
   if (!(await card.evaluate(element => element.classList.contains("product-flipped")))) {
     await card.locator(".product-media").first().click();
   }
@@ -48,10 +53,11 @@ async function resumePhysicalCardTurn(locator) {
 }
 
 async function fillCheckout(page, { allergies = false, birthdayCandle = false } = {}) {
-  const expandedPhoto = page.locator(".product-expanded .product-expanded-media");
-  if (await expandedPhoto.isVisible()) {
-    await expandedPhoto.click();
-    await expect(page.locator(".product-expanded")).toHaveCount(0);
+  const expanded = page.locator(".product-expanded");
+  if (await expanded.count()) {
+    const closing = await expanded.evaluate(element => element.classList.contains("product-expanded-closing"));
+    if (!closing) await expanded.locator(".product-expanded-media").click();
+    await expect(expanded).toHaveCount(0, { timeout: 1500 });
   }
   await page.locator("#cartButton").click();
   await page.locator("#continueCheckout").click();
@@ -250,6 +256,7 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.reload();
   const desktopCard = page.locator('[data-product-id="pistacho-clasico"]');
+  await expect(desktopCard).toHaveClass(/product-flip-ready/);
   const desktopCompactBox = await desktopCard.boundingBox();
   await desktopCard.locator(".product-front .product-media").click();
   await expect(desktopCard).toHaveClass(/product-flipped/);
@@ -320,9 +327,36 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     await page.waitForTimeout(520);
     await expect(overlay.locator(".builder-flavor-expanded-media img")).toBeVisible();
     await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
+    await expect(page.locator("body")).toHaveCSS("position", "fixed");
+
+    await overlay.locator(".builder-flavor-expanded-media").click();
+    await expect(overlay).toHaveClass(/builder-flavor-flip-closing/);
+    await seekPhysicalCardTurn(overlay);
+    const physicalReturn = await overlay.evaluate(element => ({
+      outerTransform: getComputedStyle(element).transform,
+      innerTransform: getComputedStyle(element.querySelector(".builder-flavor-flip-inner")).transform,
+      width: element.getBoundingClientRect().width,
+      backdropOpacity: Number.parseFloat(getComputedStyle(document.querySelector(".builder-flavor-flip-backdrop")).opacity)
+    }));
+    expect(physicalReturn.outerTransform).not.toBe("none");
+    expect(physicalReturn.innerTransform).toBe("none");
+    expect(physicalReturn.width).toBeLessThan(compactBox.width * 0.5);
+    expect(physicalReturn.backdropOpacity).toBeGreaterThan(0.7);
+    await resumePhysicalCardTurn(overlay);
+    await expect(overlay).toHaveCount(0, { timeout: 1300 });
+    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+    await expect(source).toHaveAttribute("aria-expanded", "false");
+    const restoredAfterPhotoClose = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
+    expect(Math.abs(restoredAfterPhotoClose.x - baseline.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(restoredAfterPhotoClose.y - baseline.y)).toBeLessThanOrEqual(1);
+
+    await source.click();
+    await expect(overlay).toBeVisible();
+    await page.waitForTimeout(920);
     const output = page.locator(`${item.row} output`).first();
     const previous = Number(await output.textContent());
     await overlay.locator(".builder-flavor-choose").click();
+    await expect(overlay).toHaveClass(/builder-flavor-flip-closing/);
     await expect(overlay).toHaveCount(0);
     await expect(output).toHaveText(String(previous + 1));
     await expect(source).toHaveAttribute("aria-expanded", "false");
@@ -330,6 +364,46 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     expect(Math.abs(restored.x - baseline.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(restored.y - baseline.y)).toBeLessThanOrEqual(1);
   }
+});
+
+test("el cierre anticipado sigue el recorrido de la tarjeta sin dejar la página bloqueada", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+
+  const product = page.locator('[data-product-id="pistacho-clasico"]');
+  await expect(product).toHaveClass(/product-flip-ready/);
+  await product.scrollIntoViewIfNeeded();
+  await product.locator(".product-front .product-media").click();
+  await expect(page.locator("body")).toHaveCSS("position", "fixed");
+  await page.waitForTimeout(280);
+  const productCloseStarted = Date.now();
+  await page.keyboard.press("Escape");
+  await expect(product).not.toHaveClass(/product-expanded/, { timeout: 700 });
+  expect(Date.now() - productCloseStarted).toBeLessThan(700);
+  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const flavor = page.locator(".fonkie-gallery-card").first();
+  await flavor.scrollIntoViewIfNeeded();
+  await flavor.click();
+  const overlay = page.locator(".builder-flavor-flip-card");
+  await expect(overlay).toBeVisible();
+  await page.waitForTimeout(280);
+  const flavorCloseStarted = Date.now();
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0, { timeout: 700 });
+  expect(Date.now() - flavorCloseStarted).toBeLessThan(700);
+  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await flavor.evaluate(element => {
+    element.click();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.locator(".builder-flavor-flip-card")).toHaveCount(0);
+  await expect(page.locator(".builder-flavor-flip-backdrop")).not.toHaveClass(/visible/);
+  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
 });
 
 test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({ page }) => {
@@ -360,7 +434,11 @@ test("las tarjetas de cada categoría conservan altura y pie simétricos", async
   for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
     await page.setViewportSize(viewport);
     await openPreview(page);
-    await page.waitForTimeout(450);
+    await expect(page.locator("#products")).toHaveClass(/catalog-organized/, { timeout: 15_000 });
+    await expect(page.locator(".catalog-group-grid .product").first()).toHaveClass(/product-flip-ready/, { timeout: 15_000 });
+    await expect.poll(() => page.locator(".catalog-group-grid").evaluateAll(grids => grids.filter(grid => (
+      grid.querySelectorAll(".product:not(.hidden)").length > 1
+    )).length), { timeout: 15_000 }).toBeGreaterThan(2);
     const geometries = await page.locator(".catalog-group-grid").evaluateAll(grids => grids.map(grid => {
       const cards = [...grid.querySelectorAll(".product:not(.hidden)")];
       return cards.map(card => {
