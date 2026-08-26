@@ -500,9 +500,12 @@ test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const after = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
     const topAfter = await card.evaluate(element => element.getBoundingClientRect().top);
+    await page.waitForTimeout(360);
+    const settledTop = await card.evaluate(element => element.getBoundingClientRect().top);
     expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(2);
+    expect(Math.abs(settledTop - topAfter)).toBeLessThanOrEqual(1);
     await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
   }
 });
