@@ -178,13 +178,33 @@ test("las tarjetas conservan la compra al frente y crecen al girar", async ({ pa
   await expect(back.locator(".add")).toBeVisible();
   await page.waitForTimeout(650);
   const expandedBox = await card.boundingBox();
-  expect(expandedBox.width).toBeGreaterThan(compactBox.width * 1.8);
-  expect(expandedBox.height).toBeGreaterThan(compactBox.height * 1.4);
+  expect(expandedBox.width).toBeGreaterThan(compactBox.width * 1.3);
+  expect(expandedBox.height).toBeGreaterThan(compactBox.height * 1.25);
+  expect(expandedBox.width).toBeLessThanOrEqual(334);
+  expect(expandedBox.height).toBeLessThanOrEqual(740);
+  expect(expandedBox.x).toBeGreaterThanOrEqual(27);
+  expect(expandedBox.y).toBeGreaterThanOrEqual(51);
 
   await back.locator(".product-expanded-media").click();
   await expect(card).not.toHaveClass(/product-flipped/);
   await expect(front.locator(".product-media")).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.reload();
+  const desktopCard = page.locator('[data-product-id="pistacho-clasico"]');
+  const desktopCompactBox = await desktopCard.boundingBox();
+  await desktopCard.locator(".product-front .product-media").click();
+  await expect(desktopCard).toHaveClass(/product-flipped/);
+  await page.waitForTimeout(650);
+  const desktopExpandedBox = await desktopCard.boundingBox();
+  expect(desktopExpandedBox.width).toBeGreaterThan(desktopCompactBox.width * 1.33);
+  expect(desktopExpandedBox.width).toBeLessThanOrEqual(620);
+  expect(desktopExpandedBox.height).toBeLessThanOrEqual(780);
+  expect(desktopExpandedBox.x).toBeGreaterThanOrEqual(79);
+  expect(desktopExpandedBox.y).toBeGreaterThanOrEqual(59);
+  await page.locator(".product-flip-backdrop").click({ position: { x: 4, y: 4 } });
+  await expect(desktopCard).not.toHaveClass(/product-flipped/);
 });
 
 test("las tarjetas de cada categoría conservan altura y pie simétricos", async ({ page }) => {

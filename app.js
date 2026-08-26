@@ -483,6 +483,20 @@
         if (activeCard || card.classList.contains("product-expanded")) return;
         restoreTarget = trigger || media;
         const rect = card.getBoundingClientRect();
+        const mobile = window.matchMedia("(max-width: 640px)").matches;
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        const horizontalMargin = mobile ? 28 : 80;
+        const verticalMargin = mobile ? 52 : 60;
+        const targetWidth = Math.min(
+          window.innerWidth - (horizontalMargin * 2),
+          Math.max(mobile ? 280 : 520, rect.width * (mobile ? 1.55 : 1.42))
+        );
+        const targetHeight = Math.min(
+          viewportHeight - (verticalMargin * 2),
+          Math.max(mobile ? 560 : 600, rect.height * (mobile ? 1.34 : 1.12))
+        );
+        card.style.setProperty("--product-expanded-width", `${Math.round(targetWidth)}px`);
+        card.style.setProperty("--product-expanded-height", `${Math.round(targetHeight)}px`);
         activePlaceholder = document.createElement("div");
         activePlaceholder.className = "product-flip-placeholder";
         activePlaceholder.style.height = `${Math.ceil(rect.height)}px`;
@@ -525,6 +539,8 @@
           activeCard = null;
           activeCloser = null;
           card.classList.remove("product-expanded", "product-expanded-closing");
+          card.style.removeProperty("--product-expanded-width");
+          card.style.removeProperty("--product-expanded-height");
           document.body.classList.remove("product-modal-open");
           backdrop.hidden = true;
           media.classList.remove("product-expanded-media");
