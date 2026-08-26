@@ -515,6 +515,19 @@ test("Salados compacta el frente y conserva todas las opciones al ampliar", asyn
   await expect(raviolis.locator(".product-selection-summary")).toBeVisible();
   await expect(raviolis.locator(".product-selection-summary strong")).toHaveText("180 g · Carne");
 
+  await expect.poll(async () => {
+    const [tequenosStable, raviolisStable] = await Promise.all([
+      tequenos.boundingBox(),
+      raviolis.boundingBox()
+    ]);
+    return Boolean(
+      tequenosStable
+      && raviolisStable
+      && tequenosStable.height > 100
+      && Math.abs(tequenosStable.height - raviolisStable.height) <= 1
+    );
+  }).toBe(true);
+
   const tequenosBox = await tequenos.boundingBox();
   const raviolisBox = await raviolis.boundingBox();
   expect(Math.abs(tequenosBox.height - raviolisBox.height)).toBeLessThanOrEqual(1);
