@@ -474,6 +474,47 @@
       card.append(inner);
       card.classList.add("product-flip-ready");
       let frontSnapshot = null;
+      let cardMotion = null;
+      let faceMotions = [];
+      let motionKeyframes = null;
+      const motionDuration = 860;
+
+      const cancelFaceMotions = () => {
+        faceMotions.forEach(animation => animation.cancel());
+        faceMotions = [];
+      };
+
+      const animateFaceSwap = opening => {
+        cancelFaceMotions();
+        const frontFrames = opening
+          ? [
+              { visibility: "visible", offset: 0 },
+              { visibility: "visible", offset: 0.499 },
+              { visibility: "hidden", offset: 0.501 },
+              { visibility: "hidden", offset: 1 }
+            ]
+          : [
+              { visibility: "hidden", offset: 0 },
+              { visibility: "hidden", offset: 0.499 },
+              { visibility: "visible", offset: 0.501 },
+              { visibility: "visible", offset: 1 }
+            ];
+        const backFrames = opening
+          ? [
+              { visibility: "hidden", offset: 0 },
+              { visibility: "hidden", offset: 0.499 },
+              { visibility: "visible", offset: 0.501 },
+              { visibility: "visible", offset: 1 }
+            ]
+          : [
+              { visibility: "visible", offset: 0 },
+              { visibility: "visible", offset: 0.499 },
+              { visibility: "hidden", offset: 0.501 },
+              { visibility: "hidden", offset: 1 }
+            ];
+        const timing = { duration: motionDuration, easing: "linear", fill: "forwards" };
+        faceMotions = [front.animate(frontFrames, timing), back.animate(backFrames, timing)];
+      };
 
       const resize = () => {
         if (!card.classList.contains("product-expanded")) scheduleProductCardHeightSync();
@@ -497,16 +538,34 @@
         );
         const targetX = (window.innerWidth - targetWidth) / 2;
         const targetY = (viewportHeight - targetHeight) / 2;
+        const startX = rect.left + (rect.width / 2) - (targetX + (targetWidth / 2));
+        const startY = rect.top + (rect.height / 2) - (targetY + (targetHeight / 2));
+        const startScaleX = rect.width / targetWidth;
+        const startScaleY = rect.height / targetHeight;
+        const liftScaleX = startScaleX + ((1 - startScaleX) * 0.28);
+        const liftScaleY = startScaleY + ((1 - startScaleY) * 0.28);
+        const edgeScaleX = startScaleX + ((1 - startScaleX) * 0.66);
+        const edgeScaleY = startScaleY + ((1 - startScaleY) * 0.66);
+        const startTransform = `perspective(1800px) translate3d(${startX}px, ${startY}px, 0) scale(${startScaleX}, ${startScaleY}) rotateX(0deg) rotateY(0deg) rotateZ(0deg)`;
+        const liftTransform = `perspective(1800px) translate3d(${startX * 0.84}px, ${startY * 0.84}px, 26px) scale(${liftScaleX}, ${liftScaleY}) rotateX(1.2deg) rotateY(-12deg) rotateZ(-0.4deg)`;
+        const frontEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(89.8deg) rotateZ(-1.1deg)`;
+        const backEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
+        const settleTransform = `perspective(1800px) translate3d(${startX * 0.04}px, ${startY * 0.04}px, 14px) scale(.97, .97) rotateX(.35deg) rotateY(7deg) rotateZ(.18deg)`;
+        const targetTransform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
         card.style.setProperty("--product-expanded-width", `${Math.round(targetWidth)}px`);
         card.style.setProperty("--product-expanded-height", `${Math.round(targetHeight)}px`);
-        card.style.setProperty(
-          "--product-start-transform",
-          `translate3d(${rect.left}px, ${rect.top}px, 0) scale(${rect.width / targetWidth}, ${rect.height / targetHeight})`
-        );
-        card.style.setProperty(
-          "--product-target-transform",
-          `translate3d(${targetX}px, ${targetY}px, 0) scale(1, 1)`
-        );
+        card.style.setProperty("--product-expanded-left", `${targetX}px`);
+        card.style.setProperty("--product-expanded-top", `${targetY}px`);
+        card.style.setProperty("--product-start-transform", startTransform);
+        card.style.setProperty("--product-target-transform", targetTransform);
+        motionKeyframes = [
+          { transform: startTransform, offset: 0 },
+          { transform: liftTransform, offset: 0.16 },
+          { transform: frontEdgeTransform, easing: "steps(1,end)", offset: 0.499 },
+          { transform: backEdgeTransform, offset: 0.501 },
+          { transform: settleTransform, offset: 0.84 },
+          { transform: targetTransform, offset: 1 }
+        ];
         activePlaceholder = document.createElement("div");
         activePlaceholder.className = "product-flip-placeholder";
         activePlaceholder.style.height = `${Math.ceil(rect.height)}px`;
@@ -545,31 +604,61 @@
         back.setAttribute("aria-hidden", "false");
         media.setAttribute("aria-expanded", "true");
         requestAnimationFrame(() => {
+          if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
           card.classList.add("product-expanded-animating");
           requestAnimationFrame(() => {
+            if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
             backdrop.classList.add("visible");
             card.classList.add("product-expanded-open", "product-flipped");
-            back.focus({ preventScroll: true });
+            if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+              card.style.transform = targetTransform;
+              card.classList.remove("product-expanded-animating");
+              back.focus({ preventScroll: true });
+              return;
+            }
+            cardMotion = card.animate(motionKeyframes, {
+              duration: motionDuration,
+              easing: "cubic-bezier(.36,.08,.64,.92)",
+              fill: "forwards"
+            });
+            animateFaceSwap(true);
+            cardMotion.finished.then(() => {
+              if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
+              cardMotion.pause();
+              cardMotion.currentTime = motionDuration;
+              faceMotions.forEach(animation => {
+                animation.pause();
+                animation.currentTime = motionDuration;
+              });
+              card.classList.remove("product-expanded-animating");
+              back.focus({ preventScroll: true });
+            }).catch(() => {});
           });
         });
       };
 
       const close = (immediate = false) => {
         if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
-        card.classList.add("product-expanded-closing");
-        card.classList.remove("product-expanded-open", "product-flipped");
+        card.classList.add("product-expanded-closing", "product-expanded-animating");
         backdrop.classList.remove("visible");
         const restore = () => {
+          cardMotion?.cancel();
+          cardMotion = null;
+          cancelFaceMotions();
+          motionKeyframes = null;
           activePlaceholder?.remove();
           activePlaceholder = null;
           activeCard = null;
           activeCloser = null;
           card.classList.add("product-flip-restoring");
-          card.classList.remove("product-expanded", "product-expanded-closing", "product-expanded-animating");
+          card.classList.remove("product-expanded", "product-expanded-open", "product-flipped", "product-expanded-closing", "product-expanded-animating");
           card.style.removeProperty("--product-expanded-width");
           card.style.removeProperty("--product-expanded-height");
+          card.style.removeProperty("--product-expanded-left");
+          card.style.removeProperty("--product-expanded-top");
           card.style.removeProperty("--product-start-transform");
           card.style.removeProperty("--product-target-transform");
+          card.style.removeProperty("transform");
           document.body.classList.remove("product-modal-open");
           backdrop.hidden = true;
           media.classList.remove("product-expanded-media");
@@ -590,23 +679,31 @@
         };
         if (immediate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) restore();
         else {
-          let restored = false;
-          let outerTransformDone = false;
-          let innerTransformDone = false;
-          const finishRestore = event => {
-            if (event?.propertyName === "transform") {
-              if (event.target === card) outerTransformDone = true;
-              if (event.target === inner) innerTransformDone = true;
-              if (!outerTransformDone || !innerTransformDone) return;
-            } else if (event) return;
-            if (restored) return;
-            restored = true;
-            card.removeEventListener("transitionend", finishRestore);
-            window.clearTimeout(restoreFallback);
-            restore();
-          };
-          const restoreFallback = window.setTimeout(finishRestore, 950);
-          card.addEventListener("transitionend", finishRestore);
+          if (cardMotion) {
+            cardMotion.playbackRate = -1;
+            cardMotion.play();
+            faceMotions.forEach(animation => {
+              animation.playbackRate = -1;
+              animation.play();
+            });
+          }
+          else {
+            cardMotion = card.animate(motionKeyframes, {
+              duration: motionDuration,
+              easing: "cubic-bezier(.36,.08,.64,.92)",
+              fill: "forwards"
+            });
+            animateFaceSwap(true);
+            cardMotion.finish();
+            faceMotions.forEach(animation => animation.finish());
+            cardMotion.playbackRate = -1;
+            cardMotion.play();
+            faceMotions.forEach(animation => {
+              animation.playbackRate = -1;
+              animation.play();
+            });
+          }
+          cardMotion.finished.then(restore).catch(() => {});
         }
       };
 

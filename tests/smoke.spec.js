@@ -157,7 +157,7 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
   await page.screenshot({ path: testInfo.outputPath("controles-rapidos-producto-escritorio.png"), fullPage: false });
 });
 
-test("las tarjetas conservan la compra al frente y crecen al girar", async ({ page }) => {
+test("las tarjetas conservan la compra al frente y giran físicamente al ampliarse", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   const productCount = await page.locator(".product").count();
@@ -184,11 +184,22 @@ test("las tarjetas conservan la compra al frente y crecen al girar", async ({ pa
   expect(Math.abs(openingBox.y - compactBox.y)).toBeLessThanOrEqual(3);
   await expect(card).toHaveClass(/product-flipped/);
   await expect(back.locator(".product-expanded-media")).toHaveAttribute("aria-expanded", "true");
+  await page.waitForTimeout(430);
+  const physicalTurn = await card.evaluate(element => ({
+    outerTransform: getComputedStyle(element).transform,
+    innerTransform: getComputedStyle(element.querySelector(".product-flip-inner")).transform,
+    width: element.getBoundingClientRect().width
+  }));
+  expect(physicalTurn.outerTransform).not.toBe("none");
+  expect(physicalTurn.innerTransform).toBe("none");
+  expect(physicalTurn.width).toBeLessThan(compactBox.width * 0.45);
+  await page.screenshot({ path: testInfo.outputPath("tarjeta-giro-fisico-mitad-movil.png"), fullPage: false });
+  await page.waitForTimeout(520);
   await expect(back).toBeVisible();
+  await expect(front).toBeHidden();
   await expect(back.locator(".product-expanded-media img")).toBeVisible();
   await expect(back.locator(".product-safety")).toBeVisible();
   await expect(back.locator(".add")).toBeVisible();
-  await page.waitForTimeout(650);
   const expandedBox = await card.boundingBox();
   expect(expandedBox.width).toBeGreaterThan(compactBox.width * 1.3);
   expect(expandedBox.height).toBeGreaterThan(compactBox.height * 1.25);
@@ -199,9 +210,16 @@ test("las tarjetas conservan la compra al frente y crecen al girar", async ({ pa
 
   await back.locator(".product-expanded-media").click();
   await expect(card).toHaveClass(/product-expanded-closing/);
-  await page.waitForTimeout(560);
+  await page.waitForTimeout(430);
+  const physicalReturn = await card.evaluate(element => ({
+    outerTransform: getComputedStyle(element).transform,
+    innerTransform: getComputedStyle(element.querySelector(".product-flip-inner")).transform,
+    width: element.getBoundingClientRect().width
+  }));
+  expect(physicalReturn.outerTransform).not.toBe("none");
+  expect(physicalReturn.innerTransform).toBe("none");
+  expect(physicalReturn.width).toBeLessThan(expandedBox.width * 0.45);
   await expect(card).toHaveClass(/product-expanded-closing/);
-  await expect(card).not.toHaveClass(/product-flipped/);
   await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1200 });
   await expect(front.locator(".product-media")).toBeFocused();
 
@@ -211,7 +229,17 @@ test("las tarjetas conservan la compra al frente y crecen al girar", async ({ pa
   const desktopCompactBox = await desktopCard.boundingBox();
   await desktopCard.locator(".product-front .product-media").click();
   await expect(desktopCard).toHaveClass(/product-flipped/);
-  await page.waitForTimeout(650);
+  await page.waitForTimeout(430);
+  const desktopPhysicalTurn = await desktopCard.evaluate(element => ({
+    outerTransform: getComputedStyle(element).transform,
+    innerTransform: getComputedStyle(element.querySelector(".product-flip-inner")).transform,
+    width: element.getBoundingClientRect().width
+  }));
+  expect(desktopPhysicalTurn.outerTransform).not.toBe("none");
+  expect(desktopPhysicalTurn.innerTransform).toBe("none");
+  expect(desktopPhysicalTurn.width).toBeLessThan(desktopCompactBox.width * 0.5);
+  await page.screenshot({ path: testInfo.outputPath("tarjeta-giro-fisico-mitad-escritorio.png"), fullPage: false });
+  await page.waitForTimeout(520);
   const desktopExpandedBox = await desktopCard.boundingBox();
   expect(desktopExpandedBox.width).toBeGreaterThan(desktopCompactBox.width * 1.33);
   expect(desktopExpandedBox.width).toBeLessThanOrEqual(620);
