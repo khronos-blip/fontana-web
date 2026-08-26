@@ -19,6 +19,7 @@ async function openFlavorChoice(page, builderSelector) {
 
 async function openProductCard(page, selector) {
   const card = typeof selector === "string" ? page.locator(selector) : selector;
+  await expect(card).toHaveClass(/product-flip-ready/);
   if (!(await card.evaluate(element => element.classList.contains("product-flipped")))) {
     await card.locator(".product-media").first().click();
   }
@@ -249,6 +250,86 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   expect(desktopExpandedBox.y).toBeGreaterThanOrEqual(59);
   await page.locator(".product-flip-backdrop").click({ position: { x: 4, y: 4 } });
   await expect(desktopCard).not.toHaveClass(/product-flipped/);
+});
+
+test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scroll", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await expect(page.locator(".product-expand-hint")).toHaveCount(0);
+  await expect(page.getByText("Toca la foto para cerrar", { exact: true })).toHaveCount(0);
+
+  const cases = [
+    {
+      filter: "Fonkies · Galletas",
+      card: ".fonkie-gallery-card",
+      row: ".fonkie-flavor",
+      screenshot: "fonkie-giro-fisico-mitad-movil.png"
+    },
+    {
+      filter: "Fomb · Bombones",
+      card: ".builder-gallery-card",
+      row: ".fomb-flavor",
+      screenshot: "fomb-giro-fisico-mitad-movil.png"
+    }
+  ];
+
+  for (const item of cases) {
+    await page.getByRole("button", { name: item.filter }).click();
+    const source = page.locator(item.card).first();
+    await source.scrollIntoViewIfNeeded();
+    const compactBox = await source.boundingBox();
+    const baseline = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
+    await source.click();
+    await expect(source).toHaveAttribute("aria-expanded", "true");
+    const overlay = page.locator(".builder-flavor-flip-card");
+    await expect(overlay).toBeVisible();
+    await page.waitForTimeout(430);
+    const physicalTurn = await overlay.evaluate(element => ({
+      outerTransform: getComputedStyle(element).transform,
+      innerTransform: getComputedStyle(element.querySelector(".builder-flavor-flip-inner")).transform,
+      width: element.getBoundingClientRect().width
+    }));
+    expect(physicalTurn.outerTransform).not.toBe("none");
+    expect(physicalTurn.innerTransform).toBe("none");
+    expect(physicalTurn.width).toBeLessThan(compactBox.width * 0.5);
+    await page.screenshot({ path: testInfo.outputPath(item.screenshot), fullPage: false });
+    await page.waitForTimeout(520);
+    await expect(overlay.locator(".builder-flavor-expanded-media img")).toBeVisible();
+    await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
+    const output = page.locator(`${item.row} output`).first();
+    const previous = Number(await output.textContent());
+    await overlay.locator(".builder-flavor-choose").click();
+    await expect(overlay).toHaveCount(0);
+    await expect(output).toHaveText(String(previous + 1));
+    await expect(source).toHaveAttribute("aria-expanded", "false");
+    const restored = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
+    expect(Math.abs(restored.x - baseline.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(restored.y - baseline.y)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({ page }) => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    const card = page.locator('[data-product-id="pistacho-clasico"]');
+    const media = card.locator(".product-front .product-media");
+    await card.scrollIntoViewIfNeeded();
+    const before = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
+    const topBefore = await card.evaluate(element => element.getBoundingClientRect().top);
+    await media.click();
+    await expect(page.locator("body")).toHaveCSS("position", "fixed");
+    await page.waitForTimeout(920);
+    await card.locator(".product-back .product-expanded-media").click();
+    await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1300 });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const after = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
+    const topAfter = await card.evaluate(element => element.getBoundingClientRect().top);
+    expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(2);
+    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+  }
 });
 
 test("las tarjetas de cada categoría conservan altura y pie simétricos", async ({ page }) => {

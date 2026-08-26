@@ -329,7 +329,7 @@
       const chooser = $(".fonkie-flavors", fonkieBuilder);
       const count = $(".gallery-label-meta span", fonkieBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="fonkie-gallery-card${sold ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
+      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="fonkie-gallery-card${sold ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`; }).join("");
       const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       fonkieBuilder.dataset.ingredients = availableIngredients;
@@ -356,7 +356,7 @@
       const chooser = $(".fomb-flavors", fombBuilder);
       const count = $(".gallery-label-meta span", fombBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="builder-gallery-card${sold ? " builder-flavor-sold-out" : ""}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
+      if (gallery) gallery.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<figure class="builder-gallery-card${sold ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}"><span>${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span></figure>`; }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => { const sold = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${sold}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${sold ? " · Pre-Order" : ""}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`; }).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
@@ -433,6 +433,7 @@
     let activePlaceholder = null;
     let restoreTarget = null;
     let activeCloser = null;
+    let activeScrollState = null;
     const backdrop = document.createElement("div");
     backdrop.className = "product-flip-backdrop";
     backdrop.hidden = true;
@@ -443,6 +444,52 @@
     });
 
     const isInteractiveTarget = target => Boolean(target.closest("button, a, input, select, textarea, label, summary, details"));
+
+    const lockPageScroll = () => {
+      const body = document.body;
+      const html = document.documentElement;
+      const x = window.scrollX;
+      const y = window.scrollY;
+      const scrollbarWidth = Math.max(0, window.innerWidth - html.clientWidth);
+      activeScrollState = {
+        x,
+        y,
+        htmlScrollBehavior: html.style.scrollBehavior,
+        body: {
+          position: body.style.position,
+          top: body.style.top,
+          left: body.style.left,
+          width: body.style.width,
+          overflow: body.style.overflow,
+          paddingRight: body.style.paddingRight
+        }
+      };
+      body.style.position = "fixed";
+      body.style.top = `${-y}px`;
+      body.style.left = `${-x}px`;
+      body.style.width = "100%";
+      body.style.overflow = "hidden";
+      if (scrollbarWidth) body.style.paddingRight = `${scrollbarWidth}px`;
+      body.classList.add("product-modal-open");
+    };
+
+    const unlockPageScroll = () => {
+      const state = activeScrollState;
+      activeScrollState = null;
+      document.body.classList.remove("product-modal-open");
+      if (!state) return;
+      const html = document.documentElement;
+      html.style.scrollBehavior = "auto";
+      Object.assign(document.body.style, state.body);
+      window.scrollTo(state.x, state.y);
+      requestAnimationFrame(() => {
+        window.scrollTo(state.x, state.y);
+        requestAnimationFrame(() => {
+          window.scrollTo(state.x, state.y);
+          html.style.scrollBehavior = state.htmlScrollBehavior;
+        });
+      });
+    };
 
     $$(".product").forEach(card => {
       if (card.classList.contains("product-flip-ready")) return;
@@ -459,11 +506,6 @@
       media.setAttribute("role", "button");
       media.setAttribute("aria-expanded", "false");
       media.setAttribute("aria-label", `Ampliar ${title}`);
-      const hint = document.createElement("span");
-      hint.className = "product-expand-hint";
-      hint.setAttribute("aria-hidden", "true");
-      hint.textContent = "Ampliar ↻";
-      media.append(hint);
       front.append(media, body);
 
       const back = document.createElement("div");
@@ -594,11 +636,10 @@
         front.replaceChildren(frontSnapshot);
         media.classList.add("product-expanded-media");
         media.setAttribute("aria-label", `Cerrar vista ampliada de ${title}`);
-        hint.textContent = "Toca la foto para cerrar";
         body.classList.add("product-expanded-body");
         back.append(media, body);
         backdrop.hidden = false;
-        document.body.classList.add("product-modal-open");
+        lockPageScroll();
         card.classList.add("product-expanded");
         front.setAttribute("aria-hidden", "true");
         back.setAttribute("aria-hidden", "false");
@@ -646,7 +687,7 @@
           cardMotion = null;
           cancelFaceMotions();
           motionKeyframes = null;
-          activePlaceholder?.remove();
+          if (activePlaceholder?.isConnected) activePlaceholder.replaceWith(card);
           activePlaceholder = null;
           activeCard = null;
           activeCloser = null;
@@ -659,11 +700,9 @@
           card.style.removeProperty("--product-start-transform");
           card.style.removeProperty("--product-target-transform");
           card.style.removeProperty("transform");
-          document.body.classList.remove("product-modal-open");
           backdrop.hidden = true;
           media.classList.remove("product-expanded-media");
           media.setAttribute("aria-label", `Ampliar ${title}`);
-          hint.textContent = "Ampliar ↻";
           body.classList.remove("product-expanded-body");
           front.replaceChildren(media, body);
           frontSnapshot = null;
@@ -673,6 +712,7 @@
           resize();
           restoreTarget?.focus?.({ preventScroll: true });
           restoreTarget = null;
+          unlockPageScroll();
           requestAnimationFrame(() => {
             requestAnimationFrame(() => card.classList.remove("product-flip-restoring"));
           });
@@ -728,6 +768,250 @@
       requestAnimationFrame(resize);
     });
     scheduleProductCardHeightSync();
+  }
+
+  function setupBuilderFlavorCardFlips() {
+    const tracks = $$(".fonkie-gallery-track, .builder-gallery-track");
+    if (!tracks.length) return;
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "builder-flavor-flip-backdrop";
+    backdrop.hidden = true;
+    document.body.append(backdrop);
+    let active = null;
+    const motionDuration = 860;
+
+    const flavorName = card => card.dataset.flavor
+      || $("span", card)?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()
+      || "Sabor Fontana";
+
+    const flavorMeta = (kind, name) => {
+      const flavors = adminState?.builders?.[kind]?.flavors;
+      return Array.isArray(flavors) ? flavors.find(flavor => flavor.name === name) : null;
+    };
+
+    const matchingPlusButton = (source, kind, name) => {
+      const builder = source.closest(kind === "fonkies" ? ".fonkie-builder" : ".fomb-builder");
+      const selector = kind === "fonkies" ? ".fonkie-flavor" : ".fomb-flavor";
+      const row = $$(selector, builder).find(item => item.dataset.flavor === name);
+      return row ? $('.fonkie-stepper button[data-delta="1"]', row) : null;
+    };
+
+    const cancelAnimations = state => {
+      state.motion?.cancel();
+      state.faceMotions.forEach(animation => animation.cancel());
+      state.faceMotions = [];
+    };
+
+    const cleanup = state => {
+      cancelAnimations(state);
+      state.source.style.removeProperty("visibility");
+      state.source.setAttribute("aria-expanded", "false");
+      state.overlay.remove();
+      backdrop.classList.remove("visible");
+      backdrop.hidden = true;
+      active = null;
+      const html = document.documentElement;
+      const previousBehavior = html.style.scrollBehavior;
+      html.style.scrollBehavior = "auto";
+      window.scrollTo(state.scrollX, state.scrollY);
+      state.source.focus({ preventScroll: true });
+      requestAnimationFrame(() => {
+        window.scrollTo(state.scrollX, state.scrollY);
+        html.style.scrollBehavior = previousBehavior;
+      });
+    };
+
+    const close = (immediate = false) => {
+      const state = active;
+      if (!state || state.closing) return;
+      state.closing = true;
+      state.overlay.classList.add("builder-flavor-flip-closing");
+      backdrop.classList.remove("visible");
+      if (immediate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        cleanup(state);
+        return;
+      }
+      state.motion.playbackRate = -1;
+      state.motion.play();
+      state.faceMotions.forEach(animation => {
+        animation.playbackRate = -1;
+        animation.play();
+      });
+      state.motion.finished.then(() => cleanup(state)).catch(() => cleanup(state));
+    };
+
+    const open = source => {
+      if (active) return;
+      const rect = source.getBoundingClientRect();
+      const kind = source.matches(".fonkie-gallery-card") ? "fonkies" : "fomb";
+      const name = flavorName(source);
+      const meta = flavorMeta(kind, name);
+      const image = $("img", source);
+      if (!image) return;
+
+      const mobile = window.matchMedia("(max-width: 640px)").matches;
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      const targetWidth = Math.min(
+        window.innerWidth - (mobile ? 32 : 96),
+        Math.max(rect.width * (mobile ? 1.12 : 1.42), mobile ? 320 : 420)
+      );
+      const targetHeight = Math.min(
+        viewportHeight - (mobile ? 72 : 96),
+        Math.max(rect.height * (mobile ? 1.5 : 1.36), mobile ? 580 : 610)
+      );
+      const targetX = (window.innerWidth - targetWidth) / 2;
+      const targetY = (viewportHeight - targetHeight) / 2;
+      const startX = rect.left + (rect.width / 2) - (targetX + (targetWidth / 2));
+      const startY = rect.top + (rect.height / 2) - (targetY + (targetHeight / 2));
+      const startScaleX = rect.width / targetWidth;
+      const startScaleY = rect.height / targetHeight;
+      const liftScaleX = startScaleX + ((1 - startScaleX) * 0.28);
+      const liftScaleY = startScaleY + ((1 - startScaleY) * 0.28);
+      const edgeScaleX = startScaleX + ((1 - startScaleX) * 0.66);
+      const edgeScaleY = startScaleY + ((1 - startScaleY) * 0.66);
+      const startTransform = `perspective(1800px) translate3d(${startX}px, ${startY}px, 0) scale(${startScaleX}, ${startScaleY}) rotateX(0deg) rotateY(0deg) rotateZ(0deg)`;
+      const liftTransform = `perspective(1800px) translate3d(${startX * 0.84}px, ${startY * 0.84}px, 26px) scale(${liftScaleX}, ${liftScaleY}) rotateX(1.2deg) rotateY(-12deg) rotateZ(-0.4deg)`;
+      const frontEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(89.8deg) rotateZ(-1.1deg)`;
+      const backEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
+      const settleTransform = `perspective(1800px) translate3d(${startX * 0.04}px, ${startY * 0.04}px, 14px) scale(.97, .97) rotateX(.35deg) rotateY(7deg) rotateZ(.18deg)`;
+      const targetTransform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
+      const keyframes = [
+        { transform: startTransform, offset: 0 },
+        { transform: liftTransform, offset: 0.16 },
+        { transform: frontEdgeTransform, easing: "steps(1,end)", offset: 0.499 },
+        { transform: backEdgeTransform, offset: 0.501 },
+        { transform: settleTransform, offset: 0.84 },
+        { transform: targetTransform, offset: 1 }
+      ];
+
+      const overlay = document.createElement("section");
+      overlay.className = "builder-flavor-flip-card";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+      overlay.setAttribute("aria-label", `${kind === "fonkies" ? "Fonkie" : "Fomb"} ${name}`);
+      Object.assign(overlay.style, {
+        left: `${targetX}px`,
+        top: `${targetY}px`,
+        width: `${targetWidth}px`,
+        height: `${targetHeight}px`,
+        transform: startTransform
+      });
+      const inner = document.createElement("div");
+      inner.className = "builder-flavor-flip-inner";
+      const front = document.createElement("div");
+      front.className = "builder-flavor-flip-face builder-flavor-flip-front";
+      const frontCard = source.cloneNode(true);
+      frontCard.removeAttribute("tabindex");
+      frontCard.removeAttribute("role");
+      frontCard.removeAttribute("aria-expanded");
+      front.append(frontCard);
+
+      const back = document.createElement("div");
+      back.className = "builder-flavor-flip-face builder-flavor-flip-back";
+      back.setAttribute("aria-hidden", "true");
+      back.tabIndex = -1;
+      const media = document.createElement("button");
+      media.type = "button";
+      media.className = "builder-flavor-expanded-media";
+      media.setAttribute("aria-label", `Cerrar detalles de ${name}`);
+      const backImage = image.cloneNode(true);
+      media.append(backImage);
+      const details = document.createElement("div");
+      details.className = "builder-flavor-expanded-details";
+      const eyebrow = document.createElement("span");
+      eyebrow.textContent = kind === "fonkies" ? "Fonkie · Galleta" : "Fomb · Bombón";
+      const heading = document.createElement("h3");
+      heading.textContent = name;
+      const ingredients = document.createElement("p");
+      ingredients.textContent = meta?.ingredients?.trim() || "Ingredientes pendientes de confirmar con Fontana.";
+      const choose = document.createElement("button");
+      choose.type = "button";
+      choose.className = "builder-flavor-choose";
+      choose.textContent = source.classList.contains("builder-flavor-sold-out") ? "Elegir para Pre-Order" : "Elegir este sabor";
+      details.append(eyebrow, heading, ingredients, choose);
+      back.append(media, details);
+      inner.append(front, back);
+      overlay.append(inner);
+      document.body.append(overlay);
+
+      const faceTiming = { duration: motionDuration, easing: "linear", fill: "forwards" };
+      const frontMotion = front.animate([
+        { visibility: "visible", offset: 0 },
+        { visibility: "visible", offset: 0.499 },
+        { visibility: "hidden", offset: 0.501 },
+        { visibility: "hidden", offset: 1 }
+      ], faceTiming);
+      const backMotion = back.animate([
+        { visibility: "hidden", offset: 0 },
+        { visibility: "hidden", offset: 0.499 },
+        { visibility: "visible", offset: 0.501 },
+        { visibility: "visible", offset: 1 }
+      ], faceTiming);
+      const motion = overlay.animate(keyframes, {
+        duration: motionDuration,
+        easing: "cubic-bezier(.36,.08,.64,.92)",
+        fill: "forwards"
+      });
+      const state = {
+        source,
+        overlay,
+        front,
+        back,
+        motion,
+        faceMotions: [frontMotion, backMotion],
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+        closing: false
+      };
+      active = state;
+      source.style.visibility = "hidden";
+      source.setAttribute("aria-expanded", "true");
+      backdrop.hidden = false;
+      requestAnimationFrame(() => backdrop.classList.add("visible"));
+      media.addEventListener("click", () => close());
+      choose.addEventListener("click", () => {
+        matchingPlusButton(source, kind, name)?.click();
+        close(true);
+      });
+      motion.finished.then(() => {
+        if (active !== state || state.closing) return;
+        motion.pause();
+        motion.currentTime = motionDuration;
+        state.faceMotions.forEach(animation => {
+          animation.pause();
+          animation.currentTime = motionDuration;
+        });
+        back.setAttribute("aria-hidden", "false");
+        back.focus({ preventScroll: true });
+      }).catch(() => {});
+    };
+
+    tracks.forEach(track => {
+      track.addEventListener("click", event => {
+        const card = event.target.closest(".fonkie-gallery-card, .builder-gallery-card");
+        if (card && track.contains(card)) open(card);
+      });
+      track.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const card = event.target.closest(".fonkie-gallery-card, .builder-gallery-card");
+        if (!card || !track.contains(card)) return;
+        event.preventDefault();
+        open(card);
+      });
+      $$(".fonkie-gallery-card, .builder-gallery-card", track).forEach(card => {
+        card.tabIndex = 0;
+        card.setAttribute("role", "button");
+        card.setAttribute("aria-expanded", "false");
+        card.setAttribute("aria-label", `Ver detalles de ${flavorName(card)}`);
+      });
+    });
+    backdrop.addEventListener("click", () => close());
+    backdrop.addEventListener("touchmove", event => event.preventDefault(), { passive: false });
+    backdrop.addEventListener("wheel", event => event.preventDefault(), { passive: false });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") close();
+    });
   }
 
   function renderDynamicCatalog() {
@@ -2022,6 +2306,7 @@
   pendingProductOpens.clear();
   setupFonkieBuilder();
   setupFombBuilder();
+  setupBuilderFlavorCardFlips();
   setupFitDialog();
   setupHeroLeafMotion();
   setupTestimonialsCarousel();

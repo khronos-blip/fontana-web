@@ -185,9 +185,7 @@
     .product-flipped .product-front{visibility:hidden;pointer-events:none}
     .product-flipped .product-back{visibility:visible}
     .product:not(.product-flipped) .product-back{pointer-events:none}
-    .product-expand-hint{position:absolute;right:12px;bottom:12px;z-index:4;padding:7px 10px;border-radius:999px;background:rgba(79,22,81,.86);color:#fff;font-size:.58rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;opacity:0;transform:translateY(4px);transition:.25s ease;pointer-events:none}
     .product-media:focus-visible{box-shadow:inset 0 0 0 3px var(--acid)}
-    .product-media:hover .product-expand-hint,.product-media:focus-visible .product-expand-hint{opacity:1;transform:none}
     .product-flip-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(28,8,30,.48);opacity:0;transition:opacity .42s ease}
     .product-flip-backdrop.visible{opacity:1}
     .product-modal-open{overflow:hidden}
@@ -266,6 +264,24 @@
     .fonkie-gallery-card{position:relative;display:grid;place-items:center;aspect-ratio:1;margin:0;overflow:hidden;scroll-snap-align:center;background:#e8d6e8}
     .fonkie-gallery-card img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
     .fonkie-gallery-card span{position:absolute;left:14px;right:14px;bottom:14px;padding:9px 12px;border-radius:11px;background:rgba(79,22,81,.88);color:#fff;font-size:.77rem;font-weight:800;text-align:center;backdrop-filter:blur(8px)}
+    .fonkie-gallery-card[role="button"],.builder-gallery-card[role="button"]{cursor:zoom-in}
+    .fonkie-gallery-card[role="button"]:focus-visible,.builder-gallery-card[role="button"]:focus-visible{outline:3px solid var(--acid);outline-offset:-3px}
+    .builder-flavor-flip-backdrop{position:fixed;inset:0;z-index:1010;background:rgba(28,8,30,.54);opacity:0;transition:opacity .42s ease;touch-action:none}
+    .builder-flavor-flip-backdrop.visible{opacity:1}
+    .builder-flavor-flip-card{position:fixed;z-index:1011;margin:0;overflow:hidden;border:1px solid rgba(248,241,245,.35);border-radius:24px;background:var(--lilac);box-shadow:0 32px 90px rgba(20,4,22,.48);transform-origin:center;transform-style:preserve-3d;will-change:transform}
+    .builder-flavor-flip-card.builder-flavor-flip-closing{pointer-events:none}
+    .builder-flavor-flip-inner{position:relative;width:100%;height:100%;transform:none}
+    .builder-flavor-flip-face{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;background:var(--lilac);transform:none}
+    .builder-flavor-flip-front{visibility:visible}
+    .builder-flavor-flip-back{visibility:hidden;display:grid;grid-template-rows:minmax(0,58%) minmax(0,42%)}
+    .builder-flavor-flip-front>.fonkie-gallery-card,.builder-flavor-flip-front>.builder-gallery-card{width:100%;height:100%;aspect-ratio:auto;border-radius:0;cursor:default}
+    .builder-flavor-expanded-media{display:block;width:100%;height:100%;padding:0;border:0;background:var(--lilac-soft);cursor:zoom-out;overflow:hidden}
+    .builder-flavor-expanded-media img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
+    .builder-flavor-expanded-details{min-height:0;display:flex;flex-direction:column;align-items:flex-start;padding:24px 26px 26px;overflow-y:auto;background:var(--lilac);color:var(--plum-dark)}
+    .builder-flavor-expanded-details>span{color:var(--plum);font-size:.65rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
+    .builder-flavor-expanded-details h3{margin:7px 0 8px;font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:2rem;line-height:1;color:var(--plum-dark)}
+    .builder-flavor-expanded-details p{margin:0 0 16px;color:#705e70;font-size:.78rem;line-height:1.5}
+    .builder-flavor-choose{width:100%;margin-top:auto;padding:13px 16px;border:0;border-radius:13px;background:var(--plum);color:#fff;font-size:.74rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase}
     .fonkie-builder-body{padding:24px}
     .fonkie-builder-head{display:flex;justify-content:space-between;gap:20px;align-items:start;margin-bottom:14px}
     .fonkie-builder h3{font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:2rem;color:var(--plum-dark)}
@@ -672,13 +688,17 @@
       .product{border-radius:15px}
       .product-media{aspect-ratio:1}
       .product-body{padding:13px 11px}
-      .product-expand-hint{right:7px;bottom:7px;padding:5px 7px;font-size:.47rem;opacity:1;background:rgba(79,22,81,.78)}
       .product-expanded{width:var(--product-expanded-width,calc(100vw - 56px));height:var(--product-expanded-height,calc(100dvh - 104px));border-radius:20px}
       .product-back{grid-template-columns:1fr;grid-template-rows:minmax(220px,44%) minmax(0,1fr)}
       .product-expanded-media{grid-row:1}
       .product-expanded-body{grid-row:2;padding:20px 17px 24px}
       .product-expanded-body .product-top h3{font-size:1.5rem}
       .product-expanded-body p{font-size:.76rem;min-height:0}
+      .builder-flavor-flip-card{border-radius:20px}
+      .builder-flavor-flip-back{grid-template-rows:minmax(0,57%) minmax(0,43%)}
+      .builder-flavor-expanded-details{padding:18px 18px 20px}
+      .builder-flavor-expanded-details h3{font-size:1.65rem}
+      .builder-flavor-expanded-details p{font-size:.72rem;line-height:1.42}
       .product-top{gap:6px}
       .product h3{font-size:1.12rem;line-height:1.02}
       .price{font-size:.76rem}
