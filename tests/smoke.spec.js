@@ -362,7 +362,25 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     await resumePhysicalCardTurn(overlay);
     await page.waitForTimeout(520);
     await expect(overlay.locator(".builder-flavor-expanded-media img")).toBeVisible();
+    await expect(overlay.locator(".builder-flavor-expanded-media img")).toHaveCSS("object-fit", "contain");
+    const expandedMediaRatio = await overlay.locator(".builder-flavor-expanded-media").evaluate(element => {
+      return element.clientWidth / element.clientHeight;
+    });
+    expect(expandedMediaRatio).toBeGreaterThan(.98);
+    expect(expandedMediaRatio).toBeLessThan(1.02);
     await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
+    const expandedLayout = await overlay.evaluate(element => {
+      const details = element.querySelector(".builder-flavor-expanded-details")?.getBoundingClientRect();
+      const choose = element.querySelector(".builder-flavor-choose")?.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      return details && choose ? {
+        detailsHeight: details.height,
+        buttonInside: choose.bottom <= box.bottom + 1
+      } : null;
+    });
+    expect(expandedLayout).not.toBeNull();
+    expect(expandedLayout.detailsHeight).toBeGreaterThan(150);
+    expect(expandedLayout.buttonInside).toBe(true);
     await expect(page.locator("body")).toHaveCSS("position", "fixed");
 
     await overlay.locator(".builder-flavor-expanded-media").click();
@@ -399,6 +417,29 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     const restored = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
     expect(Math.abs(restored.x - baseline.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(restored.y - baseline.y)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en escritorio", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await openPreview(page);
+
+  for (const item of [
+    { filter: "Fonkies · Galletas", card: ".fonkie-gallery-card" },
+    { filter: "Fomb · Bombones", card: ".builder-gallery-card" }
+  ]) {
+    await page.getByRole("button", { name: item.filter }).click();
+    const source = page.locator(item.card).first();
+    await source.scrollIntoViewIfNeeded();
+    await source.click();
+    const overlay = page.locator(".builder-flavor-flip-card");
+    await expect(overlay).toBeVisible();
+    await page.waitForTimeout(920);
+    await expect(overlay.locator(".builder-flavor-expanded-media img")).toHaveCSS("object-fit", "contain");
+    await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
+    await expect(overlay.locator(".builder-flavor-choose")).toBeVisible();
+    await overlay.locator(".builder-flavor-expanded-media").click();
+    await expect(overlay).toHaveCount(0, { timeout: 1300 });
   }
 });
 

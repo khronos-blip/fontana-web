@@ -899,10 +899,9 @@
 
       const mobile = window.matchMedia("(max-width: 640px)").matches;
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
-      const targetWidth = Math.min(
-        window.innerWidth - (mobile ? 32 : 96),
-        Math.max(rect.width * (mobile ? 1.12 : 1.42), mobile ? 320 : 420)
-      );
+      const targetWidth = mobile
+        ? window.innerWidth - 32
+        : Math.min(window.innerWidth - 96, Math.max(rect.width * 1.42, 420));
       const targetHeight = Math.min(
         viewportHeight - (mobile ? 72 : 96),
         Math.max(rect.height * (mobile ? 1.5 : 1.36), mobile ? 580 : 610)
