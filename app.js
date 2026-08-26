@@ -495,20 +495,43 @@
           viewportHeight - (verticalMargin * 2),
           Math.max(mobile ? 560 : 600, rect.height * (mobile ? 1.34 : 1.12))
         );
+        const targetX = (window.innerWidth - targetWidth) / 2;
+        const targetY = (viewportHeight - targetHeight) / 2;
         card.style.setProperty("--product-expanded-width", `${Math.round(targetWidth)}px`);
         card.style.setProperty("--product-expanded-height", `${Math.round(targetHeight)}px`);
+        card.style.setProperty(
+          "--product-start-transform",
+          `translate3d(${rect.left}px, ${rect.top}px, 0) scale(${rect.width / targetWidth}, ${rect.height / targetHeight})`
+        );
+        card.style.setProperty(
+          "--product-target-transform",
+          `translate3d(${targetX}px, ${targetY}px, 0) scale(1, 1)`
+        );
         activePlaceholder = document.createElement("div");
         activePlaceholder.className = "product-flip-placeholder";
         activePlaceholder.style.height = `${Math.ceil(rect.height)}px`;
         card.before(activePlaceholder);
         activeCard = card;
         activeCloser = close;
-        const imageUrl = $("img", media)?.currentSrc || $("img", media)?.src || "";
         frontSnapshot = document.createElement("div");
-        frontSnapshot.className = "product-media product-front-snapshot";
+        frontSnapshot.className = "product-front-snapshot";
         frontSnapshot.setAttribute("aria-expanded", "true");
         frontSnapshot.setAttribute("aria-hidden", "true");
-        if (imageUrl) frontSnapshot.style.backgroundImage = `url("${imageUrl.replace(/"/g, "\\\"")}")`;
+        frontSnapshot.inert = true;
+        const snapshotMedia = media.cloneNode(true);
+        const sourceImage = $("img", media);
+        const snapshotImage = $("img", snapshotMedia);
+        if (sourceImage && snapshotImage) {
+          snapshotImage.style.transition = "none";
+          snapshotImage.style.transform = getComputedStyle(sourceImage).transform;
+        }
+        const snapshotBody = body.cloneNode(true);
+        snapshotBody.querySelectorAll("[id]").forEach(element => element.removeAttribute("id"));
+        snapshotBody.querySelectorAll("label[for]").forEach(label => label.removeAttribute("for"));
+        snapshotBody.querySelectorAll(".product-variant,.product-size").forEach(control => {
+          control.classList.remove("product-variant", "product-size");
+        });
+        frontSnapshot.append(snapshotMedia, snapshotBody);
         front.replaceChildren(frontSnapshot);
         media.classList.add("product-expanded-media");
         media.setAttribute("aria-label", `Cerrar vista ampliada de ${title}`);
@@ -522,9 +545,12 @@
         back.setAttribute("aria-hidden", "false");
         media.setAttribute("aria-expanded", "true");
         requestAnimationFrame(() => {
-          backdrop.classList.add("visible");
-          card.classList.add("product-expanded-open", "product-flipped");
-          back.focus({ preventScroll: true });
+          card.classList.add("product-expanded-animating");
+          requestAnimationFrame(() => {
+            backdrop.classList.add("visible");
+            card.classList.add("product-expanded-open", "product-flipped");
+            back.focus({ preventScroll: true });
+          });
         });
       };
 
@@ -538,9 +564,12 @@
           activePlaceholder = null;
           activeCard = null;
           activeCloser = null;
-          card.classList.remove("product-expanded", "product-expanded-closing");
+          card.classList.add("product-flip-restoring");
+          card.classList.remove("product-expanded", "product-expanded-closing", "product-expanded-animating");
           card.style.removeProperty("--product-expanded-width");
           card.style.removeProperty("--product-expanded-height");
+          card.style.removeProperty("--product-start-transform");
+          card.style.removeProperty("--product-target-transform");
           document.body.classList.remove("product-modal-open");
           backdrop.hidden = true;
           media.classList.remove("product-expanded-media");
@@ -555,9 +584,30 @@
           resize();
           restoreTarget?.focus?.({ preventScroll: true });
           restoreTarget = null;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => card.classList.remove("product-flip-restoring"));
+          });
         };
-        if (immediate) restore();
-        else window.setTimeout(restore, 560);
+        if (immediate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) restore();
+        else {
+          let restored = false;
+          let outerTransformDone = false;
+          let innerTransformDone = false;
+          const finishRestore = event => {
+            if (event?.propertyName === "transform") {
+              if (event.target === card) outerTransformDone = true;
+              if (event.target === inner) innerTransformDone = true;
+              if (!outerTransformDone || !innerTransformDone) return;
+            } else if (event) return;
+            if (restored) return;
+            restored = true;
+            card.removeEventListener("transitionend", finishRestore);
+            window.clearTimeout(restoreFallback);
+            restore();
+          };
+          const restoreFallback = window.setTimeout(finishRestore, 950);
+          card.addEventListener("transitionend", finishRestore);
+        }
       };
 
       media.addEventListener("click", event => {

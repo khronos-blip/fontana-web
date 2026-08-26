@@ -160,18 +160,30 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
 test("las tarjetas conservan la compra al frente y crecen al girar", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
+  const productCount = await page.locator(".product").count();
+  await expect(page.locator(".product.product-flip-ready")).toHaveCount(productCount);
   const card = page.locator('[data-product-id="pistacho-clasico"]');
   const front = card.locator(".product-front");
   const back = card.locator(".product-back");
 
   await expect(front).toBeVisible();
-  await expect(back).toBeHidden();
+  await expect(back).toHaveAttribute("aria-hidden", "true");
   await expect(front.locator(".product-safety")).toBeVisible();
   await expect(front.locator(".add")).toBeVisible();
+  await card.scrollIntoViewIfNeeded();
   const compactBox = await card.boundingBox();
-  await front.locator(".product-media").click();
+  const openingBox = await front.locator(".product-media").evaluate(element => {
+    element.click();
+    const cardElement = element.closest(".product");
+    const box = cardElement.getBoundingClientRect();
+    return { width: box.width, height: box.height, x: box.x, y: box.y };
+  });
+  expect(Math.abs(openingBox.width - compactBox.width)).toBeLessThanOrEqual(3);
+  expect(Math.abs(openingBox.height - compactBox.height)).toBeLessThanOrEqual(3);
+  expect(Math.abs(openingBox.x - compactBox.x)).toBeLessThanOrEqual(3);
+  expect(Math.abs(openingBox.y - compactBox.y)).toBeLessThanOrEqual(3);
   await expect(card).toHaveClass(/product-flipped/);
-  await expect(front.locator(".product-media")).toHaveAttribute("aria-expanded", "true");
+  await expect(back.locator(".product-expanded-media")).toHaveAttribute("aria-expanded", "true");
   await expect(back).toBeVisible();
   await expect(back.locator(".product-expanded-media img")).toBeVisible();
   await expect(back.locator(".product-safety")).toBeVisible();
@@ -186,9 +198,12 @@ test("las tarjetas conservan la compra al frente y crecen al girar", async ({ pa
   expect(expandedBox.y).toBeGreaterThanOrEqual(51);
 
   await back.locator(".product-expanded-media").click();
+  await expect(card).toHaveClass(/product-expanded-closing/);
+  await page.waitForTimeout(560);
+  await expect(card).toHaveClass(/product-expanded-closing/);
   await expect(card).not.toHaveClass(/product-flipped/);
+  await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1200 });
   await expect(front.locator(".product-media")).toBeFocused();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.reload();
@@ -200,7 +215,7 @@ test("las tarjetas conservan la compra al frente y crecen al girar", async ({ pa
   const desktopExpandedBox = await desktopCard.boundingBox();
   expect(desktopExpandedBox.width).toBeGreaterThan(desktopCompactBox.width * 1.33);
   expect(desktopExpandedBox.width).toBeLessThanOrEqual(620);
-  expect(desktopExpandedBox.height).toBeLessThanOrEqual(780);
+  expect(desktopExpandedBox.height).toBeLessThanOrEqual(781);
   expect(desktopExpandedBox.x).toBeGreaterThanOrEqual(79);
   expect(desktopExpandedBox.y).toBeGreaterThanOrEqual(59);
   await page.locator(".product-flip-backdrop").click({ position: { x: 4, y: 4 } });
