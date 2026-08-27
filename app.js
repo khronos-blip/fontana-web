@@ -1122,11 +1122,14 @@
       frontCard.removeAttribute("tabindex");
       frontCard.removeAttribute("role");
       frontCard.removeAttribute("aria-expanded");
+      const frontScaleX = targetWidth / rect.width;
+      const frontStartScaleY = targetHeight / rect.height;
+      const frontMediaScaleY = targetWidth / rect.height;
       frontCard.style.width = `${rect.width}px`;
       frontCard.style.height = `${rect.height}px`;
       frontCard.style.flex = "0 0 auto";
       frontCard.style.transformOrigin = "top left";
-      frontCard.style.transform = `scale(${targetWidth / rect.width}, ${targetHeight / rect.height})`;
+      frontCard.style.transform = `scale(${frontScaleX}, ${frontStartScaleY})`;
       front.append(frontCard);
 
       const back = document.createElement("div");
@@ -1180,7 +1183,13 @@
           { visibility: "visible", offset: 0.501 },
           { visibility: "visible", offset: 1 }
         ], faceTiming);
-        faceMotions = [frontMotion, backMotion];
+        const frontCardMotion = frontCard.animate([
+          { transform: `scale(${frontScaleX}, ${frontStartScaleY})`, offset: 0 },
+          { transform: `scale(${frontScaleX}, ${frontStartScaleY + ((frontMediaScaleY - frontStartScaleY) * .22)})`, offset: 0.16 },
+          { transform: `scale(${frontScaleX}, ${frontMediaScaleY})`, offset: 0.499 },
+          { transform: `scale(${frontScaleX}, ${frontMediaScaleY})`, offset: 1 }
+        ], faceTiming);
+        faceMotions = [frontMotion, backMotion, frontCardMotion];
         motion = overlay.animate(keyframes, {
           duration: motionDuration,
           easing: "cubic-bezier(.36,.08,.64,.92)",

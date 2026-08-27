@@ -862,8 +862,36 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   await expect(page.locator('img[src="assets/fonkie-white-chocolate-chips-fontana-pro.jpg"]')).toHaveCount(1);
   await expect(page.locator('.fonkie-flavor[data-flavor="Chips Ahoy Fit"]')).toHaveCount(1);
   await expect(page.locator('img[src="assets/fonkie-chips-ahoy-fit-fontana-pro.jpg"]')).toHaveCount(1);
-  await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-position", "50% 50%");
-  await expect(page.locator(".fonkie-gallery-card img").first()).toHaveCSS("object-fit", "cover");
+  const fonkieGalleryCard = page.locator(".fonkie-gallery-card").first();
+  const fonkieGalleryImage = fonkieGalleryCard.locator("img");
+  await expect(fonkieGalleryImage).toHaveCSS("object-position", "50% 50%");
+  await expect(fonkieGalleryImage).toHaveCSS("object-fit", "contain");
+  await expect(fonkieGalleryImage).toHaveCSS("position", "absolute");
+  const [fonkieCardBox, fonkieImageBox] = await Promise.all([
+    fonkieGalleryCard.boundingBox(),
+    fonkieGalleryImage.boundingBox()
+  ]);
+  expect(fonkieCardBox).not.toBeNull();
+  expect(fonkieImageBox).not.toBeNull();
+  expect(Math.abs(fonkieImageBox.x - fonkieCardBox.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(fonkieImageBox.y - fonkieCardBox.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(fonkieImageBox.width - fonkieCardBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(fonkieImageBox.height - fonkieCardBox.height)).toBeLessThanOrEqual(1);
+
+  const fombGalleryCard = page.locator(".builder-gallery-card").first();
+  const fombGalleryImage = fombGalleryCard.locator("img");
+  await expect(fombGalleryImage).toHaveCSS("object-position", "50% 50%");
+  await expect(fombGalleryImage).toHaveCSS("object-fit", "contain");
+  const [fombCardBox, fombImageBox] = await Promise.all([
+    fombGalleryCard.boundingBox(),
+    fombGalleryImage.boundingBox()
+  ]);
+  expect(fombCardBox).not.toBeNull();
+  expect(fombImageBox).not.toBeNull();
+  expect(Math.abs(fombImageBox.x - fombCardBox.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(fombImageBox.y - fombCardBox.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(fombImageBox.width - fombCardBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(fombImageBox.height - fombCardBox.height)).toBeLessThanOrEqual(1);
 });
 
 test("Fonkies nunca permite seleccionar ni pedir más unidades que el inventario", async ({ page }, testInfo) => {
@@ -1324,7 +1352,7 @@ test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el produc
     await expect(gallery.locator("summary")).toContainText(item.heading);
     await expect(track).toBeVisible();
     await expect(gallery.locator(".gallery-swipe-cue")).toContainText("Desliza para ver más");
-    await expect(image).toHaveCSS("object-fit", "cover");
+    await expect(image).toHaveCSS("object-fit", "contain");
     await expect(image).toHaveCSS("object-position", "50% 50%");
     const fillsTrack = await card.evaluate(element => {
       const cardBox = element.getBoundingClientRect();
