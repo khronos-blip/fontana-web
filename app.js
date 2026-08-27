@@ -20,6 +20,7 @@
   }, true);
   let adminStateVerified = false;
   const adminState = await readAdminState();
+  const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
   const productionWithElectricity = localMode ? adminState?.settings?.productionWithElectricity !== false : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
   const stockTodayOpen = adminState?.settings?.stockTodayOpen !== false;
   const drawer = $("#drawer");
@@ -51,6 +52,48 @@
 
   function builderAllowsAutomaticPreorder(kind) {
     return kind === "fonkies" || kind === "fomb";
+  }
+
+  function captureCatalogHydrationScrollAnchor() {
+    if (window.scrollY < 2) return null;
+    const viewportLine = Math.min(window.innerHeight * 0.35, 280);
+    const catalogItems = $$("#products > .product, #products > .fonkie-builder, #products > .builder-panel");
+    const visibleItem = catalogItems.find(item => {
+      const rect = item.getBoundingClientRect();
+      return rect.top <= viewportLine && rect.bottom > viewportLine;
+    }) || catalogItems.find(item => item.getBoundingClientRect().bottom > viewportLine);
+    const stableSelectors = ["#historia", "#ubicacion", "#resenas", ".final", "footer"];
+    const fallbackSelector = stableSelectors.find(selector => document.querySelector(selector));
+    const fallback = fallbackSelector ? document.querySelector(fallbackSelector) : null;
+    document.documentElement.style.overflowAnchor = "none";
+    return {
+      x: window.scrollX,
+      itemId: visibleItem?.dataset.productId || visibleItem?.dataset.id || "",
+      itemCategory: visibleItem?.matches(".fonkie-builder, .builder-panel") ? visibleItem.dataset.category : "",
+      itemTop: visibleItem?.getBoundingClientRect().top,
+      fallbackSelector: fallbackSelector || "",
+      fallbackTop: fallback?.getBoundingClientRect().top
+    };
+  }
+
+  function restoreCatalogHydrationScrollAnchor(anchor) {
+    if (!anchor) return;
+    let element = null;
+    let previousTop = null;
+    if (anchor.itemId) {
+      element = document.querySelector(`#products [data-product-id="${CSS.escape(anchor.itemId)}"], #products [data-id="${CSS.escape(anchor.itemId)}"]`);
+      previousTop = anchor.itemTop;
+    } else if (anchor.itemCategory) {
+      element = document.querySelector(`#products [data-category="${CSS.escape(anchor.itemCategory)}"]`);
+      previousTop = anchor.itemTop;
+    }
+    if (!element && anchor.fallbackSelector) {
+      element = document.querySelector(anchor.fallbackSelector);
+      previousTop = anchor.fallbackTop;
+    }
+    if (!element || !Number.isFinite(previousTop)) return;
+    const delta = element.getBoundingClientRect().top - previousTop;
+    if (Math.abs(delta) > 1) window.scrollTo({left:anchor.x,top:window.scrollY + delta,behavior:"instant"});
   }
 
   async function readAdminState() {
@@ -2660,4 +2703,8 @@
   populateOptions();
   toggleAddress();
   renderCart();
+  if (catalogHydrationScrollAnchor) {
+    syncProductCardHeights();
+    restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
+  }
 })();

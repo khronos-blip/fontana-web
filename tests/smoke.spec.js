@@ -2386,6 +2386,75 @@ test("las métricas de Pedidos abren la lista con el filtro correspondiente", as
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test("el catálogo tardío conserva la tarjeta visible mientras la persona desplaza", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const delayedProducts = [
+    ...Array.from({ length: 8 }, (_, index) => ({
+      id: `producto-tardio-${index}`,
+      category: "cakes",
+      name: `Producto tardío ${index + 1}`,
+      price: 20 + index,
+      image: "assets/chocolate-fontana-v2.jpg",
+      description: "Producto de prueba para estabilizar el catálogo.",
+      ingredients: "Harina de almendra.",
+      weight: "TORTA COMPLETA",
+      status: "available",
+      visible: true
+    })),
+    {
+      id: "pistacho",
+      category: "cakes",
+      name: "Pistachio Raspberry",
+      price: 54,
+      image: "assets/pistachio-raspberry-fontana-v2.jpg",
+      description: "Pistacho, frambuesa y harina de almendra.",
+      ingredients: "Harina de almendra, pistacho y frambuesa.",
+      weight: "APROX. 1 KG",
+      status: "available",
+      visible: true
+    },
+    ...[
+      "ballerine", "tentacion-coco", "crumbl-blueberry", "brownie-fit", "mini-cake", "layer-cake",
+      "torta-personalizada", "cachito-fit", "panzerottis", "tequenos-fit", "raviolis", "nuggets-rora",
+      "agua-minalba-600", "agua-gasificada-minalba", "tevia-durazno", "san-pellegrino"
+    ].map((id, index) => ({
+      id,
+      category: "snacks",
+      name: `Producto administrado ${index + 1}`,
+      price: 10 + index,
+      image: "assets/chocolate-fontana-v2.jpg",
+      description: "Producto administrado de prueba.",
+      ingredients: "Harina de almendra.",
+      weight: "DISPONIBLE",
+      status: "available",
+      visible: true
+    }))
+  ];
+  await page.route("https://api.fontanasingluten.com/v1/catalog", async route => {
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ state: { products: delayedProducts, operations: { verified: true, electricityEnabled: true }, settings: { stockTodayOpen: true } } })
+    });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  const initialCard = page.locator('#products > .product[data-id="pistacho"]');
+  await expect(initialCard).toBeVisible();
+  await initialCard.evaluate(element => window.scrollBy(0, element.getBoundingClientRect().top - 240));
+  const before = await initialCard.evaluate(element => ({ top: element.getBoundingClientRect().top, scrollY }));
+
+  const hydratedCard = page.locator('#products [data-product-id="pistacho"]');
+  await expect(hydratedCard).toBeVisible({ timeout: 4000 });
+  await expect(hydratedCard).toHaveClass(/product-flip-ready/);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const after = await hydratedCard.evaluate(element => ({ top: element.getBoundingClientRect().top, scrollY }));
+  expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(2);
+  expect(after.scrollY).toBeGreaterThan(before.scrollY);
+});
+
 test("las métricas del resumen abren productos con su filtro en móvil y escritorio", async ({ page }, testInfo) => {
   const consoleErrors = [];
   page.on("console", message => {
