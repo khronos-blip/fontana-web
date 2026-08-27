@@ -93,12 +93,14 @@ test("cada ficha publica Product, Offer y contenido visible equivalente", async 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("la portada de producción conserva el H1 visible y la tienda funcional", async ({ page }) => {
+test("la portada conserva el H1 accesible sin mostrar una frase bajo el logo", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${productionPreview}/`);
   const heading = page.locator("h1.hero-seo-title");
-  await expect(heading).toBeVisible();
   await expect(heading).toHaveText("Postres sin gluten y sin azúcar en Carabobo");
+  const headingBox = await heading.boundingBox();
+  expect(headingBox.width).toBeLessThanOrEqual(1);
+  expect(headingBox.height).toBeLessThanOrEqual(1);
   await expect(page.locator(".product.product-flip-ready").first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("link", { name: "Tortas", exact: true })).toHaveAttribute("href", "/tortas-sin-gluten-carabobo/");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
