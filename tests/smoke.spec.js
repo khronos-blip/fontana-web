@@ -15,6 +15,22 @@ async function openPreview(page) {
   await page.goto("/");
 }
 
+async function expectModalPageLocked(page, expectedScrollY) {
+  await expect(page.locator("body")).toHaveClass(/product-modal-open/);
+  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+  await expect(page.locator("html")).toHaveCSS("overflow", "hidden");
+  if (Number.isFinite(expectedScrollY)) {
+    const currentScrollY = await page.evaluate(() => scrollY);
+    expect(Math.abs(currentScrollY - expectedScrollY)).toBeLessThanOrEqual(1);
+  }
+}
+
+async function expectModalPageUnlocked(page) {
+  await expect(page.locator("body")).not.toHaveClass(/product-modal-open/);
+  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+  await expect(page.locator("html")).not.toHaveCSS("overflow", "hidden");
+}
+
 async function openFlavorChoice(page, builderSelector) {
   const flavorSelector = builderSelector.includes("fomb") ? ".fomb-flavors" : ".fonkie-flavors";
   const panel = page.locator(`${builderSelector} .choice-panel`).filter({ has: page.locator(flavorSelector) });
@@ -422,7 +438,7 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     expect(expandedLayout).not.toBeNull();
     expect(expandedLayout.detailsHeight).toBeGreaterThan(150);
     expect(expandedLayout.buttonInside).toBe(true);
-    await expect(page.locator("body")).toHaveCSS("position", "fixed");
+    await expectModalPageLocked(page, baseline.y);
 
     await overlay.locator(".builder-flavor-expanded-media").click();
     await expect(overlay).toHaveClass(/builder-flavor-flip-closing/);
@@ -439,7 +455,7 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     expect(physicalReturn.backdropOpacity).toBeGreaterThan(0.7);
     await resumePhysicalCardTurn(overlay);
     await expect(overlay).toHaveCount(0, { timeout: 1300 });
-    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+    await expectModalPageUnlocked(page);
     await expect(source).toHaveAttribute("aria-expanded", "false");
     const restoredAfterPhotoClose = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
     expect(Math.abs(restoredAfterPhotoClose.x - baseline.x)).toBeLessThanOrEqual(1);
@@ -461,7 +477,7 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
   }
 });
 
-test("el cierre de las tarjetas retira el fondo oscuro sin un fotograma de parpadeo", async ({ page }) => {
+test("el cierre retira el fondo sin repintar ni reposicionar el menú", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
 
@@ -472,9 +488,21 @@ test("el cierre de las tarjetas retira el fondo oscuro sin un fotograma de parpa
     await page.getByRole("button", { name: item.filter }).click();
     const source = page.locator(item.card).first();
     await source.scrollIntoViewIfNeeded();
+    const frameBefore = await page.evaluate(() => {
+      const nav = document.querySelector("#nav").getBoundingClientRect();
+      const filters = document.querySelector(".filters").getBoundingClientRect();
+      return { scrollY, navTop: nav.top, navBottom: nav.bottom, filtersTop: filters.top, filtersBottom: filters.bottom };
+    });
     await source.click();
     const overlay = page.locator(".builder-flavor-flip-card");
     await expect(overlay).toBeVisible();
+    await expectModalPageLocked(page, frameBefore.scrollY);
+    const frameWhileOpen = await page.evaluate(() => {
+      const nav = document.querySelector("#nav").getBoundingClientRect();
+      const filters = document.querySelector(".filters").getBoundingClientRect();
+      return { scrollY, navTop: nav.top, navBottom: nav.bottom, filtersTop: filters.top, filtersBottom: filters.bottom };
+    });
+    expect(frameWhileOpen).toEqual(frameBefore);
     await page.waitForTimeout(920);
     await page.evaluate(backdropSelector => {
       const backdrop = document.querySelector(backdropSelector);
@@ -519,9 +547,89 @@ test("el cierre de las tarjetas retira el fondo oscuro sin un fotograma de parpa
       inlineOpacity: "0",
       visibleClass: false
     });
-    expect(closeLifecycle.scrollCalls.length).toBeLessThanOrEqual(1);
+    expect(closeLifecycle.scrollCalls).toHaveLength(0);
     await expect(page.locator(item.backdrop)).toBeHidden();
-    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+    await expectModalPageUnlocked(page);
+    await expect(page.locator("html")).toHaveClass(/modal-hover-guard/);
+    const frameAfter = await page.evaluate(() => {
+      const nav = document.querySelector("#nav").getBoundingClientRect();
+      const filters = document.querySelector(".filters").getBoundingClientRect();
+      return { scrollY, navTop: nav.top, navBottom: nav.bottom, filtersTop: filters.top, filtersBottom: filters.bottom };
+    });
+    expect(frameAfter).toEqual(frameBefore);
+    await page.mouse.move(1, 1);
+    await expect(page.locator("html")).not.toHaveClass(/modal-hover-guard/);
+  }
+});
+
+test("el cierre no activa por accidente un filtro que queda debajo de la foto", async ({ page }) => {
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1366, height: 900 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+    await page.locator(".filters").evaluate((filters, viewportHeight) => {
+      const rect = filters.getBoundingClientRect();
+      window.scrollTo({
+        top: window.scrollY + rect.top - (viewportHeight * 0.28),
+        behavior: "instant"
+      });
+    }, viewport.height);
+
+    // Open without Playwright auto-scrolling the source. This deliberately
+    // leaves the filter row behind the expanded photo, matching the real
+    // pointer hit-test that used to paint a second filter as active on close.
+    await page.locator(".fonkie-gallery-card").first().evaluate(element => element.click());
+    const overlay = page.locator(".builder-flavor-flip-card");
+    await expect(overlay).toBeVisible();
+    await page.waitForTimeout(920);
+    const hit = await page.evaluate(() => {
+      const media = document.querySelector(".builder-flavor-expanded-media")?.getBoundingClientRect();
+      const active = document.querySelector(".filter.active");
+      if (!media || !active) return null;
+      for (const filter of document.querySelectorAll(".filter:not(.active)")) {
+        const rect = filter.getBoundingClientRect();
+        const left = Math.max(media.left, rect.left, 0);
+        const right = Math.min(media.right, rect.right, innerWidth);
+        const top = Math.max(media.top, rect.top, 0);
+        const bottom = Math.min(media.bottom, rect.bottom, innerHeight);
+        if (right - left < 8 || bottom - top < 8) continue;
+        return {
+          x: (left + right) / 2,
+          y: (top + bottom) / 2,
+          filter: filter.dataset.filter,
+          restingBackground: getComputedStyle(filter).backgroundColor,
+          activeBackground: getComputedStyle(active).backgroundColor
+        };
+      }
+      return null;
+    });
+    expect(hit).not.toBeNull();
+    expect(hit.restingBackground).not.toBe(hit.activeBackground);
+
+    await page.mouse.click(hit.x, hit.y);
+    await expect(overlay).toHaveCount(0, { timeout: 1300 });
+    await expect(page.locator("html")).toHaveClass(/modal-hover-guard/);
+    const guarded = await page.evaluate(({ x, y, filter: filterName }) => {
+      const filter = document.querySelector(`.filter[data-filter="${CSS.escape(filterName)}"]`);
+      return {
+        isPointerTarget: document.elementFromPoint(x, y)?.closest(".filter") === filter,
+        isHovered: filter?.matches(":hover"),
+        background: filter ? getComputedStyle(filter).backgroundColor : ""
+      };
+    }, hit);
+    expect(guarded.isPointerTarget).toBe(true);
+    expect(guarded.isHovered).toBe(true);
+    expect(guarded.background).toBe(hit.restingBackground);
+
+    await page.mouse.move(hit.x + 1, hit.y);
+    await expect(page.locator("html")).not.toHaveClass(/modal-hover-guard/);
+    await expect.poll(() => page.evaluate(filterName => {
+      const filter = document.querySelector(`.filter[data-filter="${CSS.escape(filterName)}"]`);
+      return filter ? getComputedStyle(filter).backgroundColor : "";
+    }, hit.filter)).toBe(hit.activeBackground);
   }
 });
 
@@ -574,7 +682,6 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     await expect(overlay).toBeVisible();
     await page.waitForTimeout(920);
     const initialBox = await overlay.boundingBox();
-    const bodyTop = await page.locator("body").evaluate(element => element.style.top);
 
     await swipeExpandedFlavor(page, "left");
     await expect.poll(() => overlay.locator(".builder-flavor-flip-back").evaluate(element => element.getAnimations()
@@ -584,8 +691,7 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
     await expect(overlay).toHaveAttribute("data-flavor", names[1]);
     await expect(overlay).toHaveCount(1);
-    await expect(page.locator("body")).toHaveCSS("position", "fixed");
-    expect(await page.locator("body").evaluate(element => element.style.top)).toBe(bodyTop);
+    await expectModalPageLocked(page, baseline.y);
     const nextBox = await overlay.boundingBox();
     expect(Math.abs(nextBox.x - initialBox.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(nextBox.y - initialBox.y)).toBeLessThanOrEqual(1);
@@ -645,27 +751,30 @@ test("el cierre anticipado sigue el recorrido de la tarjeta sin dejar la página
   const product = page.locator('[data-product-id="pistacho-clasico"]');
   await expect(product).toHaveClass(/product-flip-ready/);
   await product.scrollIntoViewIfNeeded();
+  const productBaseline = await page.evaluate(() => scrollY);
   await product.locator(".product-front .product-media").click();
-  await expect(page.locator("body")).toHaveCSS("position", "fixed");
+  await expectModalPageLocked(page, productBaseline);
   await page.waitForTimeout(280);
   const productCloseStarted = Date.now();
   await page.keyboard.press("Escape");
   await expect(product).not.toHaveClass(/product-expanded/, { timeout: 700 });
   expect(Date.now() - productCloseStarted).toBeLessThan(700);
-  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+  await expectModalPageUnlocked(page);
 
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   const flavor = page.locator(".fonkie-gallery-card").first();
   await flavor.scrollIntoViewIfNeeded();
+  const flavorBaseline = await page.evaluate(() => scrollY);
   await flavor.click();
   const overlay = page.locator(".builder-flavor-flip-card");
   await expect(overlay).toBeVisible();
+  await expectModalPageLocked(page, flavorBaseline);
   await page.waitForTimeout(280);
   const flavorCloseStarted = Date.now();
   await page.keyboard.press("Escape");
   await expect(overlay).toHaveCount(0, { timeout: 700 });
   expect(Date.now() - flavorCloseStarted).toBeLessThan(700);
-  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+  await expectModalPageUnlocked(page);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await flavor.evaluate(element => {
@@ -675,7 +784,7 @@ test("el cierre anticipado sigue el recorrido de la tarjeta sin dejar la página
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await expect(page.locator(".builder-flavor-flip-card")).toHaveCount(0);
   await expect(page.locator(".builder-flavor-flip-backdrop")).not.toHaveClass(/visible/);
-  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+  await expectModalPageUnlocked(page);
 });
 
 test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({ page }) => {
@@ -688,7 +797,7 @@ test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({
     const before = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
     const topBefore = await card.evaluate(element => element.getBoundingClientRect().top);
     await media.click();
-    await expect(page.locator("body")).toHaveCSS("position", "fixed");
+    await expectModalPageLocked(page, before.y);
     await page.waitForTimeout(920);
     await card.locator(".product-back .product-expanded-media").click();
     await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1300 });
@@ -701,7 +810,7 @@ test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({
     expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(2);
     expect(Math.abs(settledTop - topAfter)).toBeLessThanOrEqual(1);
-    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+    await expectModalPageUnlocked(page);
   }
 });
 
@@ -734,8 +843,7 @@ test("cada producto móvil abre y cierra sin mover la página", async ({ page })
       element.click();
     });
     await expect(card).toHaveClass(/product-expanded/);
-    const lockedTop = await page.locator("body").evaluate(element => Number.parseFloat(element.style.top));
-    expect(Math.abs(lockedTop + before.y), id).toBeLessThanOrEqual(1);
+    await expectModalPageLocked(page, before.y);
     await card.locator(".product-back .product-expanded-media").evaluate(element => element.click());
     await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1000 });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -744,7 +852,7 @@ test("cada producto móvil abre y cierra sin mover la página", async ({ page })
     expect(Math.abs(after.x - before.x), id).toBeLessThanOrEqual(1);
     expect(Math.abs(after.y - before.y), id).toBeLessThanOrEqual(1);
     expect(Math.abs(topAfter - topBefore), id).toBeLessThanOrEqual(2);
-    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+    await expectModalPageUnlocked(page);
   }
 });
 
@@ -776,7 +884,7 @@ test("el cierre conserva la proporción de la imagen hasta el último fotograma"
 
     await resumePhysicalCardTurn(card);
     await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1200 });
-    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+    await expectModalPageUnlocked(page);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }
 });
@@ -809,7 +917,7 @@ test("los dos tipos de tarjeta ampliada no pueden anidarse", async ({ page }) =>
   await expect(page.locator(".product-expanded")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(page.locator(".builder-flavor-flip-card")).toHaveCount(0, { timeout: 1300 });
-  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+  await expectModalPageUnlocked(page);
 });
 
 test("Fonkies y Fomb respetan movimiento reducido sin animaciones residuales", async ({ page }) => {
@@ -2386,7 +2494,7 @@ test("las métricas de Pedidos abren la lista con el filtro correspondiente", as
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("el catálogo tardío conserva la tarjeta visible mientras la persona desplaza", async ({ page }) => {
+test("el catálogo tardío conserva el contenido realmente visible sin saltar", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const delayedProducts = [
     ...Array.from({ length: 8 }, (_, index) => ({
@@ -2430,8 +2538,10 @@ test("el catálogo tardío conserva la tarjeta visible mientras la persona despl
       visible: true
     }))
   ];
+  let releaseHydration;
+  let hydrationGate = new Promise(resolve => { releaseHydration = resolve; });
   await page.route("https://api.fontanasingluten.com/v1/catalog", async route => {
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await hydrationGate;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -2443,16 +2553,82 @@ test("el catálogo tardío conserva la tarjeta visible mientras la persona despl
   await page.goto("http://fontana.localhost:8767/");
   const initialCard = page.locator('#products > .product[data-id="pistacho"]');
   await expect(initialCard).toBeVisible();
-  await initialCard.evaluate(element => window.scrollBy(0, element.getBoundingClientRect().top - 240));
+  await initialCard.evaluate(element => window.scrollTo({
+    top: window.scrollY + element.getBoundingClientRect().top - 240,
+    behavior: "instant"
+  }));
   const before = await initialCard.evaluate(element => ({ top: element.getBoundingClientRect().top, scrollY }));
-
+  releaseHydration();
   const hydratedCard = page.locator('#products [data-product-id="pistacho"]');
   await expect(hydratedCard).toBeVisible({ timeout: 4000 });
   await expect(hydratedCard).toHaveClass(/product-flip-ready/);
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.evaluate(() => document.fonts?.ready);
+  await page.waitForTimeout(500);
   const after = await hydratedCard.evaluate(element => ({ top: element.getBoundingClientRect().top, scrollY }));
   expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(2);
   expect(after.scrollY).toBeGreaterThan(before.scrollY);
+  expect(await page.evaluate(() => document.documentElement.style.overflowAnchor)).toBe("");
+
+  hydrationGate = new Promise(resolve => { releaseHydration = resolve; });
+  await page.goto("http://fontana.localhost:8767/");
+  await expect(page.locator('#products > .product[data-id="pistacho"]')).toBeVisible();
+  const menuIntro = page.locator(".menu-intro");
+  await menuIntro.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    window.scrollTo({ top: window.scrollY + rect.top - 180, behavior: "instant" });
+  });
+  await expect(menuIntro).toHaveClass(/menu-intro-visible/);
+  await expect(menuIntro.locator(".menu-title-letter")).toHaveCount(13);
+  await expect(menuIntro.locator(".menu-title-letter").last()).toHaveCSS("opacity", "1", { timeout: 2500 });
+  const menuBefore = await page.evaluate(() => {
+    const intro = document.querySelector(".menu-intro").getBoundingClientRect();
+    const filters = document.querySelector(".filters").getBoundingClientRect();
+    return { scrollY, introTop: intro.top, filtersTop: filters.top };
+  });
+  releaseHydration();
+  await expect(page.locator('[data-product-id="producto-tardio-0"]')).toHaveClass(/product-flip-ready/, { timeout: 4000 });
+  await page.evaluate(async () => {
+    await document.fonts?.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  });
+  const menuAfter = await page.evaluate(() => {
+    const intro = document.querySelector(".menu-intro").getBoundingClientRect();
+    const filters = document.querySelector(".filters").getBoundingClientRect();
+    return {
+      scrollY,
+      introTop: intro.top,
+      filtersTop: filters.top,
+      overflowAnchor: document.documentElement.style.overflowAnchor,
+      menuLetterCount: document.querySelectorAll(".menu-title-letter").length
+    };
+  });
+  expect(Math.abs(menuAfter.scrollY - menuBefore.scrollY)).toBeLessThanOrEqual(1);
+  expect(Math.abs(menuAfter.introTop - menuBefore.introTop)).toBeLessThanOrEqual(1);
+  expect(Math.abs(menuAfter.filtersTop - menuBefore.filtersTop)).toBeLessThanOrEqual(1);
+  expect(menuAfter.overflowAnchor).toBe("");
+  expect(menuAfter.menuLetterCount).toBe(13);
+
+  hydrationGate = new Promise(resolve => { releaseHydration = resolve; });
+  await page.goto("http://fontana.localhost:8767/");
+  await expect(page.locator('#products > .product[data-id="pistacho"]')).toBeVisible();
+  const storyHeading = page.locator("#historia h2");
+  await storyHeading.evaluate(element => window.scrollTo({
+    top: window.scrollY + element.getBoundingClientRect().top - 180,
+    behavior: "instant"
+  }));
+  const storyBefore = await storyHeading.evaluate(element => ({ top: element.getBoundingClientRect().top, scrollY }));
+  releaseHydration();
+  await expect(page.locator('[data-product-id="producto-tardio-0"]')).toHaveClass(/product-flip-ready/, { timeout: 4000 });
+  await page.evaluate(() => document.fonts?.ready);
+  await page.waitForTimeout(500);
+  const storyAfter = await storyHeading.evaluate(element => ({
+    top: element.getBoundingClientRect().top,
+    scrollY,
+    overflowAnchor: document.documentElement.style.overflowAnchor
+  }));
+  expect(Math.abs(storyAfter.top - storyBefore.top)).toBeLessThanOrEqual(2);
+  expect(Math.abs(storyAfter.scrollY - storyBefore.scrollY)).toBeGreaterThan(100);
+  expect(storyAfter.overflowAnchor).toBe("");
 });
 
 test("las métricas del resumen abren productos con su filtro en móvil y escritorio", async ({ page }, testInfo) => {

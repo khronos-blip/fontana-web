@@ -19,6 +19,9 @@
     if (id) pendingProductOpens.set(id, Boolean(product.dataset.productId));
   }, true);
   let adminStateVerified = false;
+  // The catalogue request can be slow or offline; the visible menu heading
+  // must not wait for it before running its existing entrance animation.
+  setupMenuIntro();
   const adminState = await readAdminState();
   const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
   const productionWithElectricity = localMode ? adminState?.settings?.productionWithElectricity !== false : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
@@ -61,18 +64,28 @@
     const visibleItem = catalogItems.find(item => {
       const rect = item.getBoundingClientRect();
       return rect.top <= viewportLine && rect.bottom > viewportLine;
-    }) || catalogItems.find(item => item.getBoundingClientRect().bottom > viewportLine);
+    });
     const stableSelectors = ["#historia", "#ubicacion", "#resenas", ".final", "footer"];
-    const fallbackSelector = stableSelectors.find(selector => document.querySelector(selector));
+    const fallbackSelector = stableSelectors.find(selector => {
+      const rect = document.querySelector(selector)?.getBoundingClientRect();
+      return rect && rect.top <= viewportLine && rect.bottom > viewportLine;
+    });
     const fallback = fallbackSelector ? document.querySelector(fallbackSelector) : null;
+    if (!visibleItem && !fallback) return null;
+    const overflowAnchor = {
+      html: document.documentElement.style.overflowAnchor,
+      body: document.body.style.overflowAnchor
+    };
     document.documentElement.style.overflowAnchor = "none";
+    document.body.style.overflowAnchor = "none";
     return {
       x: window.scrollX,
       itemId: visibleItem?.dataset.productId || visibleItem?.dataset.id || "",
       itemCategory: visibleItem?.matches(".fonkie-builder, .builder-panel") ? visibleItem.dataset.category : "",
       itemTop: visibleItem?.getBoundingClientRect().top,
       fallbackSelector: fallbackSelector || "",
-      fallbackTop: fallback?.getBoundingClientRect().top
+      fallbackTop: fallback?.getBoundingClientRect().top,
+      overflowAnchor
     };
   }
 
@@ -94,6 +107,15 @@
     if (!element || !Number.isFinite(previousTop)) return;
     const delta = element.getBoundingClientRect().top - previousTop;
     if (Math.abs(delta) > 1) window.scrollTo({left:anchor.x,top:window.scrollY + delta,behavior:"instant"});
+  }
+
+  function releaseCatalogHydrationScrollAnchor(anchor) {
+    const restoreInlineValue = (element, value) => {
+      if (value) element.style.overflowAnchor = value;
+      else element.style.removeProperty("overflow-anchor");
+    };
+    restoreInlineValue(document.documentElement, anchor.overflowAnchor.html);
+    restoreInlineValue(document.body, anchor.overflowAnchor.body);
   }
 
   async function readAdminState() {
@@ -451,6 +473,7 @@
     $$(".catalog-group-grid").forEach(grid => {
       const cards = $$(".product-flip-ready:not(.hidden):not(.product-expanded)", grid);
       if (!cards.length) return;
+      grid.classList.add("product-height-syncing");
 
       // Measure every visual row from a clean layout first, then apply the
       // tallest natural height only to the cards that actually share that row.
@@ -490,6 +513,11 @@
         const front = $(".product-front", card);
         if (front) front.style.height = "";
       });
+      // Commit every measured height before transitions are enabled again.
+      // Otherwise a late catalog/image update animates the whole grid height
+      // and moves whatever section the customer is currently reading.
+      void grid.offsetHeight;
+      grid.classList.remove("product-height-syncing");
     });
   }
 
@@ -505,6 +533,23 @@
   }, true);
 
   let modalScrollCycle = 0;
+  let modalHoverGuardCleanup = null;
+
+  function guardModalHoverUntilInput() {
+    modalHoverGuardCleanup?.();
+    const html = document.documentElement;
+    const controller = new AbortController();
+    const release = () => {
+      html.classList.remove("modal-hover-guard");
+      controller.abort();
+      if (modalHoverGuardCleanup === release) modalHoverGuardCleanup = null;
+    };
+    html.classList.add("modal-hover-guard");
+    ["pointermove", "pointerdown", "keydown"].forEach(type => {
+      window.addEventListener(type, release, { capture: true, once: true, signal: controller.signal });
+    });
+    modalHoverGuardCleanup = release;
+  }
 
   function lockModalPageScroll() {
     modalScrollCycle += 1;
@@ -512,26 +557,30 @@
     const html = document.documentElement;
     const x = window.scrollX;
     const y = window.scrollY;
-    const scrollbarWidth = Math.max(0, window.innerWidth - html.clientWidth);
+    const clientWidthBeforeLock = html.clientWidth;
+    const bodyPaddingBeforeLock = Number.parseFloat(getComputedStyle(body).paddingRight) || 0;
     const state = {
       x,
       y,
-      htmlScrollBehavior: html.style.scrollBehavior,
+      html: {
+        overflow: html.style.overflow,
+        overscrollBehavior: html.style.overscrollBehavior,
+        scrollBehavior: html.style.scrollBehavior
+      },
       body: {
-        position: body.style.position,
-        top: body.style.top,
-        left: body.style.left,
-        width: body.style.width,
         overflow: body.style.overflow,
         paddingRight: body.style.paddingRight
       }
     };
-    body.style.position = "fixed";
-    body.style.top = `${-y}px`;
-    body.style.left = `${-x}px`;
-    body.style.width = "100%";
+    // Keep the document at its real scroll offset while the modal is open.
+    // Moving the whole body to `position: fixed` resets window.scrollY to 0
+    // and forces fixed/translucent UI (notably the nav and catalog filters) to
+    // be recomposited on both open and close, which flashes on mobile Safari.
+    html.style.overflow = "hidden";
+    html.style.overscrollBehavior = "none";
     body.style.overflow = "hidden";
-    if (scrollbarWidth) body.style.paddingRight = `${scrollbarWidth}px`;
+    const releasedScrollbarWidth = Math.max(0, html.clientWidth - clientWidthBeforeLock);
+    if (releasedScrollbarWidth) body.style.paddingRight = `${bodyPaddingBeforeLock + releasedScrollbarWidth}px`;
     body.classList.add("product-modal-open");
     return state;
   }
@@ -542,7 +591,7 @@
     const html = document.documentElement;
     const cycle = ++modalScrollCycle;
     Object.assign(document.body.style, state.body);
-    html.style.scrollBehavior = state.htmlScrollBehavior;
+    Object.assign(html.style, state.html);
     const restorePosition = () => {
       if (modalScrollCycle !== cycle) return;
       if (
@@ -584,6 +633,7 @@
     // rendered opacity, remove the backdrop from painting, and only then retire
     // the animation and its temporary inline value.
     const opacity = getComputedStyle(backdrop).opacity;
+    guardModalHoverUntilInput();
     backdrop.style.opacity = opacity;
     backdrop.hidden = true;
     backdrop.classList.remove("visible");
@@ -2699,12 +2749,45 @@
   setupFitDialog();
   setupHeroLeafMotion();
   setupTestimonialsCarousel();
-  setupMenuIntro();
   populateOptions();
   toggleAddress();
   renderCart();
   if (catalogHydrationScrollAnchor) {
+    const hydrationInputController = new AbortController();
+    let hydrationInterruptedByCustomer = false;
+    const markHydrationInterrupted = () => { hydrationInterruptedByCustomer = true; };
+    ["wheel", "touchmove", "pointerdown", "keydown"].forEach(type => {
+      document.addEventListener(type, markHydrationInterrupted, {
+        capture: true,
+        passive: true,
+        signal: hydrationInputController.signal
+      });
+    });
     syncProductCardHeights();
     restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
+    Promise.resolve(document.fonts?.ready).catch(() => {}).then(() => {
+      requestAnimationFrame(() => {
+        try {
+          // Font metrics can change several product rows after the API swap.
+          // A synchronous height measurement can also make Chrome clamp the
+          // scroll offset for one frame. Correct both cases unless real input
+          // shows that the customer deliberately moved in the meantime.
+          if (!hydrationInterruptedByCustomer) {
+            syncProductCardHeights();
+            restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
+          }
+        } finally {
+          // Keep native anchoring disabled across at least one painted frame.
+          // Restoring it in the mutation task makes the browser apply a second,
+          // delayed correction on top of the explicit one above.
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              hydrationInputController.abort();
+              releaseCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
+            });
+          });
+        }
+      });
+    });
   }
 })();
