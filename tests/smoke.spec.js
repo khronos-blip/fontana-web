@@ -374,6 +374,19 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     await expect(source).toHaveAttribute("aria-expanded", "true");
     const overlay = page.locator(".builder-flavor-flip-card");
     await expect(overlay).toBeVisible();
+    await overlay.evaluate(element => {
+      element.getAnimations({ subtree: true }).forEach(animation => {
+        animation.pause();
+        animation.currentTime = 0;
+      });
+    });
+    const compactImageBox = await source.locator("img").boundingBox();
+    const openingImageBox = await overlay.locator(".builder-flavor-flip-front img").boundingBox();
+    expect(Math.abs((openingImageBox.x + openingImageBox.width / 2) - (compactImageBox.x + compactImageBox.width / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs((openingImageBox.y + openingImageBox.height / 2) - (compactImageBox.y + compactImageBox.height / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(openingImageBox.width - compactImageBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(openingImageBox.height - compactImageBox.height)).toBeLessThanOrEqual(1);
+    await overlay.evaluate(element => element.getAnimations({ subtree: true }).forEach(animation => animation.play()));
     await seekPhysicalCardTurn(overlay);
     const physicalTurn = await overlay.evaluate(element => ({
       outerTransform: getComputedStyle(element).transform,
@@ -393,6 +406,9 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     });
     expect(expandedMediaRatio).toBeGreaterThan(.98);
     expect(expandedMediaRatio).toBeLessThan(1.02);
+    const expandedImageBox = await overlay.locator(".builder-flavor-expanded-media img").boundingBox();
+    expect(expandedImageBox.width).toBeGreaterThan(compactImageBox.width);
+    expect(expandedImageBox.height).toBeGreaterThan(compactImageBox.height);
     await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
     const expandedLayout = await overlay.evaluate(element => {
       const details = element.querySelector(".builder-flavor-expanded-details")?.getBoundingClientRect();
@@ -442,6 +458,70 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     const restored = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
     expect(Math.abs(restored.x - baseline.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(restored.y - baseline.y)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("el cierre de las tarjetas retira el fondo oscuro sin un fotograma de parpadeo", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+
+  for (const item of [
+    { filter: "Fonkies · Galletas", card: ".fonkie-gallery-card", backdrop: ".builder-flavor-flip-backdrop" },
+    { filter: "Fomb · Bombones", card: ".builder-gallery-card", backdrop: ".builder-flavor-flip-backdrop" }
+  ]) {
+    await page.getByRole("button", { name: item.filter }).click();
+    const source = page.locator(item.card).first();
+    await source.scrollIntoViewIfNeeded();
+    await source.click();
+    const overlay = page.locator(".builder-flavor-flip-card");
+    await expect(overlay).toBeVisible();
+    await page.waitForTimeout(920);
+    await page.evaluate(backdropSelector => {
+      const backdrop = document.querySelector(backdropSelector);
+      const originalCancel = Animation.prototype.cancel;
+      const originalScrollTo = window.scrollTo.bind(window);
+      window.__fontanaBackdropCancelStates = [];
+      window.__fontanaCloseScrollCalls = [];
+      Animation.prototype.cancel = function patchedCancel() {
+        if (this.effect?.target === backdrop) {
+          window.__fontanaBackdropCancelStates.push({
+            hidden: backdrop.hidden,
+            inlineOpacity: backdrop.style.opacity,
+            visibleClass: backdrop.classList.contains("visible")
+          });
+        }
+        return originalCancel.call(this);
+      };
+      window.scrollTo = (...args) => {
+        window.__fontanaCloseScrollCalls.push(args);
+        return originalScrollTo(...args);
+      };
+      window.__restoreFontanaAnimationCancel = () => {
+        Animation.prototype.cancel = originalCancel;
+        window.scrollTo = originalScrollTo;
+      };
+    }, item.backdrop);
+    await overlay.locator(".builder-flavor-expanded-media").click();
+    await expect(overlay).toHaveCount(0, { timeout: 1300 });
+    const closeLifecycle = await page.evaluate(async () => {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const states = window.__fontanaBackdropCancelStates;
+      const scrollCalls = window.__fontanaCloseScrollCalls;
+      window.__restoreFontanaAnimationCancel?.();
+      delete window.__restoreFontanaAnimationCancel;
+      delete window.__fontanaBackdropCancelStates;
+      delete window.__fontanaCloseScrollCalls;
+      return { states, scrollCalls };
+    });
+    expect(closeLifecycle.states).toHaveLength(1);
+    expect(closeLifecycle.states[0]).toEqual({
+      hidden: true,
+      inlineOpacity: "0",
+      visibleClass: false
+    });
+    expect(closeLifecycle.scrollCalls.length).toBeLessThanOrEqual(1);
+    await expect(page.locator(item.backdrop)).toBeHidden();
+    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
   }
 });
 

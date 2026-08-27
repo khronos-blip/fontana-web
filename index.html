@@ -313,14 +313,14 @@
     .fonkie-gallery-card[role="button"]:focus-visible,.builder-gallery-card[role="button"]:focus-visible{outline:3px solid var(--acid);outline-offset:-3px}
     .builder-flavor-flip-backdrop{position:fixed;inset:0;z-index:1010;background:rgba(28,8,30,.54);opacity:0;transition:opacity .42s ease;touch-action:none}
     .builder-flavor-flip-backdrop.visible{opacity:1}
-    .builder-flavor-flip-card{position:fixed;z-index:1011;margin:0;overflow:hidden;border:1px solid rgba(248,241,245,.35);border-radius:24px;background:var(--lilac);box-shadow:0 32px 90px rgba(20,4,22,.48);transform-origin:center;transform-style:preserve-3d;will-change:transform}
+    .builder-flavor-flip-card{position:fixed;z-index:1011;margin:0;overflow:visible;border:0;border-radius:24px;background:transparent;box-shadow:none;transform-style:preserve-3d;will-change:transform}
     .builder-flavor-flip-card.builder-flavor-flip-closing{pointer-events:none}
     .builder-flavor-flip-inner{position:absolute;inset:0;width:auto;height:auto;transform:none}
     .builder-flavor-flip-face{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;background:var(--lilac);transform:none}
-    .builder-flavor-flip-front{visibility:visible}
-    .builder-flavor-flip-back{visibility:hidden;display:grid;grid-template-rows:auto minmax(0,1fr);transform-origin:center;transform-style:preserve-3d;backface-visibility:hidden}
+    .builder-flavor-flip-front{bottom:auto;height:var(--builder-media-size,100%);visibility:visible;background:transparent}
+    .builder-flavor-flip-back{visibility:hidden;display:grid;grid-template-rows:auto minmax(0,1fr);border:1px solid rgba(248,241,245,.35);border-radius:24px;box-shadow:0 32px 90px rgba(20,4,22,.48);transform-origin:center;transform-style:preserve-3d;backface-visibility:hidden}
     .builder-flavor-flip-card.builder-flavor-switching .builder-flavor-flip-back{will-change:transform}
-    .builder-flavor-flip-front>.fonkie-gallery-card,.builder-flavor-flip-front>.builder-gallery-card{width:100%;height:100%;aspect-ratio:auto;border-radius:0;cursor:default}
+    .builder-flavor-flip-front>.fonkie-gallery-card,.builder-flavor-flip-front>.builder-gallery-card{width:100%;height:100%;aspect-ratio:1;border:0;border-radius:24px;box-shadow:0 32px 90px rgba(20,4,22,.48);cursor:default}
     .builder-flavor-expanded-media{display:block;width:100%;height:auto;aspect-ratio:1;padding:0;border:0;background:var(--lilac-soft);cursor:grab;overflow:hidden;touch-action:pan-y;user-select:none;-webkit-user-select:none}
     .builder-flavor-expanded-media:active{cursor:grabbing}
     .builder-flavor-expanded-media img{display:block;width:100%;height:100%;object-fit:contain;object-position:center;pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
@@ -796,7 +796,7 @@
       .empty-filter-state{min-height:240px;padding:38px 18px}
       .fonkie-builder-grid{grid-template-columns:1fr}
       .fonkie-gallery{padding:13px 0 0}.fonkie-gallery-label{padding:0 13px}.gallery-swipe-cue{padding:0 13px 8px}
-      .fonkie-gallery-card{aspect-ratio:1.12}
+      .fonkie-gallery-card{aspect-ratio:1}
       .fonkie-builder-body{padding:16px 12px}
       .fonkie-flavors,.fomb-flavors{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
       .fonkie-builder-head{display:block}
@@ -808,7 +808,7 @@
       .fonkie-stepper output{font-size:.66rem}
       .fonkie-flavors .fonkie-flavor:last-child:nth-child(odd){grid-column:1/-1;width:calc((100% - 7px)/2);justify-self:center}
       .fonkie-builder-summary{padding:11px;margin-top:10px}
-      .builder-grid{grid-template-columns:1fr}.builder-gallery{padding:13px 0 0}.builder-gallery-label{padding:0 13px}.builder-gallery-card{aspect-ratio:1.12}.builder-body{padding:18px 14px}.builder-head h3{font-size:1.65rem}.fomb-size-options{grid-template-columns:1fr}
+      .builder-grid{grid-template-columns:1fr}.builder-gallery{padding:13px 0 0}.builder-gallery-label{padding:0 13px}.builder-gallery-card{aspect-ratio:1}.builder-body{padding:18px 14px}.builder-head h3{font-size:1.65rem}.fomb-size-options{grid-template-columns:1fr}
       .catalog-group-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
       .catalog-group-heading{gap:9px;margin:27px 0 12px}
       .catalog-group:first-of-type .catalog-group-heading{margin-top:2px}

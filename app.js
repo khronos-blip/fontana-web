@@ -492,6 +492,10 @@
     html.style.scrollBehavior = state.htmlScrollBehavior;
     const restorePosition = () => {
       if (modalScrollCycle !== cycle) return;
+      if (
+        Math.abs(window.scrollX - state.x) <= 1
+        && Math.abs(window.scrollY - state.y) <= 1
+      ) return;
       const scrollBehavior = html.style.scrollBehavior;
       html.style.scrollBehavior = "auto";
       window.scrollTo(state.x, state.y);
@@ -518,6 +522,20 @@
       easing: "linear",
       fill: "forwards"
     });
+  }
+
+  function hideModalBackdropWithoutFlash(backdrop, animation) {
+    // A finished Web Animation with fill:forwards is still the layer that owns
+    // opacity. Cancelling it first briefly exposes `.visible { opacity: 1 }`
+    // and some mobile compositors paint that single dark frame. Freeze the
+    // rendered opacity, remove the backdrop from painting, and only then retire
+    // the animation and its temporary inline value.
+    const opacity = getComputedStyle(backdrop).opacity;
+    backdrop.style.opacity = opacity;
+    backdrop.hidden = true;
+    backdrop.classList.remove("visible");
+    animation?.cancel();
+    backdrop.style.removeProperty("opacity");
   }
 
   function elapsedAnimationTime(animation, maximum) {
@@ -761,7 +779,7 @@
         const restore = () => {
           cardMotion?.cancel();
           cardMotion = null;
-          backdropMotion?.cancel();
+          const closingBackdropMotion = backdropMotion;
           backdropMotion = null;
           cancelFaceMotions();
           motionKeyframes = null;
@@ -778,8 +796,7 @@
           card.style.removeProperty("--product-start-transform");
           card.style.removeProperty("--product-target-transform");
           card.style.removeProperty("transform");
-          backdrop.classList.remove("visible");
-          backdrop.hidden = true;
+          hideModalBackdropWithoutFlash(backdrop, closingBackdropMotion);
           media.classList.remove("product-expanded-media");
           media.setAttribute("aria-label", `Ampliar ${title}`);
           body.classList.remove("product-expanded-body");
@@ -931,19 +948,19 @@
 
     const cancelAnimations = state => {
       state.motion?.cancel();
-      state.backdropMotion?.cancel();
       state.flavorMotion?.cancel();
       state.faceMotions.forEach(animation => animation.cancel());
       state.faceMotions = [];
     };
 
     const cleanup = state => {
+      const closingBackdropMotion = state.backdropMotion;
+      state.backdropMotion = null;
       cancelAnimations(state);
       state.source.style.removeProperty("visibility");
       state.source.setAttribute("aria-expanded", "false");
       state.overlay.remove();
-      backdrop.classList.remove("visible");
-      backdrop.hidden = true;
+      hideModalBackdropWithoutFlash(backdrop, closingBackdropMotion);
       active = null;
       state.source.focus({ preventScroll: true });
       unlockModalPageScroll(state.scrollState);
@@ -1068,7 +1085,7 @@
       const desktopHeightLimit = viewportHeight - 96;
       const desktopDetailsHeight = Math.min(230, Math.max(160, desktopHeightLimit * 0.28));
       const targetWidth = mobile
-        ? window.innerWidth - 32
+        ? Math.min(window.innerWidth - 20, Math.max(rect.width * 1.04, 320))
         : Math.min(
           window.innerWidth - 96,
           desktopHeightLimit - desktopDetailsHeight,
@@ -1080,17 +1097,14 @@
       const targetX = (window.innerWidth - targetWidth) / 2;
       const targetY = (viewportHeight - targetHeight) / 2;
       const startX = rect.left + (rect.width / 2) - (targetX + (targetWidth / 2));
-      const startY = rect.top + (rect.height / 2) - (targetY + (targetHeight / 2));
-      const startScaleX = rect.width / targetWidth;
-      const startScaleY = rect.height / targetHeight;
-      const liftScaleX = startScaleX + ((1 - startScaleX) * 0.28);
-      const liftScaleY = startScaleY + ((1 - startScaleY) * 0.28);
-      const edgeScaleX = startScaleX + ((1 - startScaleX) * 0.66);
-      const edgeScaleY = startScaleY + ((1 - startScaleY) * 0.66);
-      const startTransform = `perspective(1800px) translate3d(${startX}px, ${startY}px, 0) scale(${startScaleX}, ${startScaleY}) rotateX(0deg) rotateY(0deg) rotateZ(0deg)`;
-      const liftTransform = `perspective(1800px) translate3d(${startX * 0.84}px, ${startY * 0.84}px, 26px) scale(${liftScaleX}, ${liftScaleY}) rotateX(1.2deg) rotateY(-12deg) rotateZ(-0.4deg)`;
-      const frontEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(89.8deg) rotateZ(-1.1deg)`;
-      const backEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
+      const startY = rect.top + (rect.height / 2) - (targetY + (targetWidth / 2));
+      const startScale = rect.width / targetWidth;
+      const liftScale = startScale + ((1 - startScale) * 0.28);
+      const edgeScale = startScale + ((1 - startScale) * 0.66);
+      const startTransform = `perspective(1800px) translate3d(${startX}px, ${startY}px, 0) scale(${startScale}) rotateX(0deg) rotateY(0deg) rotateZ(0deg)`;
+      const liftTransform = `perspective(1800px) translate3d(${startX * 0.84}px, ${startY * 0.84}px, 26px) scale(${liftScale}) rotateX(1.2deg) rotateY(-12deg) rotateZ(-0.4deg)`;
+      const frontEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScale}) rotateX(2.8deg) rotateY(89.8deg) rotateZ(-1.1deg)`;
+      const backEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScale}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
       const settleTransform = `perspective(1800px) translate3d(${startX * 0.04}px, ${startY * 0.04}px, 14px) scale(.97, .97) rotateX(.35deg) rotateY(7deg) rotateZ(.18deg)`;
       const targetTransform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
       const keyframes = [
@@ -1112,8 +1126,10 @@
         top: `${targetY}px`,
         width: `${targetWidth}px`,
         height: `${targetHeight}px`,
+        transformOrigin: `${targetWidth / 2}px ${targetWidth / 2}px`,
         transform: startTransform
       });
+      overlay.style.setProperty("--builder-media-size", `${targetWidth}px`);
       const inner = document.createElement("div");
       inner.className = "builder-flavor-flip-inner";
       const front = document.createElement("div");
@@ -1122,14 +1138,9 @@
       frontCard.removeAttribute("tabindex");
       frontCard.removeAttribute("role");
       frontCard.removeAttribute("aria-expanded");
-      const frontScaleX = targetWidth / rect.width;
-      const frontStartScaleY = targetHeight / rect.height;
-      const frontMediaScaleY = targetWidth / rect.height;
-      frontCard.style.width = `${rect.width}px`;
-      frontCard.style.height = `${rect.height}px`;
+      frontCard.style.width = "100%";
+      frontCard.style.height = "100%";
       frontCard.style.flex = "0 0 auto";
-      frontCard.style.transformOrigin = "top left";
-      frontCard.style.transform = `scale(${frontScaleX}, ${frontStartScaleY})`;
       front.append(frontCard);
 
       const back = document.createElement("div");
@@ -1183,13 +1194,7 @@
           { visibility: "visible", offset: 0.501 },
           { visibility: "visible", offset: 1 }
         ], faceTiming);
-        const frontCardMotion = frontCard.animate([
-          { transform: `scale(${frontScaleX}, ${frontStartScaleY})`, offset: 0 },
-          { transform: `scale(${frontScaleX}, ${frontStartScaleY + ((frontMediaScaleY - frontStartScaleY) * .22)})`, offset: 0.16 },
-          { transform: `scale(${frontScaleX}, ${frontMediaScaleY})`, offset: 0.499 },
-          { transform: `scale(${frontScaleX}, ${frontMediaScaleY})`, offset: 1 }
-        ], faceTiming);
-        faceMotions = [frontMotion, backMotion, frontCardMotion];
+        faceMotions = [frontMotion, backMotion];
         motion = overlay.animate(keyframes, {
           duration: motionDuration,
           easing: "cubic-bezier(.36,.08,.64,.92)",
