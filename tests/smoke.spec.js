@@ -515,6 +515,49 @@ test("cerrar una tarjeta restaura el mismo punto exacto de la página", async ({
   }
 });
 
+test("cada producto móvil abre y cierra sin mover la página", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openPreview(page);
+  await expect(page.locator(".product.product-flip-ready").first()).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => document.fonts?.ready);
+  const ids = await page.locator(".product[data-product-id]").evaluateAll(cards => cards.map(card => card.dataset.productId));
+  expect(ids.length).toBeGreaterThanOrEqual(17);
+
+  for (const id of ids) {
+    const card = page.locator(`.product[data-product-id="${id}"]`);
+    await card.scrollIntoViewIfNeeded();
+    await card.locator("img").first().evaluate(async image => {
+      if (!image.complete) {
+        await new Promise(resolve => {
+          image.addEventListener("load", resolve, { once: true });
+          image.addEventListener("error", resolve, { once: true });
+        });
+      }
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    const before = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
+    const topBefore = await card.evaluate(element => element.getBoundingClientRect().top);
+    await card.locator(".product-front .product-media").evaluate(element => {
+      element.focus({ preventScroll: true });
+      element.click();
+    });
+    await expect(card).toHaveClass(/product-expanded/);
+    const lockedTop = await page.locator("body").evaluate(element => Number.parseFloat(element.style.top));
+    expect(Math.abs(lockedTop + before.y), id).toBeLessThanOrEqual(1);
+    await card.locator(".product-back .product-expanded-media").evaluate(element => element.click());
+    await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1000 });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const after = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
+    const topAfter = await card.evaluate(element => element.getBoundingClientRect().top);
+    expect(Math.abs(after.x - before.x), id).toBeLessThanOrEqual(1);
+    expect(Math.abs(after.y - before.y), id).toBeLessThanOrEqual(1);
+    expect(Math.abs(topAfter - topBefore), id).toBeLessThanOrEqual(2);
+    await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+  }
+});
+
 test("el cierre conserva la proporción de la imagen hasta el último fotograma", async ({ page }) => {
   for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
     await page.setViewportSize(viewport);
@@ -538,11 +581,62 @@ test("el cierre conserva la proporción de la imagen hasta el último fotograma"
     const compactRatio = compactBox.width / compactBox.height;
     const closingRatio = closingBox.width / closingBox.height;
     expect(Math.abs(closingRatio - compactRatio)).toBeLessThanOrEqual(0.005);
+    expect(Math.abs(closingBox.width - compactBox.width)).toBeLessThanOrEqual(0.75);
+    expect(Math.abs(closingBox.height - compactBox.height)).toBeLessThanOrEqual(0.75);
 
     await resumePhysicalCardTurn(card);
     await expect(card).not.toHaveClass(/product-expanded/, { timeout: 1200 });
     await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  }
+});
+
+test("los dos tipos de tarjeta ampliada no pueden anidarse", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const product = page.locator('[data-product-id="pistacho-clasico"]');
+  const flavor = page.locator(".fonkie-gallery-card").first();
+
+  await product.scrollIntoViewIfNeeded();
+  await product.locator(".product-front .product-media").click();
+  await expect(product).toHaveClass(/product-expanded/);
+  await flavor.evaluate(element => element.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "Enter",
+    bubbles: true
+  })));
+  await expect(page.locator(".builder-flavor-flip-card")).toHaveCount(0);
+  await page.waitForTimeout(900);
+  await product.locator(".product-back .product-expanded-media").press("Enter");
+  await expect(product).not.toHaveClass(/product-expanded/, { timeout: 1300 });
+
+  await flavor.scrollIntoViewIfNeeded();
+  await flavor.click();
+  await expect(page.locator(".builder-flavor-flip-card")).toBeVisible();
+  await product.locator(".product-front .product-media").evaluate(element => element.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "Enter",
+    bubbles: true
+  })));
+  await expect(page.locator(".product-expanded")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".builder-flavor-flip-card")).toHaveCount(0, { timeout: 1300 });
+  await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
+});
+
+test("Fonkies y Fomb respetan movimiento reducido sin animaciones residuales", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openPreview(page);
+
+  for (const selector of [".fonkie-gallery-card", ".builder-gallery-card"]) {
+    const source = page.locator(selector).first();
+    await source.scrollIntoViewIfNeeded();
+    await source.click();
+    const overlay = page.locator(".builder-flavor-flip-card");
+    await expect(overlay).toBeVisible();
+    expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+    await expect(overlay.locator(".builder-flavor-flip-back")).toBeVisible();
+    await overlay.locator(".builder-flavor-expanded-media").click();
+    await expect(overlay).toHaveCount(0);
   }
 });
 

@@ -625,8 +625,19 @@
         if (!card.classList.contains("product-expanded")) scheduleProductCardHeightSync();
       };
 
+      const settleCatalogBeforeUnlock = () => {
+        if (productCardHeightFrame) cancelAnimationFrame(productCardHeightFrame);
+        productCardHeightFrame = 0;
+        syncProductCardHeights();
+      };
+
       const open = trigger => {
-        if (activeCard || card.classList.contains("product-expanded")) return;
+        if (
+          activeCard
+          || card.classList.contains("product-expanded")
+          || document.body.classList.contains("product-modal-open")
+          || document.querySelector(".builder-flavor-flip-card")
+        ) return;
         restoreTarget = trigger || media;
         const rect = card.getBoundingClientRect();
         const mobile = window.matchMedia("(max-width: 640px)").matches;
@@ -671,6 +682,9 @@
           { transform: settleTransform, offset: 0.84 },
           { transform: targetTransform, offset: 1 }
         ];
+        // Freeze the viewport before replacing anything in the catalog. On iOS,
+        // scroll anchoring can otherwise move the page before its position is saved.
+        lockPageScroll();
         activePlaceholder = document.createElement("div");
         activePlaceholder.className = "product-flip-placeholder";
         activePlaceholder.style.height = `${Math.ceil(rect.height)}px`;
@@ -679,8 +693,10 @@
         activeCloser = close;
         frontSnapshot = document.createElement("div");
         frontSnapshot.className = "product-front-snapshot";
-        frontSnapshot.style.width = `${rect.width}px`;
-        frontSnapshot.style.height = `${rect.height}px`;
+        // Match the card's inner box, not its outer border box. This prevents
+        // the universal 1px-per-side flash when the snapshot is swapped back.
+        frontSnapshot.style.width = `${card.clientWidth}px`;
+        frontSnapshot.style.height = `${card.clientHeight}px`;
         frontSnapshot.style.flex = "0 0 auto";
         frontSnapshot.style.transformOrigin = "top left";
         frontSnapshot.style.transform = `scale(${targetWidth / rect.width}, ${targetHeight / rect.height})`;
@@ -707,7 +723,6 @@
         body.classList.add("product-expanded-body");
         back.append(media, body);
         backdrop.hidden = false;
-        lockPageScroll();
         card.classList.add("product-expanded");
         front.setAttribute("aria-hidden", "true");
         back.setAttribute("aria-hidden", "false");
@@ -773,7 +788,10 @@
           front.setAttribute("aria-hidden", "false");
           back.setAttribute("aria-hidden", "true");
           media.setAttribute("aria-expanded", "false");
-          resize();
+          // Finish any pending row-height work while the viewport is still
+          // frozen. Otherwise a lazy image or the previous close can reflow the
+          // next card between unlock and the final scroll restoration.
+          settleCatalogBeforeUnlock();
           restoreTarget?.focus?.({ preventScroll: true });
           restoreTarget = null;
           unlockPageScroll();
@@ -808,7 +826,8 @@
       media.addEventListener("keydown", event => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
-        open(media);
+        if (card.classList.contains("product-expanded")) close();
+        else open(media);
       });
       front.addEventListener("click", event => {
         if (isInteractiveTarget(event.target) || event.target.closest(".product-media")) return;
@@ -885,7 +904,11 @@
       if (!state || state.closing) return;
       state.closing = true;
       state.overlay.classList.add("builder-flavor-flip-closing");
-      if (immediate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      if (
+        immediate
+        || !state.motion
+        || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
         cleanup(state);
         return;
       }
@@ -906,7 +929,11 @@
     };
 
     const open = source => {
-      if (active) return;
+      if (
+        active
+        || document.body.classList.contains("product-modal-open")
+        || document.querySelector(".product-expanded")
+      ) return;
       const rect = source.getBoundingClientRect();
       const kind = source.matches(".fonkie-gallery-card") ? "fonkies" : "fomb";
       const name = flavorName(source);
@@ -973,6 +1000,11 @@
       frontCard.removeAttribute("tabindex");
       frontCard.removeAttribute("role");
       frontCard.removeAttribute("aria-expanded");
+      frontCard.style.width = `${rect.width}px`;
+      frontCard.style.height = `${rect.height}px`;
+      frontCard.style.flex = "0 0 auto";
+      frontCard.style.transformOrigin = "top left";
+      frontCard.style.transform = `scale(${targetWidth / rect.width}, ${targetHeight / rect.height})`;
       front.append(frontCard);
 
       const back = document.createElement("div");
@@ -1002,32 +1034,41 @@
       inner.append(front, back);
       overlay.append(inner);
       document.body.append(overlay);
-
-      const faceTiming = { duration: motionDuration, easing: "linear", fill: "forwards" };
-      const frontMotion = front.animate([
-        { visibility: "visible", offset: 0 },
-        { visibility: "visible", offset: 0.499 },
-        { visibility: "hidden", offset: 0.501 },
-        { visibility: "hidden", offset: 1 }
-      ], faceTiming);
-      const backMotion = back.animate([
-        { visibility: "hidden", offset: 0 },
-        { visibility: "hidden", offset: 0.499 },
-        { visibility: "visible", offset: 0.501 },
-        { visibility: "visible", offset: 1 }
-      ], faceTiming);
-      const motion = overlay.animate(keyframes, {
-        duration: motionDuration,
-        easing: "cubic-bezier(.36,.08,.64,.92)",
-        fill: "forwards"
-      });
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      let motion = null;
+      let faceMotions = [];
+      if (reduceMotion) {
+        overlay.style.transform = targetTransform;
+        front.style.visibility = "hidden";
+        back.style.visibility = "visible";
+      } else {
+        const faceTiming = { duration: motionDuration, easing: "linear", fill: "forwards" };
+        const frontMotion = front.animate([
+          { visibility: "visible", offset: 0 },
+          { visibility: "visible", offset: 0.499 },
+          { visibility: "hidden", offset: 0.501 },
+          { visibility: "hidden", offset: 1 }
+        ], faceTiming);
+        const backMotion = back.animate([
+          { visibility: "hidden", offset: 0 },
+          { visibility: "hidden", offset: 0.499 },
+          { visibility: "visible", offset: 0.501 },
+          { visibility: "visible", offset: 1 }
+        ], faceTiming);
+        faceMotions = [frontMotion, backMotion];
+        motion = overlay.animate(keyframes, {
+          duration: motionDuration,
+          easing: "cubic-bezier(.36,.08,.64,.92)",
+          fill: "forwards"
+        });
+      }
       const state = {
         source,
         overlay,
         front,
         back,
         motion,
-        faceMotions: [frontMotion, backMotion],
+        faceMotions,
         backdropMotion: null,
         scrollState: lockModalPageScroll(),
         closing: false
@@ -1059,11 +1100,16 @@
         }, { once: true });
         plus.click();
       });
-      motion.finished.then(() => {
-        if (active !== state || state.closing) return;
+      if (reduceMotion) {
         back.setAttribute("aria-hidden", "false");
         back.focus({ preventScroll: true });
-      }).catch(() => {});
+      } else {
+        motion.finished.then(() => {
+          if (active !== state || state.closing) return;
+          back.setAttribute("aria-hidden", "false");
+          back.focus({ preventScroll: true });
+        }).catch(() => {});
+      }
     };
 
     tracks.forEach(track => {
