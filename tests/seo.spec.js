@@ -27,8 +27,38 @@ test("el sitemap generado incluye categorías y fichas de producto", async () =>
   expect(locations).toContain("https://fontanasingluten.com/fomb-bombones-sin-azucar/");
   expect(locations).toContain("https://fontanasingluten.com/salados-sin-gluten-carabobo/");
   expect(locations).toContain("https://fontanasingluten.com/productos/pistacho/");
+  expect(locations).toContain("https://fontanasingluten.com/informacion-del-pedido/");
+  expect(locations).toContain("https://fontanasingluten.com/privacidad/");
   expect(locations.length).toBeGreaterThanOrEqual(30);
   expect(new Set(locations).size).toBe(locations.length);
+});
+
+test("el build publica confianza, privacidad y una página 404 útil", async ({ page }) => {
+  const information = await readFile(path.join(process.cwd(), "dist/informacion-del-pedido/index.html"), "utf8");
+  const privacy = await readFile(path.join(process.cwd(), "dist/privacidad/index.html"), "utf8");
+  const notFound = await readFile(path.join(process.cwd(), "dist/404.html"), "utf8");
+  expect(information).toContain("Cambios o cancelaciones");
+  expect(information).toContain("Alergias, intolerancias y condiciones");
+  expect(privacy).toContain("Qué información se solicita");
+  expect(privacy).toContain("Cloudflare");
+  expect(notFound).toContain('content="noindex,follow"');
+  expect(notFound).toContain("Volver al menú");
+
+  await page.goto(`${productionPreview}/informacion-del-pedido/`);
+  await expect(page.locator("h1")).toHaveText("Información del pedido");
+  await expect(page.getByRole("link", { name: "Consultar por WhatsApp" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("las imágenes responsivas conservan el original de alta resolución", async () => {
+  const homepage = await readFile(path.join(process.cwd(), "dist/index.html"), "utf8");
+  const category = await readFile(path.join(process.cwd(), "dist/tortas-sin-gluten-carabobo/index.html"), "utf8");
+  expect(homepage).toContain("assets/responsive/");
+  expect(homepage).toContain("assets/pistachio-raspberry-fontana-v2.jpg 1448w");
+  expect(category).toContain("/assets/responsive/");
+  expect(category).toContain("/assets/pistachio-raspberry-fontana-v2.jpg 1448w");
+  expect(homepage).toContain("https://fontanasingluten.com/assets/fontana-og-share.jpg");
+  expect((await stat(path.join(process.cwd(), "dist/assets/fontana-og-share.jpg"))).size).toBeGreaterThan(100_000);
 });
 
 test("las categorías SEO son rastreables, útiles y responsivas", async ({ page }) => {

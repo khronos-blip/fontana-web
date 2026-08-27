@@ -51,6 +51,8 @@ Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo es
 
 `npm run build` genera en `dist` la portada, páginas rastreables por categoría y una ficha independiente para cada producto visible. También crea un `sitemap.xml` actualizado con las imágenes y los datos estructurados de categorías y productos, sin inventar reseñas, disponibilidad o precios.
 
+El build también publica una página 404 útil, información del pedido, privacidad, una tarjeta social de 1200 × 630 y variantes responsivas WebP de alta calidad. Los originales permanecen disponibles como fuente de máxima resolución. La entrega a Google Search Console y la creación o edición del Perfil de Empresa requieren la cuenta de la propietaria y siguen la lista de comprobación de `docs/google-discovery.md`.
+
 - `seo-data.mjs` contiene los textos y la clasificación SEO de los productos estáticos y de los constructores Fonkies/Fomb.
 - Los productos administrables se leen directamente de `config.js`; no hay que duplicarlos en otra lista.
 - `seo.css` define exclusivamente la presentación de las páginas de categoría y producto.

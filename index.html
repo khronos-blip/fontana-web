@@ -732,9 +732,11 @@
     .testimonial-dot{width:8px;height:8px;padding:0;border:0;border-radius:999px;background:rgba(248,241,245,.28);transition:width .25s ease,background .25s ease}
     .testimonial-dot.active{width:26px;background:var(--acid)}
     .review-source{display:flex;align-items:center;gap:9px;margin-top:2px;color:var(--plum-dark);font-size:.72rem;font-weight:800;letter-spacing:.02em}
+    .review-invitation{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:0 0 24px;padding:18px 20px;border:1px solid rgba(79,22,81,.14);border-radius:18px;background:rgba(255,255,255,.76)}.review-invitation p{margin:0;color:var(--muted)}.review-invitation .btn{flex:0 0 auto}
     .review-source span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--plum-dark);color:var(--acid);font-size:.75rem}
     .quote.featured .review-source{color:var(--night)}
     @media(max-width:640px){
+      .review-invitation{align-items:stretch;flex-direction:column}.review-invitation .btn{width:100%}
       .products{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
       .product{border-radius:15px}
       .product-media{aspect-ratio:1}
@@ -963,7 +965,7 @@
     </section>
 
     <section class="story" id="historia"><div class="container story-grid">
-      <div class="story-copy"><span class="eyebrow">La esencia detrás del sabor</span><h2>No aceptamos que “saludable” signifique aburrido.</h2><p>En el taller de Fontana cada receta empieza con una obsesión: lograr una textura increíble y un sabor que haga olvidar todo lo que quitamos. Horneamos en pequeños lotes, cuidando cada ingrediente y cada detalle.</p><div class="checks"><div class="check"><span>✓</span>Harina 100% de almendra</div><div class="check"><span>✓</span>Chocolate vegano</div><div class="check"><span>✓</span>Bajo índice glucémico</div><div class="check"><span>✓</span>Producción artesanal</div></div><a class="btn btn-light" href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Conoce nuestra historia en Instagram</a></div>
+      <div class="story-copy"><span class="eyebrow">La esencia detrás del sabor</span><h2>No aceptamos que “saludable” signifique aburrido.</h2><p>En el taller de Fontana cada receta empieza con una obsesión: lograr una textura increíble y un sabor que haga olvidar todo lo que quitamos. Horneamos en pequeños lotes, cuidando cada ingrediente y cada detalle.</p><div class="checks"><div class="check"><span>✓</span>Harina de almendra como protagonista</div><div class="check"><span>✓</span>Chocolate vegano</div><div class="check"><span>✓</span>Recetas sin azúcar refinada</div><div class="check"><span>✓</span>Producción artesanal</div></div><a class="btn btn-light" href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Conoce nuestra historia en Instagram</a></div>
       <aside class="founder-note" aria-label="Dueña y creadora de Fontana"><div class="founder-portrait"><img src="assets/fundadora-fontana-editorial-v2.jpg" alt="Dueña y creadora de Fontana" width="1092" height="1440" loading="lazy" decoding="async"></div><div class="founder-copy"><span class="eyebrow">El rostro detrás de Fontana</span><h3>Su creadora.</h3><p>La dueña y creadora de Fontana, presente como la firma humana detrás de esta historia.</p></div></aside>
     </div></section>
 
@@ -972,7 +974,7 @@
       <div class="location-visual"><div class="map-orbit"><div class="pin"><img src="assets/logo.png" alt="Fontana" width="121" height="120" loading="lazy" decoding="async"></div></div></div>
     </div></div></section>
 
-    <section class="testimonials" id="resenas"><div class="container"><div class="section-head"><div><span class="eyebrow">Lo dicen los Fontana lovers</span><h2>Amor al primer bocado</h2></div></div><div class="quotes testimonials-carousel" aria-label="Reseñas de clientes" aria-roledescription="carrusel">
+    <section class="testimonials" id="resenas"><div class="container"><div class="section-head"><div><span class="eyebrow">Lo dicen los Fontana lovers</span><h2>Amor al primer bocado</h2></div></div><div class="review-invitation"><p>¿Ya probaste Fontana? Tu experiencia nos ayuda a seguir creciendo.</p><a class="btn btn-light" href="https://wa.me/584244350800?text=Hola%20Fontana%2C%20quiero%20compartir%20mi%20experiencia%20con%20mi%20pedido." target="_blank" rel="noopener">Compartir mi experiencia</a></div><div class="quotes testimonials-carousel" aria-label="Reseñas de clientes" aria-roledescription="carrusel">
       <div class="testimonials-track">
         <article class="quote featured"><div class="stars">★★★★★</div><blockquote>“Las Fonkies estaban brutales. Mi amiga y yo nos estábamos matando por las dos de chips de chocolate.”</blockquote><div class="review-source"><span aria-hidden="true">✓</span>Mensaje compartido por Fontana</div></article>
         <article class="quote"><div class="stars">★★★★★</div><blockquote>“¡Qué delicia todo! Los bombones, de morirse; las galletas, deliciosas. La de pistacho no la había probado: ¡qué delicia!”</blockquote><div class="review-source"><span aria-hidden="true">✓</span>Mensaje compartido por Fontana</div></article>
@@ -986,7 +988,7 @@
     <section class="final"><div class="container final-inner"><span class="eyebrow">Haz espacio para algo rico</span><h2>Tu próximo antojo ya tiene nombre.</h2><p>Explora el menú, arma tu pedido y recíbelo en Carabobo o retíralo en Mañongo.</p><a class="btn btn-primary" href="#menu">Elegir mi favorito</a></div></section>
   </main>
 
-  <footer><div class="container"><div class="footer-grid"><div class="footer-brand"><a class="brand" href="#inicio" aria-label="Fontana, volver al inicio"><img class="footer-logo" src="assets/fontana-logo-official-reverse.png" alt="Fontana" width="1080" height="1080" loading="lazy" decoding="async"></a><p>Cocina de autor de alta calidad. Sin gluten, sin azúcar refinada y sin lactosa.</p></div><div><div class="footer-title">Descubre</div><div class="footer-links"><a href="#menu">Menú</a><a href="/tortas-sin-gluten-carabobo/">Tortas</a><a href="/fonkies-galletas-sin-gluten/">Fonkies</a><a href="/fomb-bombones-sin-azucar/">Fomb</a><a href="/salados-sin-gluten-carabobo/">Salados</a><a href="/bebidas/">Bebidas</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a></div></div><div><div class="footer-title">Conecta</div><div class="footer-links"><a href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Instagram ↗</a><a href="#ubicacion">Mañongo</a><span>Lun–Dom · 9:30am–6pm</span></div></div></div><div class="footer-bottom"><span>© 2026 Fontana. Todos los derechos reservados.</span><span>Pedidos sujetos a confirmación</span></div></div></footer>
+  <footer><div class="container"><div class="footer-grid"><div class="footer-brand"><a class="brand" href="#inicio" aria-label="Fontana, volver al inicio"><img class="footer-logo" src="assets/fontana-logo-official-reverse.png" alt="Fontana" width="1080" height="1080" loading="lazy" decoding="async"></a><p>Cocina de autor de alta calidad. Sin gluten, sin azúcar refinada y con opciones sin lactosa.</p></div><div><div class="footer-title">Descubre</div><div class="footer-links"><a href="#menu">Menú</a><a href="/tortas-sin-gluten-carabobo/">Tortas</a><a href="/fonkies-galletas-sin-gluten/">Fonkies</a><a href="/fomb-bombones-sin-azucar/">Fomb</a><a href="/salados-sin-gluten-carabobo/">Salados</a><a href="/bebidas/">Bebidas</a><a href="#historia">Nuestra esencia</a><a href="#ubicacion">Ubicación</a></div></div><div><div class="footer-title">Información</div><div class="footer-links"><a href="/informacion-del-pedido/">Pedidos, entregas y alergias</a><a href="/privacidad/">Privacidad</a><a href="#resenas">Reseñas reales</a><a href="https://www.instagram.com/fontanasingluten/" target="_blank" rel="noopener">Instagram ↗</a><span>Lun–Dom · 9:30am–6pm</span></div></div></div><div class="footer-bottom"><span>© 2026 Fontana. Todos los derechos reservados.</span><span>Pedidos sujetos a confirmación</span></div></div></footer>
 
   <dialog class="fit-dialog" id="para-ti" aria-labelledby="fitTitle">
     <button class="fit-dialog-close" id="closeFitDialog" type="button" aria-label="Cerrar ¿Es para ti?">×</button>
@@ -1080,7 +1082,7 @@
         <div class="field field-wide"><label for="customerNotes">Observaciones <span aria-hidden="true">(opcional)</span></label><textarea id="customerNotes" name="notes" placeholder="Dedicatoria u otra indicación para el pedido"></textarea></div>
       </div>
       <button class="btn btn-green" type="submit">Enviar pedido por WhatsApp</button>
-      <small class="checkout-help">El pedido queda pendiente hasta que Fontana confirme el pago.</small>
+      <small class="checkout-help">El pedido queda pendiente hasta que Fontana confirme el pago. Consulta la <a href="/informacion-del-pedido/">información del pedido</a> y la <a href="/privacidad/">privacidad</a>.</small>
     </form>
   </aside>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

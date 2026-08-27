@@ -8,7 +8,8 @@ export const site = {
   whatsapp: "584244350800",
   instagram: "https://www.instagram.com/fontanasingluten/",
   logo: "/assets/fontana-seal-transparent.png",
-  defaultImage: "/assets/pistachio-raspberry-fontana-v2.jpg"
+  defaultImage: "/assets/pistachio-raspberry-fontana-v2.jpg",
+  defaultSocialImage: "/assets/fontana-og-share.jpg"
 };
 
 export const categoryPages = [
