@@ -47,6 +47,17 @@ En producción, el panel guarda en D1 y los cambios se reflejan para todos los v
 
 Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
 
+## Páginas públicas y SEO
+
+`npm run build` genera en `dist` la portada, páginas rastreables por categoría y una ficha independiente para cada producto visible. También crea un `sitemap.xml` actualizado con las imágenes y los datos estructurados de categorías y productos, sin inventar reseñas, disponibilidad o precios.
+
+- `seo-data.mjs` contiene los textos y la clasificación SEO de los productos estáticos y de los constructores Fonkies/Fomb.
+- Los productos administrables se leen directamente de `config.js`; no hay que duplicarlos en otra lista.
+- `seo.css` define exclusivamente la presentación de las páginas de categoría y producto.
+- Los archivos públicos grandes salen versionados por contenido (`app.*.js`, `config.*.js` y `seo.*.css`) para permitir caché y mantener liviano el HTML inicial.
+
+Después de cambiar productos, imágenes o textos públicos, hay que volver a ejecutar el build antes de publicar. Las fichas con precio no confirmado omiten `Offer`; las fichas agotadas publican su estado real.
+
 ## Configuración operativa
 
 Los datos de WhatsApp, modalidades de entrega, formas de pago y reglas comerciales también se administran desde `config.js`. No se deben inventar datos que la clienta no haya confirmado.
