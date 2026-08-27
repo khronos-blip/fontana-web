@@ -1597,6 +1597,7 @@ test("las reseñas reales avanzan automáticamente hacia la izquierda", async ({
   await openPreview(page);
   const carousel = page.locator(".testimonials-carousel");
   const track = page.locator(".testimonials-track");
+  const invitation = page.locator(".review-invitation");
   await expect(carousel).toHaveAttribute("aria-roledescription", "carrusel");
   await expect(carousel).toHaveAttribute("aria-label", "Reseñas de clientes");
   await expect(track.locator(".quote")).toHaveCount(7);
@@ -1606,6 +1607,10 @@ test("las reseñas reales avanzan automáticamente hacia la izquierda", async ({
   await expect(track.locator("blockquote").nth(1)).toContainText("¡Qué delicia todo!");
   await expect(track.locator("blockquote").nth(4)).toContainText("¡Estos panzerotti");
   await expect(track.locator("blockquote").nth(5)).toContainText("le encantaron");
+  await expect(invitation).toHaveCSS("background-color", "rgb(234, 213, 237)");
+  await expect(invitation.locator("p")).toHaveCSS("color", "rgb(79, 22, 81)");
+  await expect(invitation.locator(".btn")).toHaveCSS("background-color", "rgb(110, 35, 111)");
+  await expect(invitation.locator(".btn")).toHaveCSS("color", "rgb(255, 255, 255)");
   const initialTransform = await track.evaluate(element => getComputedStyle(element).transform);
   await page.waitForTimeout(4200);
   await expect.poll(() => track.evaluate(element => getComputedStyle(element).transform)).not.toBe(initialTransform);
@@ -1614,21 +1619,53 @@ test("las reseñas reales avanzan automáticamente hacia la izquierda", async ({
   const sectionGaps = await page.evaluate(() => {
     const locationCard = document.querySelector("#ubicacion .location-card").getBoundingClientRect();
     const reviewHeading = document.querySelector("#resenas .section-head").getBoundingClientRect();
+    const reviewCarousel = document.querySelector("#resenas .testimonials-carousel").getBoundingClientRect();
     const reviewDots = document.querySelector("#resenas .testimonial-dots").getBoundingClientRect();
+    const reviewInvitation = document.querySelector("#resenas .review-invitation").getBoundingClientRect();
     const finalContent = document.querySelector(".final-inner").getBoundingClientRect();
     const footerDivider = getComputedStyle(document.querySelector("main + footer"), "::before");
     return {
       locationToReviews: reviewHeading.top - locationCard.bottom,
-      reviewsToFinal: finalContent.top - reviewDots.bottom,
+      carouselBeforeInvitation: reviewCarousel.bottom <= reviewInvitation.top,
+      dotsBeforeInvitation: reviewDots.bottom < reviewInvitation.top,
+      reviewsToFinal: finalContent.top - reviewInvitation.bottom,
       footerDividerColor: footerDivider.backgroundColor,
       footerDividerHeight: footerDivider.height
     };
   });
+  expect(sectionGaps.locationToReviews).toBeGreaterThanOrEqual(0);
   expect(sectionGaps.locationToReviews).toBeLessThan(70);
+  expect(sectionGaps.carouselBeforeInvitation).toBe(true);
+  expect(sectionGaps.dotsBeforeInvitation).toBe(true);
+  expect(sectionGaps.reviewsToFinal).toBeGreaterThanOrEqual(0);
   expect(sectionGaps.reviewsToFinal).toBeLessThan(80);
   expect(sectionGaps.footerDividerColor).toBe("rgba(217, 174, 220, 0.22)");
   expect(sectionGaps.footerDividerHeight).toBe("1px");
   await expect(page.locator("main + footer")).toHaveCSS("position", "relative");
+
+  for (const layoutCase of [
+    { width: 640, height: 900, direction: "column" },
+    { width: 641, height: 900, direction: "row" },
+    { width: 1366, height: 900, direction: "row" }
+  ]) {
+    await page.setViewportSize({ width: layoutCase.width, height: layoutCase.height });
+    const layout = await page.evaluate(() => {
+      const carousel = document.querySelector("#resenas .testimonials-carousel").getBoundingClientRect();
+      const dots = document.querySelector("#resenas .testimonial-dots").getBoundingClientRect();
+      const invitation = document.querySelector("#resenas .review-invitation");
+      const invitationRect = invitation.getBoundingClientRect();
+      return {
+        carouselBeforeInvitation: carousel.bottom <= invitationRect.top,
+        dotsBeforeInvitation: dots.bottom < invitationRect.top,
+        direction: getComputedStyle(invitation).flexDirection,
+        noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth
+      };
+    });
+    expect(layout.carouselBeforeInvitation).toBe(true);
+    expect(layout.dotsBeforeInvitation).toBe(true);
+    expect(layout.direction).toBe(layoutCase.direction);
+    expect(layout.noHorizontalOverflow).toBe(true);
+  }
 });
 
 test("el carrito usa fondo lila y el checkout toma los sabores automáticamente", async ({ page }, testInfo) => {
