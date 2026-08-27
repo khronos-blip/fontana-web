@@ -495,9 +495,16 @@
     const status=$("#orderStatusFilter")?.value||"active";
     const now=Math.floor(Date.now()/1000);
     const items=orders.filter(order=>(status==="all"||(status==="active"?order.status==="reserved":order.status===status))&&(!query||`${order.orderCode} ${order.customerName} ${order.customerPhone}`.toLowerCase().includes(query)));
-    $("#orderStats").innerHTML=[[orderSummary.reserved,"Reservas activas"],[orderSummary.confirmed,"Confirmados"],[orderSummary.expired,"Vencidos"],[orders.length,"Pedidos registrados"]].map(([value,label])=>`<article class="stat"><b>${Number(value||0)}</b><span>${label}</span></article>`).join("");
+    $("#orderStats").innerHTML=[[orderSummary.reserved,"Reservas activas","active"],[orderSummary.confirmed,"Confirmados","confirmed"],[orderSummary.expired,"Vencidos","expired"],[orders.length,"Pedidos registrados","all"]].map(([value,label,filter])=>`<button type="button" class="stat stat-link" data-order-filter="${filter}" aria-label="Ver ${label.toLowerCase()}" aria-pressed="${status===filter}"><b>${Number(value||0)}</b><span>${label}</span></button>`).join("");
     const labels={reserved:"Reservado",confirmed:"Confirmado",cancelled:"Cancelado",expired:"Vencido"};
     $("#ordersList").innerHTML=items.length?items.map(order=>{const seconds=Math.max(0,Number(order.expiresAt||0)-now);const choices=(order.items||[]).map(item=>`${item.quantity}× ${item.name}${item.optionSummary?` · ${item.optionSummary}`:""}`).join("; ");return `<article class="order-row"><div class="order-main"><div class="order-title"><h3>${escapeHtml(order.orderCode)}</h3><span class="badge ${order.status==="confirmed"?"green":order.status!=="reserved"?"red":""}">${labels[order.status]||order.status}</span></div><p><b>${escapeHtml(order.customerName||"Cliente")}</b> · ${escapeHtml(order.customerPhone||"")}</p><p>${escapeHtml(choices)}</p><small>${escapeHtml(order.fulfillment||"")} · ${escapeHtml(order.requestedDate||"")} · ${escapeHtml(centsMoney(order.totalCents))}${order.status==="reserved"?` · vence en ${Math.ceil(seconds/60)} min`:""}</small></div>${order.status==="reserved"?`<div class="order-actions"><button class="primary compact" data-order-action="confirm" data-order-id="${order.id}">Confirmar y descontar</button><button class="ghost compact" data-order-action="extend" data-order-id="${order.id}">+30 min</button><button class="danger compact" data-order-action="cancel" data-order-id="${order.id}">Cancelar</button></div>`:""}</article>`;}).join(""):'<div class="empty-list">No hay pedidos en este estado.</div>';
+  }
+
+  function openOrderFilter(status) {
+    $("#orderSearch").value = "";
+    $("#orderStatusFilter").value = status;
+    renderOrders();
+    $(".orders-toolbar")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   }
 
   function calculateSalesSummary(items) {
@@ -898,6 +905,10 @@
   ["#saleSearch","#saleStatusFilter","#salePeriodFilter"].forEach(selector => $(selector).addEventListener("input", renderSales));
   ["#inventorySearch","#inventoryKindFilter","#inventoryStateFilter"].forEach(selector => $(selector).addEventListener("input", renderInventory));
   ["#orderSearch","#orderStatusFilter"].forEach(selector => $(selector).addEventListener("input", renderOrders));
+  $("#orderStats").addEventListener("click", event => {
+    const button = event.target.closest("[data-order-filter]");
+    if (button) openOrderFilter(button.dataset.orderFilter);
+  });
   ["#activitySearch","#activityTypeFilter"].forEach(selector => $(selector).addEventListener("input", renderActivity));
   $("#refreshInventoryButton").addEventListener("click", loadInventory);
   $("#refreshOrdersButton").addEventListener("click", loadOrders);

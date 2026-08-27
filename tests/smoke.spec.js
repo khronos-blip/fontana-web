@@ -2362,6 +2362,30 @@ test("el panel centraliza cantidades privadas y pedidos reservados en móvil y e
   await page.screenshot({ path: testInfo.outputPath("inventario-central-escritorio.png"), fullPage: false });
 });
 
+test("las métricas de Pedidos abren la lista con el filtro correspondiente", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Pedidos", exact: true }).click();
+
+  const cases = [
+    ["Ver reservas activas", "active"],
+    ["Ver confirmados", "confirmed"],
+    ["Ver vencidos", "expired"],
+    ["Ver pedidos registrados", "all"]
+  ];
+  for (const [name, value] of cases) {
+    await page.locator("#orderSearch").fill("texto anterior");
+    const card = page.getByRole("button", { name, exact: true });
+    await card.click();
+    await expect(page.locator("#orderStatusFilter")).toHaveValue(value);
+    await expect(page.locator("#orderSearch")).toHaveValue("");
+    await expect(page.locator(`#orderStats [data-order-filter="${value}"]`)).toHaveAttribute("aria-pressed", "true");
+  }
+  await page.screenshot({ path: testInfo.outputPath("pedidos-metricas-filtrables-movil.png"), fullPage: false });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("las métricas del resumen abren productos con su filtro en móvil y escritorio", async ({ page }, testInfo) => {
   const consoleErrors = [];
   page.on("console", message => {
