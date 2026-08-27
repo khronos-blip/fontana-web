@@ -863,6 +863,7 @@
     document.body.append(backdrop);
     let active = null;
     const motionDuration = 860;
+    const flavorSwitchDuration = 360;
 
     const flavorName = card => card.dataset.flavor
       || $("span", card)?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()
@@ -880,9 +881,58 @@
       return row ? $('.fonkie-stepper button[data-delta="1"]', row) : null;
     };
 
+    const preloadFlavorImage = card => {
+      const image = $("img", card);
+      const source = image?.currentSrc || image?.getAttribute("src");
+      if (!source) return Promise.resolve();
+      const preload = new Image();
+      preload.src = source;
+      const decoded = typeof preload.decode === "function"
+        ? preload.decode().catch(() => {})
+        : new Promise(resolve => {
+          preload.addEventListener("load", resolve, { once: true });
+          preload.addEventListener("error", resolve, { once: true });
+        });
+      return Promise.race([
+        decoded,
+        new Promise(resolve => window.setTimeout(resolve, 260))
+      ]);
+    };
+
+    const warmAdjacentFlavorImages = state => {
+      if (state.cards.length < 2) return;
+      [-1, 1].forEach(direction => {
+        const index = (state.currentIndex + direction + state.cards.length) % state.cards.length;
+        preloadFlavorImage(state.cards[index]);
+      });
+    };
+
+    const renderFlavor = (state, card) => {
+      const nextName = flavorName(card);
+      const nextMeta = flavorMeta(state.kind, nextName);
+      const nextImage = $("img", card);
+      state.currentSource = card;
+      state.currentIndex = state.cards.indexOf(card);
+      state.currentName = nextName;
+      const source = nextImage?.getAttribute("src") || nextImage?.currentSrc;
+      if (source) state.backImage.setAttribute("src", source);
+      state.backImage.alt = nextImage?.alt || `${state.kind === "fonkies" ? "Fonkie" : "Fomb"} ${nextName}`;
+      state.heading.textContent = nextName;
+      state.ingredients.textContent = nextMeta?.ingredients?.trim() || "Ingredientes pendientes de confirmar con Fontana.";
+      state.choose.textContent = card.classList.contains("builder-flavor-sold-out")
+        ? "Elegir para Pre-Order"
+        : "Elegir este sabor";
+      state.overlay.dataset.flavor = nextName;
+      state.overlay.setAttribute("aria-label", `${state.kind === "fonkies" ? "Fonkie" : "Fomb"} ${nextName}`);
+      state.media.setAttribute("aria-label", `Cerrar detalles de ${nextName}`);
+      state.liveStatus.textContent = `${nextName}, sabor ${state.currentIndex + 1} de ${state.cards.length}`;
+      warmAdjacentFlavorImages(state);
+    };
+
     const cancelAnimations = state => {
       state.motion?.cancel();
       state.backdropMotion?.cancel();
+      state.flavorMotion?.cancel();
       state.faceMotions.forEach(animation => animation.cancel());
       state.faceMotions = [];
     };
@@ -902,6 +952,11 @@
     const close = (immediate = false) => {
       const state = active;
       if (!state || state.closing) return;
+      if (state.switching) {
+        state.pendingDirections = [];
+        state.pendingClose = immediate ? "immediate" : "animated";
+        return;
+      }
       state.closing = true;
       state.overlay.classList.add("builder-flavor-flip-closing");
       if (
@@ -926,6 +981,73 @@
         ...state.faceMotions.map(animation => animation.finished),
         state.backdropMotion.finished
       ]).then(() => cleanup(state)).catch(() => cleanup(state));
+    };
+
+    const switchFlavor = async direction => {
+      const state = active;
+      if (!state || state.closing || !state.ready || state.cards.length < 2 || state.choose.disabled) return;
+      if (state.switching) {
+        state.pendingDirections.push(direction);
+        return;
+      }
+      state.switching = true;
+      state.overlay.classList.add("builder-flavor-switching");
+      const nextIndex = (state.currentIndex + direction + state.cards.length) % state.cards.length;
+      const nextCard = state.cards[nextIndex];
+      await preloadFlavorImage(nextCard);
+      if (active !== state || state.closing) return;
+
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const exitAngle = direction > 0 ? -89.8 : 89.8;
+      const entryAngle = -exitAngle;
+      try {
+        if (reduceMotion) {
+          renderFlavor(state, nextCard);
+        } else {
+          state.flavorMotion = state.back.animate([
+            { transform: "perspective(1500px) rotateY(0deg) scale(1)" },
+            { transform: `perspective(1500px) rotateY(${exitAngle}deg) scale(.985)` }
+          ], {
+            duration: flavorSwitchDuration * .46,
+            easing: "cubic-bezier(.55,.05,.85,.45)",
+            fill: "forwards"
+          });
+          await state.flavorMotion.finished;
+          if (active !== state || state.closing) return;
+          renderFlavor(state, nextCard);
+          state.flavorMotion.cancel();
+          state.back.style.transform = `perspective(1500px) rotateY(${entryAngle}deg) scale(.985)`;
+          state.flavorMotion = state.back.animate([
+            { transform: `perspective(1500px) rotateY(${entryAngle}deg) scale(.985)` },
+            { transform: "perspective(1500px) rotateY(0deg) scale(1)" }
+          ], {
+            duration: flavorSwitchDuration * .54,
+            easing: "cubic-bezier(.15,.75,.25,1)",
+            fill: "forwards"
+          });
+          await state.flavorMotion.finished;
+          state.flavorMotion.cancel();
+          state.flavorMotion = null;
+          state.back.style.removeProperty("transform");
+        }
+      } catch (_error) {
+        if (active !== state) return;
+      } finally {
+        if (active !== state) return;
+        state.flavorMotion?.cancel();
+        state.flavorMotion = null;
+        state.back.style.removeProperty("transform");
+        state.overlay.classList.remove("builder-flavor-switching");
+        state.switching = false;
+        if (state.pendingClose) {
+          const immediate = state.pendingClose === "immediate";
+          state.pendingClose = null;
+          close(immediate);
+          return;
+        }
+        const pendingDirection = state.pendingDirections.shift();
+        if (pendingDirection) switchFlavor(pendingDirection);
+      }
     };
 
     const open = source => {
@@ -1029,8 +1151,11 @@
       choose.type = "button";
       choose.className = "builder-flavor-choose";
       choose.textContent = source.classList.contains("builder-flavor-sold-out") ? "Elegir para Pre-Order" : "Elegir este sabor";
+      const liveStatus = document.createElement("span");
+      liveStatus.className = "sr-only";
+      liveStatus.setAttribute("aria-live", "polite");
       details.append(eyebrow, heading, ingredients, choose);
-      back.append(media, details);
+      back.append(media, details, liveStatus);
       inner.append(front, back);
       overlay.append(inner);
       document.body.append(overlay);
@@ -1064,16 +1189,37 @@
       }
       const state = {
         source,
+        currentSource: source,
+        currentName: name,
+        currentIndex: 0,
+        cards: [],
+        kind,
         overlay,
         front,
         back,
+        media,
+        backImage,
+        heading,
+        ingredients,
+        choose,
+        liveStatus,
         motion,
         faceMotions,
         backdropMotion: null,
+        flavorMotion: null,
         scrollState: lockModalPageScroll(),
-        closing: false
+        closing: false,
+        switching: false,
+        pendingClose: null,
+        pendingDirections: [],
+        ready: reduceMotion,
+        suppressMediaClickUntil: 0
       };
+      const track = source.closest(".fonkie-gallery-track, .builder-gallery-track");
+      state.cards = track ? $$(".fonkie-gallery-card, .builder-gallery-card", track) : [source];
+      state.currentIndex = Math.max(0, state.cards.indexOf(source));
       active = state;
+      renderFlavor(state, source);
       source.style.visibility = "hidden";
       source.setAttribute("aria-expanded", "true");
       backdrop.hidden = false;
@@ -1081,9 +1227,17 @@
         if (active !== state || state.closing) return;
         backdrop.classList.add("visible");
       });
-      media.addEventListener("click", () => close());
+      media.addEventListener("click", event => {
+        if (performance.now() < state.suppressMediaClickUntil) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        close();
+      });
       choose.addEventListener("click", () => {
-        const plus = matchingPlusButton(source, kind, name);
+        if (state.switching || state.closing) return;
+        const plus = matchingPlusButton(state.source, state.kind, state.currentName);
         const row = plus?.closest(".fonkie-flavor, .fomb-flavor");
         if (!plus || !row || choose.disabled) return;
         const originalLabel = choose.textContent;
@@ -1100,12 +1254,52 @@
         }, { once: true });
         plus.click();
       });
+
+      let pointer = null;
+      const finishPointer = event => {
+        if (!pointer || event.pointerId !== pointer.id) return;
+        const dx = event.clientX - pointer.x;
+        const dy = event.clientY - pointer.y;
+        const elapsed = Math.max(1, performance.now() - pointer.time);
+        const horizontal = Math.abs(dx) >= 48
+          && Math.abs(dx) > Math.abs(dy) * 1.2
+          && elapsed <= 1000;
+        try {
+          if (media.hasPointerCapture?.(pointer.id)) media.releasePointerCapture(pointer.id);
+        } catch (_error) {}
+        pointer = null;
+        if (!horizontal) return;
+        event.preventDefault();
+        state.suppressMediaClickUntil = performance.now() + 450;
+        switchFlavor(dx < 0 ? 1 : -1);
+      };
+      media.addEventListener("pointerdown", event => {
+        if (!state.ready || state.closing || event.button !== 0) return;
+        pointer = {
+          id: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          time: performance.now()
+        };
+        try {
+          media.setPointerCapture(event.pointerId);
+        } catch (_error) {}
+      });
+      media.addEventListener("pointerup", finishPointer);
+      media.addEventListener("pointercancel", () => { pointer = null; });
+      overlay.addEventListener("keydown", event => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        switchFlavor(event.key === "ArrowRight" ? 1 : -1);
+      });
+      overlay.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight");
       if (reduceMotion) {
         back.setAttribute("aria-hidden", "false");
         back.focus({ preventScroll: true });
       } else {
         motion.finished.then(() => {
           if (active !== state || state.closing) return;
+          state.ready = true;
           back.setAttribute("aria-hidden", "false");
           back.focus({ preventScroll: true });
         }).catch(() => {});

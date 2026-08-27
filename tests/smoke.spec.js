@@ -65,6 +65,31 @@ async function resumePhysicalCardTurn(locator) {
   });
 }
 
+async function swipeExpandedFlavor(page, direction) {
+  const media = page.locator(".builder-flavor-expanded-media");
+  await expect(media).toBeVisible();
+  await media.evaluate((element, swipeDirection) => {
+    const box = element.getBoundingClientRect();
+    const y = box.top + (box.height * .48);
+    const startX = swipeDirection === "left" ? box.right - 34 : box.left + 34;
+    const endX = swipeDirection === "left" ? box.left + 34 : box.right - 34;
+    const eventOptions = (type, x, buttons) => ({
+      pointerId: 41,
+      pointerType: "touch",
+      isPrimary: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons,
+      bubbles: true,
+      cancelable: true
+    });
+    element.dispatchEvent(new PointerEvent("pointerdown", eventOptions("pointerdown", startX, 1)));
+    element.dispatchEvent(new PointerEvent("pointermove", eventOptions("pointermove", (startX + endX) / 2, 1)));
+    element.dispatchEvent(new PointerEvent("pointerup", eventOptions("pointerup", endX, 0)));
+  }, direction);
+}
+
 async function fillCheckout(page, { allergies = false, birthdayCandle = false } = {}) {
   const expanded = page.locator(".product-expanded");
   if (await expanded.count()) {
@@ -448,6 +473,91 @@ test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en es
   }
 });
 
+test("la vista ampliada navega sabores con swipe, flip, teclado e inventario correcto", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+
+  for (const item of [
+    { filter: "Fonkies · Galletas", card: ".fonkie-gallery-card", row: ".fonkie-flavor" },
+    { filter: "Fomb · Bombones", card: ".builder-gallery-card", row: ".fomb-flavor" }
+  ]) {
+    await page.getByRole("button", { name: item.filter }).click();
+    const cards = page.locator(item.card);
+    const names = await cards.evaluateAll(elements => elements.map(element => element.dataset.flavor
+      || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
+    expect(names.length).toBeGreaterThan(2);
+    const source = cards.first();
+    await source.scrollIntoViewIfNeeded();
+    const baseline = await page.evaluate(() => ({ y: scrollY }));
+    await source.click();
+    const overlay = page.locator(".builder-flavor-flip-card");
+    await expect(overlay).toBeVisible();
+    await page.waitForTimeout(920);
+    const initialBox = await overlay.boundingBox();
+    const bodyTop = await page.locator("body").evaluate(element => element.style.top);
+
+    await swipeExpandedFlavor(page, "left");
+    await expect.poll(() => overlay.locator(".builder-flavor-flip-back").evaluate(element => element.getAnimations()
+      .filter(animation => animation.playState === "running" && animation.effect?.target === element)
+      .length)).toBeGreaterThan(0);
+    await expect(overlay.locator("h3")).toHaveText(names[1], { timeout: 900 });
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+    await expect(overlay).toHaveAttribute("data-flavor", names[1]);
+    await expect(overlay).toHaveCount(1);
+    await expect(page.locator("body")).toHaveCSS("position", "fixed");
+    expect(await page.locator("body").evaluate(element => element.style.top)).toBe(bodyTop);
+    const nextBox = await overlay.boundingBox();
+    expect(Math.abs(nextBox.x - initialBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(nextBox.y - initialBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(nextBox.width - initialBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(nextBox.height - initialBox.height)).toBeLessThanOrEqual(1);
+    await expect(overlay.locator(".builder-flavor-expanded-media img")).toHaveCSS("object-fit", "contain");
+
+    await swipeExpandedFlavor(page, "right");
+    await expect(overlay.locator("h3")).toHaveText(names[0], { timeout: 900 });
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+    await swipeExpandedFlavor(page, "right");
+    await expect(overlay.locator("h3")).toHaveText(names.at(-1), { timeout: 900 });
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+
+    const firstOutput = page.locator(`${item.row} output`).first();
+    const lastOutput = page.locator(`${item.row} output`).last();
+    const firstBefore = await firstOutput.textContent();
+    const lastBefore = Number(await lastOutput.textContent());
+    await overlay.locator(".builder-flavor-choose").click();
+    await expect(overlay).toHaveCount(0, { timeout: 1300 });
+    await expect(firstOutput).toHaveText(firstBefore);
+    await expect(lastOutput).toHaveText(String(lastBefore + 1));
+    const restored = await page.evaluate(() => ({ y: scrollY }));
+    expect(Math.abs(restored.y - baseline.y)).toBeLessThanOrEqual(1);
+  }
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const desktopSource = page.locator(".fonkie-gallery-card").first();
+  await desktopSource.click();
+  const desktopOverlay = page.locator(".builder-flavor-flip-card");
+  await page.waitForTimeout(920);
+  const desktopNames = await page.locator(".fonkie-gallery-card").evaluateAll(elements => elements.map(element => element.dataset.flavor
+    || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
+  await page.keyboard.press("ArrowRight");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[1], { timeout: 900 });
+  await page.keyboard.press("ArrowLeft");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[0], { timeout: 900 });
+  await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+  const desktopMedia = desktopOverlay.locator(".builder-flavor-expanded-media");
+  const mediaBox = await desktopMedia.boundingBox();
+  await page.mouse.move(mediaBox.x + (mediaBox.width * .82), mediaBox.y + (mediaBox.height * .5));
+  await page.mouse.down();
+  await page.mouse.move(mediaBox.x + (mediaBox.width * .18), mediaBox.y + (mediaBox.height * .5), { steps: 6 });
+  await page.mouse.up();
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[1], { timeout: 900 });
+  await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+  await expect(desktopOverlay).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(desktopOverlay).toHaveCount(0, { timeout: 1300 });
+});
+
 test("el cierre anticipado sigue el recorrido de la tarjeta sin dejar la página bloqueada", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
@@ -628,14 +738,21 @@ test("Fonkies y Fomb respetan movimiento reducido sin animaciones residuales", a
   await openPreview(page);
 
   for (const selector of [".fonkie-gallery-card", ".builder-gallery-card"]) {
-    const source = page.locator(selector).first();
+    const cards = page.locator(selector);
+    const names = await cards.evaluateAll(elements => elements.map(element => element.dataset.flavor
+      || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
+    const source = cards.first();
     await source.scrollIntoViewIfNeeded();
     await source.click();
     const overlay = page.locator(".builder-flavor-flip-card");
     await expect(overlay).toBeVisible();
     expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
     await expect(overlay.locator(".builder-flavor-flip-back")).toBeVisible();
-    await overlay.locator(".builder-flavor-expanded-media").click();
+    await swipeExpandedFlavor(page, "left");
+    await expect(overlay.locator("h3")).toHaveText(names[1]);
+    expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+    await expect(overlay).toHaveCount(1);
+    await page.keyboard.press("Escape");
     await expect(overlay).toHaveCount(0);
   }
 });
