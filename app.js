@@ -373,8 +373,6 @@
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
       if (sizeOptions) sizeOptions.innerHTML = sizes.map((size, index) => `<label class="fomb-size-option"><input type="radio" name="fombSize" value="${Number(size.quantity)}" data-price="${Number(size.price)}" ${index === 0 ? "checked" : ""}> Caja de ${Number(size.quantity)} · ${money(Number(size.price))}</label>`).join("");
-      const extraLabel = $(".fomb-extras span", fombBuilder);
-      if (extraLabel) extraLabel.textContent = `Bombones extra · ${money(Number(fomb.extraPrice ?? 3.5))} c/u`;
       fombBuilder.dataset.ingredients = flavors.map(flavor => `${flavor.name} Fomb: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       if (fomb.image) fombBuilder.dataset.image = fomb.image;
     }
@@ -1819,16 +1817,14 @@
     const builder = $(".fomb-builder");
     if (!builder) return;
     const sizeInputs = $$('input[name="fombSize"]', builder);
-    const extrasOutput = $("#fombExtraCount");
     const addButton = $("#addFombBox");
     const preorderAllowed = builder.dataset.preorder === "true";
     const temporaryUnavailable = builder.dataset.temporarilyUnavailable === "true";
     const unavailable = temporaryUnavailable || (builder.dataset.soldOut === "true" && !preorderAllowed);
     const rows = $$(".fomb-flavor", builder);
-    let extras = 0;
     $("#fombIngredients div").textContent = builder.dataset.ingredients;
     const builderIntro = $(".builder-head p", builder);
-    if (builderIntro) builderIntro.textContent = "Elige sabores y cantidades. Con stock: entrega inmediata. Sin stock: Pre-Order de 2 días hábiles.";
+    if (builderIntro) builderIntro.textContent = "Elige el tamaño, los sabores y las cantidades. Cada bombón que supere el tamaño elegido se suma automáticamente como extra. Con stock: entrega inmediata. Sin stock: Pre-Order de 2 días hábiles.";
 
     function selectedFlavors() {
       return rows.map(row => ({
@@ -1845,51 +1841,38 @@
       const extraPrice = Number(adminState?.builders?.fomb?.extraPrice ?? 3.5);
       const flavors = selectedFlavors();
       const selectedTotal = flavors.reduce((sum, item) => sum + item.qty, 0);
-      return { size, total: size + extras, price: basePrice + extras * extraPrice, flavors, selectedTotal };
+      const extras = Math.max(0, selectedTotal - size);
+      return { size, extras, extraPrice, price: basePrice + extras * extraPrice, flavors, selectedTotal };
     }
 
     function updateBuilder() {
       const current = selection();
       const preorder = current.flavors.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
-      extrasOutput.value = String(extras);
-      extrasOutput.textContent = String(extras);
       $("#fombChoiceCount").textContent = `${current.selectedTotal} ${current.selectedTotal === 1 ? "elegido" : "elegidos"}`;
-      $("#fombCount").textContent = `Has seleccionado ${current.selectedTotal} de ${current.total} Fomb`;
-      const remaining = current.total - current.selectedTotal;
+      $("#fombCount").textContent = `Has seleccionado ${current.selectedTotal} Fomb`;
+      const remaining = current.size - current.selectedTotal;
       if (remaining > 0) {
-        $("#fombRule").textContent = `Selecciona los ${current.total} sabores de tu caja.`;
+        $("#fombRule").textContent = `Selecciona al menos ${current.size} bombones para tu caja.`;
         $("#fombValidation").textContent = `Faltan ${remaining} ${remaining === 1 ? "bombón" : "bombones"} por elegir.`;
-      } else if (remaining < 0) {
-        $("#fombRule").textContent = "Reduce la selección para que coincida con el tamaño de la caja.";
-        $("#fombValidation").textContent = `Hay ${Math.abs(remaining)} ${Math.abs(remaining) === 1 ? "bombón" : "bombones"} de más.`;
       } else {
         const type = current.flavors.length === 1 ? "Caja de un solo sabor" : "Caja mixta";
-        $("#fombRule").textContent = `${type}${extras ? ` · ${current.size} + ${extras} extra${extras === 1 ? "" : "s"}` : ""}.`;
+        const extraCopy = current.extras ? ` · ${current.size} + ${current.extras} ${current.extras === 1 ? "bombón extra" : "bombones extra"} a ${money(current.extraPrice)} c/u` : "";
+        $("#fombRule").textContent = `${type}${extraCopy}.`;
         $("#fombValidation").textContent = preorder ? "Tu solicitud de Pre-Order está lista para 2 días hábiles." : "Tu caja está lista para agregar al carrito.";
       }
       $("#fombTotal").textContent = money(current.price);
-      addButton.disabled = remaining !== 0 || unavailable;
+      addButton.disabled = remaining > 0 || unavailable;
       if (unavailable) $("#fombValidation").textContent = temporaryUnavailable ? "Temporalmente no disponible." : "Producto agotado temporalmente. Consulta por WhatsApp.";
     }
 
-    $("#fombExtraMinus").addEventListener("click", () => {
-      extras = Math.max(0, extras - 1);
-      updateBuilder();
-    });
-    $("#fombExtraPlus").addEventListener("click", () => {
-      extras += 1;
-      updateBuilder();
-    });
     sizeInputs.forEach(input => input.addEventListener("change", updateBuilder));
 
     $$(".fomb-flavor .fonkie-stepper button", builder).forEach(button => button.addEventListener("click", async () => {
       const row = button.closest(".fomb-flavor");
       const reportChange = success => row.dispatchEvent(new CustomEvent("fontana:flavor-change", { bubbles: true, detail: { success } }));
       if (stockValidationPending) { reportChange(false); return; }
-      const current = selection();
       const output = $("output", row);
       const delta = Number(button.dataset.delta);
-      if (delta > 0 && current.selectedTotal >= current.total) { reportChange(false); return; }
       const previous = Number(output.value || output.textContent || 0);
       const next = Math.max(0, previous + delta);
       const flavorPreorder = preorderAllowed && row.dataset.soldOut === "true";
@@ -1911,8 +1894,8 @@
 
     addButton.addEventListener("click", async () => {
       const current = selection();
-      if (current.selectedTotal !== current.total) {
-        say(`Selecciona exactamente ${current.total} bombones para armar tu caja`);
+      if (current.selectedTotal < current.size) {
+        say(`Selecciona al menos ${current.size} bombones para armar tu caja`);
         return;
       }
       const preorder = current.flavors.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
@@ -1922,7 +1905,7 @@
         if (!validation.ok) { say(stockLimitNotice(validation.error, "la caja Fomb")); return; }
       }
       const choices = [current.flavors.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), preorder ? "PRE-ORDER · 2 días hábiles" : ""].filter(Boolean).join(" · ");
-      const id = `fomb-box-${current.size}-${extras}-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
+      const id = `fomb-box-${current.size}-${current.extras}-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
       const found = cart.find(item => item.id === id);
       if (found) {
         found.qty += 1;
@@ -1930,12 +1913,12 @@
         cart.push({
           id,
           productId: "fomb-box",
-          name: `${preorder ? "Pre-order · " : ""}Caja de ${current.total} Fomb · ${current.flavors.length === 1 ? "Un sabor" : "Mixta"}`,
+          name: `${preorder ? "Pre-order · " : ""}Caja de ${current.selectedTotal} Fomb · ${current.flavors.length === 1 ? "Un sabor" : "Mixta"}`,
           price: current.price,
           image: builder.dataset.image,
           ingredients: builder.dataset.ingredients,
           choices,
-          inventory: { kind:"fomb", flavors:current.flavors.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder})), boxSize:current.size, extraCount:extras, preorder },
+          inventory: { kind:"fomb", flavors:current.flavors.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder})), boxSize:current.size, extraCount:current.extras, preorder },
           qty: 1
         });
       }

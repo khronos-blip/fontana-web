@@ -1384,13 +1384,16 @@ test("cada producto muestra solo sus sellos alimentarios confirmados", async ({ 
   await ballerine.screenshot({ path: testInfo.outputPath("sellos-producto-escritorio.png") });
 });
 
-test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y extras", async ({ page }) => {
+test("Fomb calcula automáticamente los bombones extra desde la selección", async ({ page }) => {
   await openPreview(page);
   await expect(page.locator(".fomb-builder")).toHaveCount(1);
   await expect(page.locator('img[src="assets/fomb-raffaello-fontana-pro.jpg"]')).toHaveCount(1);
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   await openFlavorChoice(page, ".fomb-builder");
   await expect(page.locator(".fomb-flavors")).toBeVisible();
+  await expect(page.locator(".fomb-builder .builder-head p")).toContainText("se suma automáticamente como extra");
+  await expect(page.getByRole("button", { name: "Sumar extra" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Restar extra" })).toHaveCount(0);
   await expect(page.locator("#addFombBox")).toBeDisabled();
   await expect(page.locator("#fombTotal")).toContainText("15,00");
   const pistachoPlus = page.locator('.fomb-flavor[data-flavor="Pistacho"] [data-delta="1"]');
@@ -1410,12 +1413,21 @@ test("Fomb permite elegir una caja de un sabor o mixta y conserva tamaños y ext
   await expect(page.locator(".cart-choices")).toContainText("3 Pistacho, 1 Dubai");
   await page.locator("#closeCart").click();
 
-  await page.locator(".fomb-builder .choice-panel").first().locator("summary").click();
-  await page.locator("#fombExtraPlus").click();
+  await pistachoPlus.click();
+  await expect(page.locator("#fombCount")).toContainText("5 Fomb");
+  await expect(page.locator("#fombRule")).toContainText("4 + 1 bombón extra");
   await expect(page.locator("#fombTotal")).toContainText("18,50");
+  await expect(page.locator("#addFombBox")).toBeEnabled();
+  await page.locator("#addFombBox").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item h4")).toContainText(["Caja de 4 Fomb · Mixta", "Caja de 5 Fomb · Mixta"]);
+  await expect(page.locator(".cart-item").last()).toContainText("USD 18,50");
+  await page.locator("#closeCart").click();
+
+  await page.locator(".fomb-builder .choice-panel").first().locator("summary").click();
   await page.locator('input[name="fombSize"][value="12"]').check();
-  await expect(page.locator("#fombTotal")).toContainText("33,50");
-  await expect(page.locator("#fombValidation")).toContainText("Faltan 9 bombones");
+  await expect(page.locator("#fombTotal")).toContainText("30,00");
+  await expect(page.locator("#fombValidation")).toContainText("Faltan 7 bombones");
   await expect(page.locator("#addFombBox")).toBeDisabled();
 });
 
