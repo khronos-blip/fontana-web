@@ -410,6 +410,11 @@
     $$(".catalog-group-grid").forEach(grid => {
       const cards = $$(".product-flip-ready:not(.hidden):not(.product-expanded)", grid);
       if (!cards.length) return;
+
+      // Measure every visual row from a clean layout first, then apply the
+      // tallest natural height only to the cards that actually share that row.
+      // Matching a whole category made a single detailed product (Raviolis,
+      // for example) stretch unrelated cards and left oversized empty panels.
       cards.forEach(card => {
         card.classList.remove("product-row-matched", "product-row-solo");
         const inner = $(".product-flip-inner", card);
@@ -418,21 +423,28 @@
         inner.style.height = "";
         if (front) front.style.height = "auto";
       });
-      const isSaladoGrid = grid.closest('[data-catalog-group="salado"]');
-      if (isSaladoGrid) {
-        cards.forEach(card => {
-          card.classList.add("product-row-solo");
+
+      const rows = [];
+      cards.forEach(card => {
+        const top = card.getBoundingClientRect().top;
+        const naturalHeight = Math.ceil($(".product-front", card)?.scrollHeight || 0);
+        const row = rows.find(candidate => Math.abs(candidate.top - top) <= 2);
+        const measurement = { card, naturalHeight };
+        if (row) row.cards.push(measurement);
+        else rows.push({ top, cards: [measurement] });
+      });
+
+      rows.forEach(row => {
+        const matched = row.cards.length > 1;
+        const rowHeight = Math.max(...row.cards.map(({ naturalHeight }) => naturalHeight));
+        row.cards.forEach(({ card, naturalHeight }) => {
+          card.classList.add(matched ? "product-row-matched" : "product-row-solo");
           const inner = $(".product-flip-inner", card);
-          const naturalHeight = Math.ceil($(".product-front", card)?.scrollHeight || 0);
-          if (inner && naturalHeight > 0) inner.style.height = `${naturalHeight}px`;
+          const height = matched ? rowHeight : naturalHeight;
+          if (inner && height > 0) inner.style.height = `${height}px`;
         });
-      } else {
-        const tallest = Math.max(...cards.map(card => Math.ceil($(".product-front", card)?.scrollHeight || 0)));
-        if (tallest > 0) cards.forEach(card => {
-          const inner = $(".product-flip-inner", card);
-          if (inner) inner.style.height = `${tallest}px`;
-        });
-      }
+      });
+
       cards.forEach(card => {
         const front = $(".product-front", card);
         if (front) front.style.height = "";

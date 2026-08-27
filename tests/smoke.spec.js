@@ -855,7 +855,7 @@ test("las tarjetas conservan altura y pie simétricos dentro de cada fila visual
         if (row) row.cards.push(card);
         else rows.push({ top, cards: [card] });
       });
-      return rows.filter(row => row.cards.length > 1 && row.cards[0]?.dataset.category !== "salado").map(row => row.cards.map(card => {
+      return rows.filter(row => row.cards.length > 1).map(row => row.cards.map(card => {
         const box = card.getBoundingClientRect();
         const footer = card.querySelector(".product-front .product-footer")?.getBoundingClientRect();
         return {
@@ -890,6 +890,9 @@ test("Salados compacta el frente y conserva todas las opciones al ampliar", asyn
   const raviolisBox = await raviolis.boundingBox();
   expect(tequenosBox.height).toBeGreaterThan(100);
   expect(raviolisBox.height).toBeGreaterThan(100);
+  expect(Math.abs(tequenosBox.height - raviolisBox.height)).toBeLessThanOrEqual(1);
+  await expect(tequenos).toHaveClass(/product-row-matched/);
+  await expect(raviolis).toHaveClass(/product-row-matched/);
 
   await raviolis.locator(".product-selection-summary").click();
   await expect(raviolis).toHaveClass(/product-expanded/);
