@@ -1326,6 +1326,13 @@ test("Fonkies nunca permite seleccionar ni pedir más unidades que el inventario
   });
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const singleFlavorTrack = page.locator(".fonkie-gallery-track");
+  const singleFlavorCard = singleFlavorTrack.locator(":scope > .fonkie-gallery-card");
+  await expect(singleFlavorTrack).not.toHaveAttribute("data-gallery-loop", "true");
+  await expect(singleFlavorCard).toHaveCount(1);
+  await expect(singleFlavorCard).toHaveAttribute("tabindex", "0");
+  await singleFlavorCard.focus();
+  await expect(singleFlavorCard).toBeFocused();
   await openFlavorChoice(page, ".fonkie-builder");
 
   const flavor = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
@@ -1790,9 +1797,146 @@ test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el produc
   }
 });
 
-test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito", async ({ page }) => {
+test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin frenos", async ({ page }) => {
+  test.slow();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await openPreview(page);
+
+  const modulo = (value, total) => ((value % total) + total) % total;
+  let nextPointerId = 200;
+
+  const dispatchGesture = (track, cardSelector, direction) => track.evaluate((element, options) => {
+    const box = element.getBoundingClientRect();
+    const vertical = options.direction === "vertical";
+    const startX = vertical
+      ? box.left + (box.width * .5)
+      : box.left + (box.width * (options.direction === "forward" ? .78 : .22));
+    const endX = vertical
+      ? startX + 4
+      : box.left + (box.width * (options.direction === "forward" ? .22 : .78));
+    const startY = box.top + (box.height * (vertical ? .34 : .5));
+    const endY = vertical ? box.top + (box.height * .72) : startY;
+    const eventOptions = (x, y, buttons) => ({
+      pointerId: options.pointerId,
+      pointerType: "touch",
+      isPrimary: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
+      buttons,
+      bubbles: true,
+      cancelable: true
+    });
+    const before = Number.parseInt(element.dataset.galleryIndex || "-1", 10);
+    element.dispatchEvent(new PointerEvent("pointerdown", eventOptions(startX, startY, 1)));
+    element.dispatchEvent(new PointerEvent(
+      "pointermove",
+      eventOptions((startX + endX) / 2, (startY + endY) / 2, 1)
+    ));
+    element.dispatchEvent(new PointerEvent("pointermove", eventOptions(endX, endY, 1)));
+    element.dispatchEvent(new PointerEvent("pointerup", eventOptions(endX, endY, 0)));
+    const cards = [...element.querySelectorAll(options.cardSelector)];
+    return {
+      before,
+      after: Number.parseInt(element.dataset.galleryIndex || "-1", 10),
+      state: element.dataset.galleryState,
+      scrollLeft: element.scrollLeft,
+      currentCount: cards.filter(card => card.getAttribute("aria-current") === "true").length
+    };
+  }, {
+    direction,
+    pointerId: nextPointerId++,
+    cardSelector
+  });
+
+  const expectRestingIndex = async (track, cardSelector, expectedIndex) => {
+    await expect(track).toHaveAttribute("data-gallery-state", "idle");
+    await expect(track).toHaveAttribute("data-gallery-index", String(expectedIndex));
+    const resting = await track.evaluate((element, options) => {
+      const cards = [...element.querySelectorAll(options.cardSelector)];
+      const current = cards[options.expectedIndex];
+      const trackBox = element.getBoundingClientRect();
+      const currentBox = current?.getBoundingClientRect();
+      return {
+        scrollLeft: element.scrollLeft,
+        currentCount: cards.filter(card => card.getAttribute("aria-current") === "true").length,
+        currentIndex: cards.findIndex(card => card.getAttribute("aria-current") === "true"),
+        accessibleCount: cards.filter(card => card.getAttribute("aria-hidden") !== "true").length,
+        hiddenCardsValid: cards.every((card, index) => index === options.expectedIndex
+          ? card.getAttribute("aria-hidden") === null && card.getAttribute("tabindex") === "0"
+          : card.getAttribute("aria-hidden") === "true" && card.getAttribute("tabindex") === "-1"),
+        centerDistance: currentBox
+          ? Math.abs((currentBox.left + (currentBox.width / 2)) - (trackBox.left + (trackBox.width / 2)))
+          : Number.POSITIVE_INFINITY
+      };
+    }, { cardSelector, expectedIndex });
+    expect(resting.scrollLeft).toBe(0);
+    expect(resting.currentCount).toBe(1);
+    expect(resting.currentIndex).toBe(expectedIndex);
+    expect(resting.accessibleCount).toBe(1);
+    expect(resting.hiddenCardsValid).toBe(true);
+    expect(resting.centerDistance).toBeLessThanOrEqual(1);
+  };
+
+  const dispatchRapidBurst = async (track, cardSelector, direction, count) => {
+    const signatures = [];
+    const states = [];
+    const scrollPositions = [];
+    for (let turn = 0; turn < count; turn += 1) {
+      const sample = await track.evaluate((element, options) => {
+        const cards = [...element.querySelectorAll(options.cardSelector)];
+        const box = element.getBoundingClientRect();
+        const forward = options.direction === "forward";
+        const startX = box.left + (box.width * (forward ? .78 : .22));
+        const endX = box.left + (box.width * (forward ? .22 : .78));
+        const y = box.top + (box.height * .5);
+        const eventOptions = (x, buttons) => ({
+          pointerId: options.pointerId,
+          pointerType: "touch",
+          isPrimary: true,
+          clientX: x,
+          clientY: y,
+          button: 0,
+          buttons,
+          bubbles: true,
+          cancelable: true
+        });
+        element.dispatchEvent(new PointerEvent("pointerdown", eventOptions(startX, 1)));
+        element.dispatchEvent(new PointerEvent("pointermove", eventOptions((startX + endX) / 2, 1)));
+        element.dispatchEvent(new PointerEvent("pointermove", eventOptions(endX, 1)));
+        element.dispatchEvent(new PointerEvent("pointerup", eventOptions(endX, 0)));
+        return {
+          signature: cards.map(card => card.style.transform).join("|"),
+          state: element.dataset.galleryState,
+          scrollLeft: element.scrollLeft
+        };
+      }, { cardSelector, direction, pointerId: nextPointerId++ });
+      signatures.push(sample.signature);
+      states.push(sample.state);
+      scrollPositions.push(sample.scrollLeft);
+      // Leave enough real time for requestAnimationFrame to advance before the
+      // next contact interrupts it. A synchronous loop cannot exercise that path.
+      await page.waitForTimeout(55);
+    }
+    return { signatures, states, scrollPositions };
+  };
+
+  const dispatchWheelBurst = (track, direction, count = 1) => track.evaluate((element, options) => {
+    const width = element.getBoundingClientRect().width;
+    const results = [];
+    for (let turn = 0; turn < options.count; turn += 1) {
+      const wheel = new WheelEvent("wheel", {
+        deltaX: width * .72 * options.direction,
+        deltaY: 0,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        bubbles: true,
+        cancelable: true
+      });
+      results.push({ prevented: !element.dispatchEvent(wheel), scrollLeft: element.scrollLeft });
+    }
+    return { results, state: element.dataset.galleryState };
+  }, { direction, count });
 
   const galleries = [
     { filter: "Fonkies · Galletas", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card" },
@@ -1800,336 +1944,237 @@ test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito"
   ];
 
   for (const item of galleries) {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: item.filter }).click();
     const track = page.locator(item.track);
-    const cards = track.locator(item.card);
-    const clones = track.locator(":scope > .flavor-gallery-loop-card");
+    const cards = track.locator(":scope > " + item.card);
+
+    await expect(track).toBeVisible();
     await expect(track).toHaveAttribute("data-gallery-loop", "true");
+    await expect(track).toHaveAttribute("data-gallery-state", "idle");
+    await expect(track).toHaveAttribute("data-gallery-index", "0");
+    await expect(track.locator(
+      ':scope > [data-gallery-loop-copy], :scope > .flavor-gallery-loop-card'
+    )).toHaveCount(0);
+
     const cardCount = await cards.count();
-    const lastIndex = cardCount - 1;
     expect(cardCount).toBeGreaterThan(1);
-    await expect(clones).toHaveCount(cardCount * 2);
-    await expect(track.getByRole("button", { name: /Ver detalles de/ })).toHaveCount(cardCount);
-    const cloneAccessibility = await clones.evaluateAll(elements => elements.map(element => ({
-      ariaHidden: element.getAttribute("aria-hidden"),
-      inert: element.hasAttribute("inert"),
-      role: element.getAttribute("role"),
-      tabIndex: element.getAttribute("tabindex"),
-      id: element.getAttribute("id"),
-      alt: element.querySelector("img")?.getAttribute("alt"),
-      descendantIds: element.querySelectorAll("[id]").length,
-      pointerEvents: getComputedStyle(element).pointerEvents,
-      focusableDescendants: element.querySelectorAll('[tabindex],button,a[href],input,select,textarea').length
-    })));
-    expect(cloneAccessibility.every(clone => (
-      clone.ariaHidden === "true"
-      && clone.inert
-      && clone.role === null
-      && clone.tabIndex === null
-      && clone.id === null
-      && clone.alt === ""
-      && clone.descendantIds === 0
-      && clone.pointerEvents === "none"
-      && clone.focusableDescendants === 0
-    ))).toBe(true);
+    await expect(track.locator(`${item.card}[role="button"][aria-label^="Ver detalles de"]`)).toHaveCount(cardCount);
+    await expect(track.getByRole("button", { name: /Ver detalles de/ })).toHaveCount(1);
+    await expectRestingIndex(track, item.card, 0);
 
-    const structure = await track.evaluate((element, cardSelector) => {
-      const realCards = [...element.querySelectorAll(cardSelector)];
-      const leading = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="leading"]')];
-      const trailing = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="trailing"]')];
-      const trackBox = element.getBoundingClientRect();
-      const positionFor = child => element.scrollLeft + child.getBoundingClientRect().left - trackBox.left;
-      const width = element.clientWidth;
-      return {
-        width,
-        leadingIndexes: leading.map(clone => Number.parseInt(clone.dataset.galleryLoopIndex, 10)),
-        trailingIndexes: trailing.map(clone => Number.parseInt(clone.dataset.galleryLoopIndex, 10)),
-        leadingSpan: positionFor(realCards[0]) - positionFor(leading[0]),
-        trailingSpan: positionFor(trailing[0]) - positionFor(realCards[0]),
-        leftRunway: positionFor(leading[leading.length - 1]),
-        rightRunway: (element.scrollWidth - width) - positionFor(trailing[0])
-      };
-    }, item.card);
-    expect(structure.leadingIndexes).toEqual([...Array(cardCount).keys()]);
-    expect(structure.trailingIndexes).toEqual([...Array(cardCount).keys()]);
-    expect(Math.abs(structure.leadingSpan - (cardCount * structure.width))).toBeLessThanOrEqual(1);
-    expect(Math.abs(structure.trailingSpan - (cardCount * structure.width))).toBeLessThanOrEqual(1);
-    expect(structure.leftRunway).toBeGreaterThanOrEqual(((cardCount - 1) * structure.width) - 1);
-    expect(structure.rightRunway).toBeGreaterThanOrEqual(((cardCount - 1) * structure.width) - 1);
-
-    await track.scrollIntoViewIfNeeded();
-    const baseline = await page.evaluate(() => ({ y: scrollY }));
-    const trackTop = await track.evaluate(element => element.getBoundingClientRect().top);
-    const centeredReal = () => track.evaluate((element, cardSelector) => {
-      const trackBox = element.getBoundingClientRect();
-      const center = trackBox.left + (trackBox.width / 2);
-      const children = [...element.children];
-      const closest = children.reduce((best, child) => {
-        const box = child.getBoundingClientRect();
-        const distance = Math.abs((box.left + (box.width / 2)) - center);
-        return !best || distance < best.distance ? { child, distance } : best;
-      }, null);
-      const realCards = [...element.querySelectorAll(cardSelector)];
-      return {
-        isReal: closest?.child.matches(cardSelector) || false,
-        realIndex: realCards.indexOf(closest?.child),
-        loopIndex: Number.parseInt(closest?.child.dataset.galleryLoopIndex || "", 10),
-        distance: closest?.distance ?? Number.POSITIVE_INFINITY,
-        scrollLeft: element.scrollLeft,
-        width: element.clientWidth
-      };
-    }, item.card);
-
-    await expect.poll(async () => (await centeredReal()).realIndex).toBe(0);
-    await expect.poll(async () => (await centeredReal()).distance).toBeLessThanOrEqual(1);
-
-    const runBoundaryBurst = (direction, dispatchScrollEnd = true) => track.evaluate((element, options) => {
-      if (!options.dispatchScrollEnd) {
-        const blockScrollEnd = event => event.stopImmediatePropagation();
-        element._fontanaTestBlockScrollEnd = blockScrollEnd;
-        element.addEventListener("scrollend", blockScrollEnd, { capture: true });
+    let expectedIndex = 0;
+    for (const direction of ["forward", "reverse"]) {
+      const delta = direction === "forward" ? 1 : -1;
+      for (let turn = 0; turn < 67; turn += 1) {
+        const before = expectedIndex;
+        expectedIndex = modulo(expectedIndex + delta, cardCount);
+        const result = await dispatchGesture(track, item.card, direction);
+        expect(result.before).toBe(before);
+        expect(result.after).toBe(expectedIndex);
+        expect(result.after).not.toBe(before);
+        expect(result.state).toBe("idle");
+        expect(result.scrollLeft).toBe(0);
+        expect(result.currentCount).toBe(1);
       }
-      const realCards = [...element.querySelectorAll(options.cardSelector)];
-      const leading = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="leading"]')];
-      const trailing = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="trailing"]')];
-      const trackBox = element.getBoundingClientRect();
-      const positionFor = child => element.scrollLeft + child.getBoundingClientRect().left - trackBox.left;
-      const moveForSetup = child => {
-        const previousSnapType = element.style.scrollSnapType;
-        element.style.scrollSnapType = "none";
-        element.scrollLeft = positionFor(child);
-        void element.offsetWidth;
-        if (previousSnapType) element.style.scrollSnapType = previousSnapType;
-        else element.style.removeProperty("scroll-snap-type");
-      };
-      const begin = pointerId => {
-        element.dispatchEvent(new PointerEvent("pointerdown", {
-          pointerId,
-          pointerType: "touch",
-          isPrimary: true,
-          button: 0,
-          buttons: 1,
-          bubbles: true
-        }));
-        element.dispatchEvent(new Event("touchstart", { bubbles: true }));
-      };
-      const end = pointerId => {
-        element.dispatchEvent(new PointerEvent("pointerup", {
-          pointerId,
-          pointerType: "touch",
-          isPrimary: true,
-          button: 0,
-          buttons: 0,
-          bubbles: true
-        }));
-        element.dispatchEvent(new Event("touchend", { bubbles: true }));
-      };
-      const forward = options.direction === "forward";
-      const startCard = forward ? realCards[realCards.length - 1] : realCards[0];
-      const firstTarget = forward ? trailing[0] : leading[leading.length - 1];
-      const secondTarget = forward ? trailing[1] : leading[leading.length - 2];
-      moveForSetup(startCard);
-      const start = element.scrollLeft;
+    }
+    expect(expectedIndex).toBe(0);
+    await expectRestingIndex(track, item.card, expectedIndex);
 
-      begin(81);
-      const firstDown = element.scrollLeft;
-      element.scrollLeft = positionFor(firstTarget);
-      const firstMove = element.scrollLeft;
-      end(81);
-      const firstRelease = element.scrollLeft;
+    await cards.nth(expectedIndex).focus();
+    await dispatchGesture(track, item.card, "forward");
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await expect(cards.nth(expectedIndex)).toBeFocused();
+    await dispatchGesture(track, item.card, "reverse");
+    expectedIndex = modulo(expectedIndex - 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await expect(cards.nth(expectedIndex)).toBeFocused();
 
-      begin(82);
-      const secondDown = element.scrollLeft;
-      element.scrollLeft = positionFor(secondTarget);
-      const secondMove = element.scrollLeft;
-      end(82);
-      const secondRelease = element.scrollLeft;
-      const beforeSettle = element.scrollLeft;
-      if (options.dispatchScrollEnd) element.dispatchEvent(new Event("scrollend"));
-      const afterSettle = element.scrollLeft;
+    const vertical = await dispatchGesture(track, item.card, "vertical");
+    expect(vertical.before).toBe(expectedIndex);
+    expect(vertical.after).toBe(expectedIndex);
+    expect(vertical.state).toBe("idle");
+    expect(vertical.scrollLeft).toBe(0);
+    await expectRestingIndex(track, item.card, expectedIndex);
 
-      const center = trackBox.left + (trackBox.width / 2);
-      const closest = [...element.children].reduce((best, child) => {
-        const box = child.getBoundingClientRect();
-        const distance = Math.abs((box.left + (box.width / 2)) - center);
-        return !best || distance < best.distance ? { child, distance } : best;
-      }, null);
-      return {
-        width: element.clientWidth,
-        cycleSpan: positionFor(trailing[0]) - positionFor(realCards[0]),
-        start,
-        firstDown,
-        firstMove,
-        firstRelease,
-        secondDown,
-        secondMove,
-        secondRelease,
-        beforeSettle,
-        afterSettle,
-        centeredRealIndex: realCards.indexOf(closest?.child),
-        centeredDistance: closest?.distance ?? Number.POSITIVE_INFINITY
-      };
-    }, { cardSelector: item.card, direction, dispatchScrollEnd });
+    let current = cards.nth(expectedIndex);
+    await current.focus();
+    await current.press("ArrowRight");
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
 
-    const forward = await runBoundaryBurst("forward");
-    expect(Math.abs(forward.firstDown - forward.start)).toBeLessThanOrEqual(1);
-    expect(Math.abs((forward.firstMove - forward.start) - forward.width)).toBeLessThanOrEqual(1);
-    expect(Math.abs(forward.firstRelease - forward.firstMove)).toBeLessThanOrEqual(1);
-    expect(Math.abs(forward.secondDown - forward.firstRelease)).toBeLessThanOrEqual(1);
-    expect(Math.abs((forward.secondMove - forward.secondDown) - forward.width)).toBeLessThanOrEqual(1);
-    expect(Math.abs(forward.secondRelease - forward.secondMove)).toBeLessThanOrEqual(1);
-    expect(Math.abs(forward.beforeSettle - forward.secondRelease)).toBeLessThanOrEqual(1);
-    expect(Math.abs((forward.afterSettle - forward.beforeSettle) + forward.cycleSpan)).toBeLessThanOrEqual(1);
-    expect(forward.centeredRealIndex).toBe(1);
-    expect(forward.centeredDistance).toBeLessThanOrEqual(1);
+    current = cards.nth(expectedIndex);
+    await current.press("ArrowLeft");
+    expectedIndex = modulo(expectedIndex - 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
 
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    const reverse = await runBoundaryBurst("reverse", false);
-    expect(Math.abs(reverse.firstDown - reverse.start)).toBeLessThanOrEqual(1);
-    expect(Math.abs((reverse.firstMove - reverse.start) + reverse.width)).toBeLessThanOrEqual(1);
-    expect(Math.abs(reverse.firstRelease - reverse.firstMove)).toBeLessThanOrEqual(1);
-    expect(Math.abs(reverse.secondDown - reverse.firstRelease)).toBeLessThanOrEqual(1);
-    expect(Math.abs((reverse.secondMove - reverse.secondDown) + reverse.width)).toBeLessThanOrEqual(1);
-    expect(Math.abs(reverse.secondRelease - reverse.secondMove)).toBeLessThanOrEqual(1);
-    expect(Math.abs(reverse.beforeSettle - reverse.secondRelease)).toBeLessThanOrEqual(1);
-    expect(Math.abs(reverse.afterSettle - reverse.beforeSettle)).toBeLessThanOrEqual(1);
-    expect(reverse.centeredRealIndex).toBe(-1);
-    expect(reverse.centeredDistance).toBeLessThanOrEqual(1);
+    current = cards.nth(expectedIndex);
+    await current.press("End");
+    expectedIndex = cardCount - 1;
+    await expectRestingIndex(track, item.card, expectedIndex);
 
-    // Safari versions without scrollend use the silence fallback. It must
-    // recenter only after the gesture has settled, never on release.
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === lastIndex - 1 && centered.distance <= 1;
-    }).toBe(true);
-    await track.evaluate(element => {
-      if (!element._fontanaTestBlockScrollEnd) return;
-      element.removeEventListener("scrollend", element._fontanaTestBlockScrollEnd, { capture: true });
-      delete element._fontanaTestBlockScrollEnd;
-    });
+    current = cards.nth(expectedIndex);
+    await current.press("Home");
+    expectedIndex = 0;
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    for (let turn = 0; turn < Math.min(3, cardCount - 1); turn += 1) {
+      current = cards.nth(expectedIndex);
+      await current.press("ArrowRight");
+      expectedIndex = modulo(expectedIndex + 1, cardCount);
+    }
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    await page.setViewportSize({ width: 430, height: 844 });
     await page.evaluate(() => new Promise(resolve => {
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     }));
-
-    // A resize can land during the two compositor frames that suppress the
-    // synthetic scroll produced by recentering. Force that exact overlap and
-    // require the same logical flavor to remain centered.
-    await track.evaluate((element, cardSelector) => {
-      const realCards = [...element.querySelectorAll(cardSelector)];
-      const trailing = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="trailing"]')];
-      const trackBox = element.getBoundingClientRect();
-      const positionFor = child => element.scrollLeft + child.getBoundingClientRect().left - trackBox.left;
-      const previousSnapType = element.style.scrollSnapType;
-      element.style.scrollSnapType = "none";
-      element.scrollLeft = positionFor(realCards[realCards.length - 1]);
-      element.scrollLeft = positionFor(trailing[0]);
-      void element.offsetWidth;
-      if (previousSnapType) element.style.scrollSnapType = previousSnapType;
-      else element.style.removeProperty("scroll-snap-type");
-      element.dispatchEvent(new Event("scrollend"));
-      element.style.width = `${Math.max(1, element.clientWidth - 2)}px`;
-    }, item.card);
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
-    }).toBe(true);
-    await track.evaluate(element => element.style.removeProperty("width"));
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
-    }).toBe(true);
-
-    // Releasing on a boundary clone must update the logical flavor before a
-    // rotation. Otherwise ResizeObserver can return to the previously centered
-    // flavor during the 180 ms settle window.
-    const resizeRace = await track.evaluate((element, options) => {
-      const realCards = [...element.querySelectorAll(options.cardSelector)];
-      const trailing = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="trailing"]')];
-      const trackBox = element.getBoundingClientRect();
-      const positionFor = child => element.scrollLeft + child.getBoundingClientRect().left - trackBox.left;
-      const previousSnapType = element.style.scrollSnapType;
-      element.style.scrollSnapType = "none";
-      element.scrollLeft = positionFor(realCards[realCards.length - 1]);
-      void element.offsetWidth;
-      if (previousSnapType) element.style.scrollSnapType = previousSnapType;
-      else element.style.removeProperty("scroll-snap-type");
-      element.dispatchEvent(new PointerEvent("pointerdown", {
-        pointerId: 91,
-        pointerType: "touch",
-        isPrimary: true,
-        button: 0,
-        buttons: 1,
-        bubbles: true
-      }));
-      element.dispatchEvent(new Event("touchstart", { bubbles: true }));
-      element.scrollLeft = positionFor(trailing[0]);
-      const moved = element.scrollLeft;
-      element.dispatchEvent(new PointerEvent("pointerup", {
-        pointerId: 91,
-        pointerType: "touch",
-        isPrimary: true,
-        button: 0,
-        buttons: 0,
-        bubbles: true
-      }));
-      element.dispatchEvent(new Event("touchend", { bubbles: true }));
-      return { moved, released: element.scrollLeft };
-    }, { cardSelector: item.card });
-    expect(Math.abs(resizeRace.released - resizeRace.moved)).toBeLessThanOrEqual(1);
-
-    await track.evaluate(element => {
-      const initialWidth = element.clientWidth;
-      window.__fontanaGalleryResizeSnapshot = null;
-      const observer = new ResizeObserver(() => {
-        if (element.clientWidth === initialWidth) return;
-        requestAnimationFrame(() => {
-          const trackBox = element.getBoundingClientRect();
-          const center = trackBox.left + (trackBox.width / 2);
-          const realCards = [...element.querySelectorAll(".fonkie-gallery-card,.builder-gallery-card")];
-          const closest = [...element.children].reduce((best, child) => {
-            const box = child.getBoundingClientRect();
-            const distance = Math.abs((box.left + (box.width / 2)) - center);
-            return !best || distance < best.distance ? { child, distance } : best;
-          }, null);
-          window.__fontanaGalleryResizeSnapshot = {
-            isReal: closest?.child.matches(".fonkie-gallery-card,.builder-gallery-card") || false,
-            realIndex: realCards.indexOf(closest?.child),
-            distance: closest?.distance ?? Number.POSITIVE_INFINITY
-          };
-          observer.disconnect();
-        });
-      });
-      observer.observe(element);
-    });
-
-    await page.setViewportSize({ width: 430, height: 844 });
-    await expect.poll(() => page.evaluate(() => window.__fontanaGalleryResizeSnapshot)).not.toBeNull();
-    const resizeSnapshot = await page.evaluate(() => window.__fontanaGalleryResizeSnapshot);
-    expect(resizeSnapshot.isReal).toBe(true);
-    expect(resizeSnapshot.realIndex).toBe(0);
-    expect(resizeSnapshot.distance).toBeLessThanOrEqual(1);
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
-    }).toBe(true);
+    await expectRestingIndex(track, item.card, expectedIndex);
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
-    }).toBe(true);
+    await page.evaluate(() => new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    await expectRestingIndex(track, item.card, expectedIndex);
 
-    const expectedFlavor = (await cards.first().locator("span").textContent())?.trim() || "";
-    await cards.first().click();
+    const wheelCount = 13;
+    const wheelSteps = Math.round(wheelCount * .72);
+    await cards.nth(expectedIndex).focus();
+    const wheelBurst = await dispatchWheelBurst(track, 1, wheelCount);
+    expect(wheelBurst.state).toBe("dragging");
+    expect(wheelBurst.results.every(result => result.prevented && result.scrollLeft === 0)).toBe(true);
+    expectedIndex = modulo(expectedIndex + wheelSteps, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await expect(cards.nth(expectedIndex)).toBeFocused();
+
+    const verticalWheel = await track.evaluate(element => {
+      const before = element.dataset.galleryIndex;
+      const event = new WheelEvent("wheel", {
+        deltaX: 0,
+        deltaY: 180,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        bubbles: true,
+        cancelable: true
+      });
+      return {
+        propagated: element.dispatchEvent(event),
+        before,
+        after: element.dataset.galleryIndex
+      };
+    });
+    expect(verticalWheel.propagated).toBe(true);
+    expect(verticalWheel.after).toBe(verticalWheel.before);
+
+    // A keyboard command between two trackpad bursts must discard the first
+    // wheel session instead of reusing its stale origin on the next gesture.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    current = cards.nth(expectedIndex);
+    await current.focus();
+    await dispatchWheelBurst(track, 1);
+    await current.press("ArrowRight");
+    await dispatchWheelBurst(track, 1);
+    expectedIndex = modulo(expectedIndex + 2, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+
+    await page.waitForTimeout(520);
+    current = cards.nth(expectedIndex);
+    const expectedFlavor = (await current.getAttribute("data-flavor")
+      || (await current.locator("span").textContent())?.replace(/\s·\sPre-Order\s*$/i, "").trim()
+      || "");
+    expect(expectedFlavor).toBeTruthy();
     const overlay = page.locator(".builder-flavor-flip-card");
-    await expect(overlay).toHaveAttribute("data-flavor", expectedFlavor);
-    await expect(overlay.locator(".builder-flavor-swipe-cue")).toBeVisible({ timeout: 2000 });
-    await overlay.locator(".builder-flavor-expanded-media").click({ position: { x: 120, y: 120 } });
-    await expect(overlay).toHaveCount(0, { timeout: 2000 });
 
-    const after = await page.evaluate(() => ({ y: scrollY }));
-    const afterTrackTop = await track.evaluate(element => element.getBoundingClientRect().top);
-    expect(Math.abs(after.y - baseline.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(afterTrackTop - trackTop)).toBeLessThanOrEqual(1);
+    await current.click();
+    await expect(overlay).toHaveAttribute("data-flavor", expectedFlavor);
+    await expect(current).toHaveAttribute("aria-expanded", "true");
+    await overlay.locator(".builder-flavor-expanded-media").click({ position: { x: 120, y: 120 } });
+    await expect(overlay).toHaveCount(0);
+    await expect(current).toHaveAttribute("aria-expanded", "false");
+
+    await current.focus();
+    await current.press("Enter");
+    await expect(overlay).toHaveAttribute("data-flavor", expectedFlavor);
+    await expect(current).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+    await expect(overlay).toHaveCount(0);
+    await expect(current).toHaveAttribute("aria-expanded", "false");
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const rapidStart = expectedIndex;
+    const forwardBurst = await dispatchRapidBurst(track, item.card, "forward", 12);
+    expect(forwardBurst.states.every(state => state === "settling")).toBe(true);
+    expect(forwardBurst.scrollPositions.every(position => position === 0)).toBe(true);
+    expect(new Set(forwardBurst.signatures).size).toBe(12);
+    expectedIndex = modulo(rapidStart + 12, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    const reverseBurst = await dispatchRapidBurst(track, item.card, "reverse", 12);
+    expect(reverseBurst.states.every(state => state === "settling")).toBe(true);
+    expect(reverseBurst.scrollPositions.every(position => position === 0)).toBe(true);
+    expect(new Set(reverseBurst.signatures).size).toBe(12);
+    expectedIndex = modulo(expectedIndex - 12, cardCount);
+    expect(expectedIndex).toBe(rapidStart);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    const cancelledDrag = await track.evaluate((element, pointerId) => {
+      const box = element.getBoundingClientRect();
+      const y = box.top + (box.height * .5);
+      const startX = box.left + (box.width * .72);
+      const movedX = box.left + (box.width * .44);
+      const options = (type, x, buttons) => ({
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons,
+        bubbles: true,
+        cancelable: true
+      });
+      element.dispatchEvent(new PointerEvent("pointerdown", options("pointerdown", startX, 1)));
+      element.dispatchEvent(new PointerEvent("pointermove", options("pointermove", movedX, 1)));
+      element.dispatchEvent(new PointerEvent("pointercancel", options("pointercancel", movedX, 0)));
+      return { state: element.dataset.galleryState, scrollLeft: element.scrollLeft };
+    }, nextPointerId++);
+    expect(cancelledDrag.state).toBe("settling");
+    expect(cancelledDrag.scrollLeft).toBe(0);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    const blurRecovery = await track.evaluate((element, pointerId) => {
+      const box = element.getBoundingClientRect();
+      const y = box.top + (box.height * .5);
+      const startX = box.left + (box.width * .82);
+      const movedX = box.left + (box.width * .18);
+      const options = (x, buttons) => ({
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: x,
+        clientY: y,
+        button: 0,
+        buttons,
+        bubbles: true,
+        cancelable: true
+      });
+      element.dispatchEvent(new PointerEvent("pointerdown", options(startX, 1)));
+      element.dispatchEvent(new PointerEvent("pointermove", options(movedX, 1)));
+      window.dispatchEvent(new Event("blur"));
+      return { state: element.dataset.galleryState, scrollLeft: element.scrollLeft };
+    }, nextPointerId++);
+    expect(blurRecovery.state).toBe("idle");
+    expect(blurRecovery.scrollLeft).toBe(0);
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    const beforeReducedSwitch = await dispatchGesture(track, item.card, "forward");
+    expect(beforeReducedSwitch.before).toBe(expectedIndex);
+    expect(beforeReducedSwitch.state).toBe("settling");
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expectRestingIndex(track, item.card, expectedIndex);
   }
 });
 
