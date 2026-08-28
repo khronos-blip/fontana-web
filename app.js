@@ -1287,7 +1287,14 @@
       track.addEventListener("pointermove", movePointer, { passive: false, signal });
       document.addEventListener("pointerup", event => finishPointer(event), { capture: true, signal });
       document.addEventListener("pointercancel", event => finishPointer(event, true), { capture: true, signal });
-      track.addEventListener("lostpointercapture", event => finishPointer(event, true), { signal });
+      track.addEventListener("lostpointercapture", event => {
+        // Touch browsers implicitly capture the pointer on the image/card that
+        // received pointerdown. Moving that capture to the track emits a
+        // bubbling lostpointercapture from the child; it is not a cancelled
+        // swipe. Only settle when the track itself loses its own capture.
+        if (event.target !== track) return;
+        finishPointer(event, true);
+      }, { signal });
 
       track.addEventListener("wheel", event => {
         const width = trackWidth();

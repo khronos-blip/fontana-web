@@ -2083,6 +2083,160 @@ test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el produc
   }
 });
 
+test("el carrusel compacto móvil responde a contacto táctil real en Fonkies y Fomb", async ({ browser }) => {
+  test.slow();
+  const context = await browser.newContext({
+    baseURL: process.env.FONTANA_BASE_URL || "http://127.0.0.1:8767",
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    hasTouch: true,
+    isMobile: true,
+    reducedMotion: "reduce"
+  });
+  const page = await context.newPage();
+
+  try {
+    await openPreview(page);
+    const cdp = await context.newCDPSession(page);
+    let nextTouchId = 700;
+
+    const touchGesture = async (track, {
+      startX = .78,
+      endX = .22,
+      startY = .5,
+      endY = .5,
+      steps = 8,
+      finish = "touchEnd"
+    } = {}) => {
+      await track.scrollIntoViewIfNeeded();
+      const box = await track.boundingBox();
+      expect(box).toBeTruthy();
+      const touchId = nextTouchId++;
+      const point = progress => ({
+        x: box.x + (box.width * (startX + ((endX - startX) * progress))),
+        y: box.y + (box.height * (startY + ((endY - startY) * progress))),
+        id: touchId,
+        radiusX: 3,
+        radiusY: 3,
+        force: 1
+      });
+
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [point(0)]
+      });
+      for (let step = 1; step <= steps; step += 1) {
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [point(step / steps)]
+        });
+        await page.waitForTimeout(18);
+      }
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: finish,
+        touchPoints: []
+      });
+    };
+
+    const expectCenteredCurrentCard = async (track, cardSelector, expectedIndex) => {
+      await expect(track).toHaveAttribute("data-gallery-state", "idle");
+      await expect(track).toHaveAttribute("data-gallery-index", String(expectedIndex));
+      const state = await track.evaluate((element, options) => {
+        const cards = [...element.querySelectorAll(options.cardSelector)];
+        const current = cards[options.expectedIndex];
+        const trackBox = element.getBoundingClientRect();
+        const cardBox = current?.getBoundingClientRect();
+        return {
+          currentCount: cards.filter(card => card.getAttribute("aria-current") === "true").length,
+          currentIndex: cards.findIndex(card => card.getAttribute("aria-current") === "true"),
+          centerDistance: cardBox
+            ? Math.abs((cardBox.left + (cardBox.width / 2)) - (trackBox.left + (trackBox.width / 2)))
+            : Number.POSITIVE_INFINITY
+        };
+      }, { cardSelector, expectedIndex });
+      expect(state.currentCount).toBe(1);
+      expect(state.currentIndex).toBe(expectedIndex);
+      expect(state.centerDistance).toBeLessThanOrEqual(1);
+    };
+
+    const galleries = [
+      { filter: "Fonkies · Galletas", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card" },
+      { filter: "Fomb · Bombones", track: ".builder-gallery-track", card: ".builder-gallery-card" }
+    ];
+
+    for (const item of galleries) {
+      await page.getByRole("button", { name: item.filter }).click();
+      const track = page.locator(item.track);
+      const cards = track.locator(`:scope > ${item.card}`);
+      const overlay = page.locator(".builder-flavor-flip-card");
+      await expect(track).toBeVisible();
+      await expectCenteredCurrentCard(track, item.card, 0);
+
+      await track.evaluate(element => {
+        element.__fontanaTrustedTouchAudit = [];
+        ["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture"]
+          .forEach(type => element.addEventListener(type, event => {
+            element.__fontanaTrustedTouchAudit.push({
+              type: event.type,
+              trusted: event.isTrusted,
+              lostFromChild: event.type === "lostpointercapture" && event.target !== element
+            });
+          }, { capture: true }));
+      });
+
+      await touchGesture(track);
+      await expectCenteredCurrentCard(track, item.card, 1);
+      await expect(overlay).toHaveCount(0);
+
+      const audit = await track.evaluate(element => element.__fontanaTrustedTouchAudit);
+      for (const eventType of ["pointerdown", "pointermove", "pointerup"]) {
+        expect(audit.some(event => event.type === eventType && event.trusted)).toBe(true);
+      }
+      expect(audit.some(event => event.type === "lostpointercapture"
+        && event.trusted
+        && event.lostFromChild)).toBe(true);
+
+      const current = cards.nth(1);
+      const expectedFlavor = (await current.getAttribute("data-flavor")
+        || (await current.locator("span").textContent())?.replace(/\s·\sPre-Order\s*$/i, "").trim()
+        || "");
+      expect(expectedFlavor).toBeTruthy();
+      const currentBox = await current.boundingBox();
+      expect(currentBox).toBeTruthy();
+      await page.touchscreen.tap(
+        currentBox.x + (currentBox.width * .5),
+        currentBox.y + (currentBox.height * .45)
+      );
+      await expect(overlay).toHaveAttribute("data-flavor", expectedFlavor);
+      await expect(current).toHaveAttribute("aria-expanded", "true");
+      await page.keyboard.press("Escape");
+      await expect(overlay).toHaveCount(0);
+      await expect(current).toHaveAttribute("aria-expanded", "false");
+
+      await touchGesture(track, { startX: .22, endX: .78 });
+      await expectCenteredCurrentCard(track, item.card, 0);
+
+      await track.scrollIntoViewIfNeeded();
+      const scrollBefore = await page.evaluate(() => scrollY);
+      await touchGesture(track, { startX: .5, endX: .5, startY: .7, endY: .25 });
+      await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scrollBefore + 30);
+      await expectCenteredCurrentCard(track, item.card, 0);
+      await expect(overlay).toHaveCount(0);
+
+      await touchGesture(track, {
+        startX: .78,
+        endX: .44,
+        steps: 4,
+        finish: "touchCancel"
+      });
+      await expectCenteredCurrentCard(track, item.card, 0);
+      await expect(overlay).toHaveCount(0);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin frenos", async ({ page }) => {
   test.slow();
   await page.setViewportSize({ width: 390, height: 844 });
