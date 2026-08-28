@@ -1501,9 +1501,16 @@
       state.faceMotions = [];
     };
 
+    const resetFlavorWheelGesture = state => {
+      window.clearTimeout(state.flavorWheelTimer);
+      state.flavorWheelTimer = 0;
+      state.flavorWheelGesture = null;
+    };
+
     const cleanup = state => {
       const closingBackdropMotion = state.backdropMotion;
       state.backdropMotion = null;
+      resetFlavorWheelGesture(state);
       cancelAnimations(state);
       state.source.style.removeProperty("visibility");
       state.source.setAttribute("aria-expanded", "false");
@@ -1839,7 +1846,9 @@
         pendingDirections: [],
         ready: reduceMotion,
         suppressMediaClickUntil: 0,
-        swipeCueUsed: false
+        swipeCueUsed: false,
+        flavorWheelGesture: null,
+        flavorWheelTimer: 0
       };
       const track = source.closest(".fonkie-gallery-track, .builder-gallery-track");
       state.cards = track ? $$(".fonkie-gallery-card, .builder-gallery-card", track) : [source];
@@ -1919,6 +1928,58 @@
         target.addEventListener("pointerup", finishPointer);
         target.addEventListener("pointercancel", () => { pointer = null; });
       });
+      overlay.addEventListener("wheel", event => {
+        if (active !== state || event.ctrlKey) return;
+
+        const width = Math.max(1, state.media.clientWidth);
+        const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? width
+            : 1;
+        const shiftWheel = event.shiftKey && Math.abs(event.deltaX) < Math.abs(event.deltaY);
+        const horizontalDelta = (shiftWheel ? event.deltaY : event.deltaX) * unit;
+        const verticalDelta = shiftWheel ? 0 : event.deltaY * unit;
+        if (
+          Math.abs(horizontalDelta) < 1
+          || (!shiftWheel && Math.abs(horizontalDelta) <= Math.abs(verticalDelta))
+        ) return;
+
+        event.preventDefault();
+        if (
+          !state.ready
+          || state.closing
+          || state.pendingClose
+          || state.cards.length < 2
+          || state.choose.disabled
+        ) return;
+        const now = performance.now();
+        if (
+          !state.flavorWheelGesture
+          || now - state.flavorWheelGesture.lastEventAt > 180
+        ) {
+          resetFlavorWheelGesture(state);
+          state.flavorWheelGesture = {
+            totalX: 0,
+            committed: false,
+            lastEventAt: now
+          };
+        }
+
+        const gesture = state.flavorWheelGesture;
+        gesture.lastEventAt = now;
+        gesture.totalX += horizontalDelta;
+        const threshold = Math.min(56, Math.max(28, width * .08));
+        if (!gesture.committed && Math.abs(gesture.totalX) >= threshold) {
+          gesture.committed = true;
+          switchFlavor(Math.sign(gesture.totalX));
+        }
+
+        window.clearTimeout(state.flavorWheelTimer);
+        state.flavorWheelTimer = window.setTimeout(() => {
+          resetFlavorWheelGesture(state);
+        }, 180);
+      }, { passive: false });
       overlay.addEventListener("keydown", event => {
         const horizontalShortcut = event.key === "ArrowLeft" || event.key === "ArrowRight";
         const sliderOnlyShortcut = event.key === "ArrowUp"
