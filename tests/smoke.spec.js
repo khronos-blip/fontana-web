@@ -106,6 +106,56 @@ async function swipeExpandedFlavor(page, direction, targetSelector = ".builder-f
   }, direction);
 }
 
+async function expectExpandedFlavorLayoutFits(overlay) {
+  const layout = await overlay.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const media = element.querySelector(".builder-flavor-expanded-media")?.getBoundingClientRect();
+    const detailsElement = element.querySelector(".builder-flavor-expanded-details");
+    const details = detailsElement?.getBoundingClientRect();
+    const cue = element.querySelector(".builder-flavor-swipe-cue")?.getBoundingClientRect();
+    const dock = element.querySelector(".builder-flavor-swipe-dock")?.getBoundingClientRect();
+    const actions = element.querySelector(".builder-flavor-expanded-actions")?.getBoundingClientRect();
+    const done = element.querySelector(".builder-flavor-done")?.getBoundingClientRect();
+    const viewportTop = window.visualViewport?.offsetTop || 0;
+    const viewportBottom = viewportTop + (window.visualViewport?.height || window.innerHeight);
+    return {
+      overlayInsideViewport: box.top >= viewportTop - 1 && box.bottom <= viewportBottom + 1,
+      detailsHeight: details?.height || 0,
+      detailsClientHeight: detailsElement?.clientHeight || 0,
+      detailsScrollHeight: detailsElement?.scrollHeight || 0,
+      detailsScrollTop: detailsElement?.scrollTop || 0,
+      cueInsideMedia: Boolean(media && cue
+        && cue.top >= media.top - 1
+        && cue.bottom <= media.bottom + 1),
+      dockInsideMedia: Boolean(media && dock
+        && dock.top >= media.top - 1
+        && dock.bottom <= media.bottom + 1),
+      cueBeforeDetails: Boolean(cue && details && cue.bottom <= details.top + 1),
+      dockBeforeDetails: Boolean(dock && details && dock.bottom <= details.top + 1),
+      actionsInsideDetails: Boolean(actions && details
+        && actions.top >= details.top - 1
+        && actions.bottom <= details.bottom + 1),
+      doneInsideOverlay: Boolean(done
+        && done.left >= box.left - 1
+        && done.right <= box.right + 1
+        && done.bottom <= box.bottom + 1),
+      pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth
+    };
+  });
+  expect(layout.overlayInsideViewport).toBe(true);
+  expect(layout.detailsHeight).toBeGreaterThan(0);
+  expect(layout.detailsScrollTop).toBeLessThanOrEqual(1);
+  expect(layout.detailsScrollHeight).toBeLessThanOrEqual(layout.detailsClientHeight + 1);
+  expect(layout.cueInsideMedia).toBe(true);
+  expect(layout.dockInsideMedia).toBe(true);
+  expect(layout.cueBeforeDetails).toBe(true);
+  expect(layout.dockBeforeDetails).toBe(true);
+  expect(layout.actionsInsideDetails).toBe(true);
+  expect(layout.doneInsideOverlay).toBe(true);
+  expect(layout.pageFits).toBe(true);
+  return layout;
+}
+
 async function fillCheckout(page, { allergies = false, birthdayCandle = false } = {}) {
   const expanded = page.locator(".product-expanded");
   if (await expanded.count()) {
@@ -646,18 +696,8 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     expect(expandedImageBox.width).toBeGreaterThan(compactImageBox.width);
     expect(expandedImageBox.height).toBeGreaterThan(compactImageBox.height);
     await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
-    const expandedLayout = await overlay.evaluate(element => {
-      const details = element.querySelector(".builder-flavor-expanded-details")?.getBoundingClientRect();
-      const choose = element.querySelector(".builder-flavor-choose")?.getBoundingClientRect();
-      const box = element.getBoundingClientRect();
-      return details && choose ? {
-        detailsHeight: details.height,
-        buttonInside: choose.bottom <= box.bottom + 1
-      } : null;
-    });
-    expect(expandedLayout).not.toBeNull();
+    const expandedLayout = await expectExpandedFlavorLayoutFits(overlay);
     expect(expandedLayout.detailsHeight).toBeGreaterThan(150);
-    expect(expandedLayout.buttonInside).toBe(true);
     await expectModalPageLocked(page, baseline.y);
 
     await overlay.locator(".builder-flavor-expanded-media").click();
@@ -686,10 +726,32 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     await page.waitForTimeout(920);
     const output = page.locator(`${item.row} output`).first();
     const previous = Number(await output.textContent());
-    await overlay.locator(".builder-flavor-choose").click();
+    const expandedOutput = overlay.locator(".builder-flavor-quantity-output");
+    const expandedMinus = overlay.getByRole("button", { name: /^Restar / });
+    const expandedPlus = overlay.getByRole("button", { name: /^Sumar / });
+    await expect(expandedOutput).toHaveText(String(previous));
+    await expandedPlus.focus();
+    await expandedPlus.press("Enter");
+    await expect(overlay).toHaveCount(1);
+    await expect(expandedOutput).toHaveText(String(previous + 1));
+    await expect(output).toHaveText(String(previous + 1));
+    await expect(expandedPlus).toBeFocused();
+    await expandedMinus.click();
+    await expect(overlay).toHaveCount(1);
+    await expect(expandedOutput).toHaveText(String(previous));
+    await expect(output).toHaveText(String(previous));
+    await expandedPlus.click();
+    await expect(expandedOutput).toHaveText(String(previous + 1));
+    await expect(output).toHaveText(String(previous + 1));
+    const done = overlay.locator(".builder-flavor-done");
+    await done.focus();
+    await page.keyboard.press("Tab");
+    await expect(overlay.locator(".builder-flavor-expanded-media")).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(done).toBeFocused();
+    await done.click();
     await expect(overlay).toHaveClass(/builder-flavor-flip-closing/);
     await expect(overlay).toHaveCount(0);
-    await expect(output).toHaveText(String(previous + 1));
     await expect(source).toHaveAttribute("aria-expanded", "false");
     const restored = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
     expect(Math.abs(restored.x - baseline.x)).toBeLessThanOrEqual(1);
@@ -780,6 +842,76 @@ test("el cierre retira el fondo sin repintar ni reposicionar el menú", async ({
     await page.mouse.move(1, 1);
     await expect(page.locator("html")).not.toHaveClass(/modal-hover-guard/);
   }
+});
+
+test("la tarjeta espera la validación antes de cerrar y reabre con la cantidad confirmada", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ state })
+  }));
+
+  let releaseValidation;
+  let markValidationStarted;
+  const validationGate = new Promise(resolve => { releaseValidation = resolve; });
+  const validationStarted = new Promise(resolve => { markValidationStarted = resolve; });
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", async route => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        }
+      });
+      return;
+    }
+    markValidationStarted();
+    await validationGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ ok: true })
+    });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  const flavorName = "Fonkie con stock real";
+  const source = page.locator(`.fonkie-gallery-card[data-flavor="${flavorName}"]`);
+  const sourceOutput = page.locator(`.fonkie-flavor[data-flavor="${flavorName}"] output`);
+  await source.scrollIntoViewIfNeeded();
+  await source.click();
+  const overlay = page.locator(".builder-flavor-flip-card");
+  const plus = overlay.getByRole("button", { name: `Sumar ${flavorName}` });
+  await expect(overlay).toBeVisible();
+  await plus.focus();
+  await plus.press("Enter");
+  await validationStarted;
+  await expect(overlay.locator(".builder-flavor-expanded-actions")).toHaveAttribute("aria-busy", "true");
+  await page.keyboard.press("Tab");
+  await expect(overlay.locator(".builder-flavor-expanded-media")).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(1);
+  await expect(overlay).not.toHaveClass(/builder-flavor-flip-closing/);
+  releaseValidation();
+  await expect(sourceOutput).toHaveText("1");
+  await expect(overlay).toHaveCount(0);
+
+  await source.click();
+  await expect(overlay).toBeVisible();
+  await expect(overlay.locator(".builder-flavor-quantity-output")).toHaveText("1");
+  await overlay.locator(".builder-flavor-done").click();
+  await expect(overlay).toHaveCount(0);
 });
 
 test("el cierre no activa por accidente un filtro que queda debajo de la foto", async ({ page }) => {
@@ -875,10 +1007,33 @@ test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en es
     expect(desktopMediaRatio).toBeGreaterThan(.98);
     expect(desktopMediaRatio).toBeLessThan(1.02);
     await expect(overlay.locator(".builder-flavor-expanded-details h3")).not.toBeEmpty();
-    await expect(overlay.locator(".builder-flavor-choose")).toBeVisible();
+    await expect(overlay.locator(".builder-flavor-quantity")).toBeVisible();
+    await expect(overlay.locator(".builder-flavor-done")).toBeVisible();
+    await expectExpandedFlavorLayoutFits(overlay);
     await overlay.locator(".builder-flavor-expanded-media").click();
     await expect(overlay).toHaveCount(0, { timeout: 1300 });
   }
+});
+
+test("un sabor largo ampliado cabe completo en un móvil de poca altura", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openPreview(page);
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+
+  const source = page.locator('.fonkie-gallery-card[data-flavor="Pistacho con Chocolate Blanco"]');
+  await expect(source).toHaveCount(1);
+  await source.evaluate(element => element.click());
+  const overlay = page.locator(".builder-flavor-flip-card");
+  await expect(overlay).toBeVisible();
+  await expect(overlay.locator("h3")).toHaveText("Pistacho con Chocolate Blanco");
+  await expectExpandedFlavorLayoutFits(overlay);
+  const actionHeights = await overlay.locator(".builder-flavor-expanded-actions button").evaluateAll(buttons => (
+    buttons.map(button => button.getBoundingClientRect().height)
+  ));
+  expect(actionHeights.every(height => height >= 44)).toBe(true);
+  await overlay.locator(".builder-flavor-done").click();
+  await expect(overlay).toHaveCount(0);
 });
 
 test("la vista ampliada navega sabores con swipe, flip, teclado e inventario correcto", async ({ page }) => {
@@ -894,6 +1049,15 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     const names = await cards.evaluateAll(elements => elements.map(element => element.dataset.flavor
       || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
     expect(names.length).toBeGreaterThan(2);
+    const rowOutputs = page.locator(`${item.row} output`);
+    const seedFirstPlus = page.locator(`${item.row}`).nth(0).locator('[data-delta="1"]');
+    const seedSecondPlus = page.locator(`${item.row}`).nth(1).locator('[data-delta="1"]');
+    await seedFirstPlus.evaluate(button => button.click());
+    await expect(rowOutputs.nth(0)).toHaveText("1");
+    for (const expected of ["1", "2"]) {
+      await seedSecondPlus.evaluate(button => button.click());
+      await expect(rowOutputs.nth(1)).toHaveText(expected);
+    }
     const source = cards.first();
     await source.scrollIntoViewIfNeeded();
     const baseline = await page.evaluate(() => ({ y: scrollY }));
@@ -912,6 +1076,9 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     await expect(swipeCue.locator(".builder-flavor-swipe-word")).toHaveText("Desliza");
     await expect(overlay).toHaveAttribute("aria-describedby", "builder-flavor-swipe-instructions");
     await expect(overlay.locator("#builder-flavor-swipe-instructions")).toContainText("Desliza horizontalmente");
+    const expandedQuantity = overlay.locator(".builder-flavor-quantity-output");
+    await expect(expandedQuantity).toHaveText("1");
+    await expect(overlay.locator(".builder-flavor-quantity")).toHaveAttribute("aria-label", `Cantidad de ${names[0]} para tu caja`);
     const initialBox = await overlay.boundingBox();
     const cueLayout = await overlay.evaluate(element => {
       const media = element.querySelector(".builder-flavor-expanded-media").getBoundingClientRect();
@@ -926,8 +1093,10 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
         height: hitbox.height,
         dockWidth: dock.width,
         dockHeight: dock.height,
-        topOverlap: media.bottom - hitbox.top,
-        bottomOverlap: hitbox.bottom - details.top,
+        cueInsideMedia: hitbox.top >= media.top - 1 && hitbox.bottom <= media.bottom + 1,
+        dockInsideMedia: dock.top >= media.top - 1 && dock.bottom <= media.bottom + 1,
+        cueBeforeDetails: hitbox.bottom <= details.top + 1,
+        dockBeforeDetails: dock.bottom <= details.top + 1,
         centered: Math.abs((hitbox.left + hitbox.width / 2) - (media.left + media.width / 2)),
         pointerEvents: getComputedStyle(cue).pointerEvents,
         background: getComputedStyle(cue.querySelector(".builder-flavor-swipe-dock")).backgroundColor,
@@ -943,8 +1112,10 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     expect(cueLayout.dockWidth).toBeLessThanOrEqual(158.5);
     expect(cueLayout.dockHeight).toBeGreaterThanOrEqual(33.5);
     expect(cueLayout.dockHeight).toBeLessThanOrEqual(34.5);
-    expect(Math.abs(cueLayout.topOverlap - 22)).toBeLessThanOrEqual(2.5);
-    expect(Math.abs(cueLayout.bottomOverlap - 22)).toBeLessThanOrEqual(2.5);
+    expect(cueLayout.cueInsideMedia).toBe(true);
+    expect(cueLayout.dockInsideMedia).toBe(true);
+    expect(cueLayout.cueBeforeDetails).toBe(true);
+    expect(cueLayout.dockBeforeDetails).toBe(true);
     expect(cueLayout.centered).toBeLessThanOrEqual(.5);
     expect(cueLayout.pointerEvents).toBe("auto");
     expect(cueLayout.background).toBe("rgba(79, 22, 81, 0.94)");
@@ -969,10 +1140,14 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     await expect(swipeCue.locator(".builder-flavor-swipe-counter")).toHaveText(`2 / ${names.length}`);
     await expect(swipeCue).toHaveAttribute("aria-valuenow", "2");
     await expect(swipeCue).toHaveAttribute("aria-valuetext", `${names[1]}, sabor 2 de ${names.length}`);
+    await expect(expandedQuantity).toHaveText("2");
+    await expect(overlay.getByRole("button", { name: `Restar ${names[1]}` })).toBeVisible();
+    await expect(overlay.getByRole("button", { name: `Sumar ${names[1]}` })).toBeVisible();
     await page.keyboard.press("ArrowLeft");
     await expect(overlay.locator("h3")).toHaveText(names[0], { timeout: 900 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
     await expect(swipeCue.locator(".builder-flavor-swipe-counter")).toHaveText(`1 / ${names.length}`);
+    await expect(expandedQuantity).toHaveText("1");
 
     const cueHitbox = await swipeCue.boundingBox();
     await page.mouse.move(cueHitbox.x + (cueHitbox.width / 2), cueHitbox.y + (cueHitbox.height / 2));
@@ -989,6 +1164,7 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     await expect(overlay.locator("h3")).toHaveText(names[1], { timeout: 900 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
     await expect(overlay).toHaveAttribute("data-flavor", names[1]);
+    await expect(expandedQuantity).toHaveText("2");
     await expect(overlay).toHaveCount(1);
     await expectModalPageLocked(page, baseline.y);
     const nextBox = await overlay.boundingBox();
@@ -1001,18 +1177,23 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     await swipeExpandedFlavor(page, "right");
     await expect(overlay.locator("h3")).toHaveText(names[0], { timeout: 900 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+    await expect(expandedQuantity).toHaveText("1");
     await swipeExpandedFlavor(page, "right");
     await expect(overlay.locator("h3")).toHaveText(names.at(-1), { timeout: 900 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+    await expect(expandedQuantity).toHaveText("0");
 
     const firstOutput = page.locator(`${item.row} output`).first();
     const lastOutput = page.locator(`${item.row} output`).last();
     const firstBefore = await firstOutput.textContent();
     const lastBefore = Number(await lastOutput.textContent());
-    await overlay.locator(".builder-flavor-choose").click();
-    await expect(overlay).toHaveCount(0, { timeout: 1300 });
+    await overlay.getByRole("button", { name: `Sumar ${names.at(-1)}` }).click();
+    await expect(overlay).toHaveCount(1);
+    await expect(expandedQuantity).toHaveText(String(lastBefore + 1));
     await expect(firstOutput).toHaveText(firstBefore);
     await expect(lastOutput).toHaveText(String(lastBefore + 1));
+    await overlay.locator(".builder-flavor-done").click();
+    await expect(overlay).toHaveCount(0, { timeout: 1300 });
     const restored = await page.evaluate(() => ({ y: scrollY }));
     expect(Math.abs(restored.y - baseline.y)).toBeLessThanOrEqual(1);
   }
@@ -1045,7 +1226,7 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
   expect(desktopCueLayout.dockHeight).toBeLessThanOrEqual(34.5);
   await page.keyboard.press("ArrowRight");
   await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[1], { timeout: 900 });
-  await desktopOverlay.locator(".builder-flavor-choose").focus();
+  await desktopOverlay.locator(".builder-flavor-done").focus();
   await page.keyboard.press("ArrowDown");
   await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[1]);
   await page.keyboard.press("ArrowLeft");
@@ -1432,6 +1613,11 @@ test("Fonkies y Fomb respetan movimiento reducido sin animaciones residuales", a
     expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
     await swipeExpandedFlavor(page, "right");
     await expect(overlay.locator("h3")).toHaveText(names[0]);
+    expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+    const expandedQuantity = overlay.locator(".builder-flavor-quantity-output");
+    const previousQuantity = Number(await expandedQuantity.textContent());
+    await overlay.getByRole("button", { name: `Sumar ${names[0]}` }).click();
+    await expect(expandedQuantity).toHaveText(String(previousQuantity + 1));
     expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
     await expect(overlay).toHaveCount(1);
     await page.keyboard.press("Escape");
@@ -1902,6 +2088,13 @@ test("Fonkies y Fomb anuncian el inventario real en galería, selector y vista a
         const expandedAvailability = overlay.locator(".builder-flavor-expanded-availability");
         await expect(expandedAvailability).toHaveAttribute("data-stock-state", expected.state);
         await expect(expandedAvailability).toHaveText(expected.copy);
+        await expect(overlay.locator(".builder-flavor-quantity-output")).toHaveText("0");
+        await expect(overlay.locator(".builder-flavor-quantity")).toHaveAttribute(
+          "aria-label",
+          `Cantidad de ${builderCase.names[index]} para tu caja`
+        );
+        await expect(overlay.getByRole("button", { name: `Restar ${builderCase.names[index]}` })).toBeDisabled();
+        await expect(overlay.getByRole("button", { name: `Sumar ${builderCase.names[index]}` })).toBeEnabled();
         if (expected.state === "pending") await expect(overlay.locator(".builder-flavor-expanded-details")).not.toContainText("Entrega inmediata");
         if (index < availabilityCases.length - 1) await page.keyboard.press("ArrowRight");
       }
@@ -4435,6 +4628,16 @@ test("sin electricidad pausa Fonkies, muestra rojo y bloquea un carrito existent
   await expect(unavailableTag).toHaveCSS("color", "rgb(255, 255, 255)");
   await unavailableTag.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("fonkies-temporalmente-no-disponible-rojo.png"), fullPage: false });
+  const unavailableSource = page.locator(".fonkie-gallery-card").first();
+  await unavailableSource.click();
+  const unavailableOverlay = page.locator(".builder-flavor-flip-card");
+  await expect(unavailableOverlay).toBeVisible();
+  await expect(unavailableOverlay.locator(".builder-flavor-expanded-availability")).toHaveText("Temporalmente no disponible");
+  await expect(unavailableOverlay.locator(".builder-flavor-quantity-output")).toHaveText("0");
+  await expect(unavailableOverlay.getByRole("button", { name: /^Restar / })).toBeDisabled();
+  await expect(unavailableOverlay.getByRole("button", { name: /^Sumar / })).toBeDisabled();
+  await unavailableOverlay.locator(".builder-flavor-done").click();
+  await expect(unavailableOverlay).toHaveCount(0, { timeout: 1300 });
   await expect(page.locator("#addFonkieBox")).toBeDisabled();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item")).toContainText("Temporalmente no disponible");

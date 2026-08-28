@@ -268,14 +268,22 @@
       : {ok:false,error:"No hay suficientes unidades disponibles para esa cantidad."};
     const apiBase = String(config.adminApiBase || "").replace(/\/$/, "");
     if (!apiBase) return {ok:false,error:"No pudimos comprobar el inventario en este momento."};
+    const configuredTimeout = Number(config.stockValidationTimeoutMs ?? config.catalogApiTimeoutMs ?? 6000);
+    const timeoutMs = Number.isFinite(configuredTimeout)
+      ? Math.min(15000, Math.max(2500, configuredTimeout))
+      : 6000;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(`${apiBase}/v1/orders/validate`, {
-        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({checks})
+        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({checks}),signal:controller.signal
       });
       const payload = await response.json().catch(() => ({}));
       return response.ok ? {ok:true} : {ok:false,error:payload.error || "No hay suficientes unidades disponibles para esa cantidad."};
     } catch {
       return {ok:false,error:"No pudimos comprobar el inventario. Inténtalo otra vez."};
+    } finally {
+      window.clearTimeout(timeout);
     }
   }
 
@@ -1647,11 +1655,17 @@
       return Array.isArray(flavors) ? flavors.find(flavor => flavor.name === name) : null;
     };
 
-    const matchingPlusButton = (source, kind, name) => {
+    const matchingFlavorControls = (source, kind, name) => {
       const builder = source.closest(kind === "fonkies" ? ".fonkie-builder" : ".fomb-builder");
       const selector = kind === "fonkies" ? ".fonkie-flavor" : ".fomb-flavor";
       const row = $$(selector, builder).find(item => item.dataset.flavor === name);
-      return row ? $('.fonkie-stepper button[data-delta="1"]', row) : null;
+      if (!row) return null;
+      return {
+        row,
+        decrease: $('.fonkie-stepper button[data-delta="-1"]', row),
+        output: $(".fonkie-stepper output", row),
+        increase: $('.fonkie-stepper button[data-delta="1"]', row)
+      };
     };
 
     const preloadFlavorImage = card => {
@@ -1688,14 +1702,36 @@
       state.swipeCue.tabIndex = visible ? 0 : -1;
       state.swipeCue.classList.toggle("builder-flavor-swipe-cue--ready", visible);
       state.swipeCue.classList.toggle("builder-flavor-swipe-cue--used", state.swipeCueUsed);
-      const choosing = state.choose.disabled && !state.flavorUnavailable;
-      state.swipeCue.classList.toggle("builder-flavor-swipe-cue--busy", state.switching || choosing);
-      state.swipeCue.setAttribute("aria-busy", String(state.switching));
-      state.swipeCue.setAttribute("aria-disabled", String(choosing || state.closing));
+      state.swipeCue.classList.toggle("builder-flavor-swipe-cue--busy", state.switching || state.quantityBusy);
+      state.swipeCue.setAttribute("aria-busy", String(state.switching || state.quantityBusy));
+      state.swipeCue.setAttribute("aria-disabled", String(state.quantityBusy || state.closing));
       state.swipeCueCounter.textContent = `${state.currentIndex + 1} / ${state.cards.length}`;
       state.swipeCue.setAttribute("aria-valuemax", String(Math.max(1, state.cards.length)));
       state.swipeCue.setAttribute("aria-valuenow", String(state.currentIndex + 1));
       state.swipeCue.setAttribute("aria-valuetext", `${state.currentName}, sabor ${state.currentIndex + 1} de ${state.cards.length}`);
+    };
+
+    const syncExpandedFlavorQuantity = state => {
+      const controls = matchingFlavorControls(state.source, state.kind, state.currentName);
+      const quantity = Math.max(0, Number(controls?.output?.value || controls?.output?.textContent || 0));
+      state.quantityControls = controls;
+      state.quantityOutput.value = String(quantity);
+      state.quantityOutput.textContent = String(quantity);
+      state.quantityGroup.setAttribute("aria-label", `Cantidad de ${state.currentName} para tu caja`);
+      state.quantityDecrease.setAttribute("aria-label", `Restar ${state.currentName}`);
+      state.quantityIncrease.setAttribute("aria-label", `Sumar ${state.currentName}`);
+      state.quantityOutput.setAttribute(
+        "aria-label",
+        `${quantity} ${state.currentName} ${quantity === 1 ? "seleccionado" : "seleccionados"} para tu caja`
+      );
+      state.quantityDecrease.disabled = state.quantityBusy || !controls?.decrease || quantity <= 0;
+      state.quantityIncrease.disabled = state.quantityBusy
+        || state.flavorUnavailable
+        || !controls?.increase
+        || controls.increase.disabled;
+      state.quantityGroup.classList.toggle("builder-flavor-quantity--busy", state.quantityBusy);
+      state.quantityActions.setAttribute("aria-busy", String(state.quantityBusy));
+      state.done.disabled = state.quantityBusy;
     };
 
     const renderFlavor = (state, card) => {
@@ -1719,17 +1755,12 @@
       state.ingredients.textContent = nextMeta?.ingredients?.trim() || "Ingredientes pendientes de confirmar con Fontana.";
       state.availability.textContent = nextStock.label;
       state.availability.dataset.stockState = nextStock.state;
-      state.choose.textContent = nextStock.state === "unavailable"
-        ? "Temporalmente no disponible"
-        : nextStock.soldOut
-          ? "Elegir para Pre-Order"
-          : "Elegir este sabor";
       state.flavorUnavailable = nextStock.state === "unavailable";
-      state.choose.disabled = state.flavorUnavailable;
       state.overlay.dataset.flavor = nextName;
       state.overlay.setAttribute("aria-label", `${state.kind === "fonkies" ? "Fonkie" : "Fomb"} ${nextName}. ${nextStock.label}`);
       state.media.setAttribute("aria-label", `Cerrar detalles de ${nextName}`);
       state.liveStatus.textContent = `${nextName}, ${nextStock.label}, sabor ${state.currentIndex + 1} de ${state.cards.length}`;
+      syncExpandedFlavorQuantity(state);
       syncFlavorCue(state);
       warmAdjacentFlavorImages(state);
     };
@@ -1764,6 +1795,10 @@
     const close = (immediate = false) => {
       const state = active;
       if (!state || state.closing) return;
+      if (state.quantityBusy) {
+        state.pendingClose = immediate ? "immediate" : "animated";
+        return;
+      }
       if (state.switching) {
         state.pendingDirections = [];
         state.pendingClose = immediate ? "immediate" : "animated";
@@ -1798,7 +1833,7 @@
 
     const switchFlavor = async direction => {
       const state = active;
-      if (!state || state.closing || !state.ready || state.cards.length < 2 || (state.choose.disabled && !state.flavorUnavailable)) return;
+      if (!state || state.closing || !state.ready || state.quantityBusy || state.cards.length < 2) return;
       if (state.switching) {
         state.pendingDirections.push(direction);
         return;
@@ -2014,10 +2049,39 @@
       availability.className = "builder-flavor-expanded-availability";
       const ingredients = document.createElement("p");
       ingredients.textContent = meta?.ingredients?.trim() || "Ingredientes pendientes de confirmar con Fontana.";
-      const choose = document.createElement("button");
-      choose.type = "button";
-      choose.className = "builder-flavor-choose";
-      choose.textContent = source.classList.contains("builder-flavor-sold-out") ? "Elegir para Pre-Order" : "Elegir este sabor";
+      const quantityActions = document.createElement("div");
+      quantityActions.className = "builder-flavor-expanded-actions";
+      const quantityCopy = document.createElement("span");
+      quantityCopy.className = "builder-flavor-quantity-copy";
+      const quantityTitle = document.createElement("b");
+      quantityTitle.textContent = "Cantidad";
+      const quantityHint = document.createElement("small");
+      quantityHint.textContent = "de este sabor";
+      quantityCopy.append(quantityTitle, quantityHint);
+      const quantityGroup = document.createElement("div");
+      quantityGroup.className = "builder-flavor-quantity";
+      quantityGroup.setAttribute("role", "group");
+      const quantityDecrease = document.createElement("button");
+      quantityDecrease.type = "button";
+      quantityDecrease.className = "builder-flavor-quantity-button";
+      quantityDecrease.textContent = "−";
+      const quantityOutput = document.createElement("output");
+      quantityOutput.className = "builder-flavor-quantity-output";
+      quantityOutput.setAttribute("aria-live", "polite");
+      quantityOutput.setAttribute("aria-atomic", "true");
+      quantityOutput.value = "0";
+      quantityOutput.textContent = "0";
+      const quantityIncrease = document.createElement("button");
+      quantityIncrease.type = "button";
+      quantityIncrease.className = "builder-flavor-quantity-button";
+      quantityIncrease.textContent = "+";
+      quantityGroup.append(quantityDecrease, quantityOutput, quantityIncrease);
+      const done = document.createElement("button");
+      done.type = "button";
+      done.className = "builder-flavor-done";
+      done.textContent = "Listo";
+      done.setAttribute("aria-label", "Cerrar detalles y conservar cantidades");
+      quantityActions.append(quantityCopy, quantityGroup, done);
       const liveStatus = document.createElement("span");
       liveStatus.className = "sr-only";
       liveStatus.setAttribute("aria-live", "polite");
@@ -2026,7 +2090,7 @@
       swipeInstructions.className = "sr-only";
       swipeInstructions.textContent = "Desliza horizontalmente sobre la foto o usa las flechas izquierda y derecha para cambiar de sabor.";
       overlay.setAttribute("aria-describedby", swipeInstructions.id);
-      details.append(eyebrow, heading, availability, ingredients, choose);
+      details.append(eyebrow, heading, availability, ingredients, quantityActions);
       back.append(media, swipeCue, details, swipeInstructions, liveStatus);
       inner.append(front, back);
       overlay.append(inner);
@@ -2074,7 +2138,13 @@
         heading,
         availability,
         ingredients,
-        choose,
+        quantityActions,
+        quantityGroup,
+        quantityDecrease,
+        quantityOutput,
+        quantityIncrease,
+        quantityControls: null,
+        done,
         swipeCue,
         swipeCueCounter,
         liveStatus,
@@ -2092,7 +2162,8 @@
         swipeCueUsed: false,
         flavorWheelGesture: null,
         flavorWheelTimer: 0,
-        flavorUnavailable: false
+        flavorUnavailable: false,
+        quantityBusy: false
       };
       const track = source.closest(".fonkie-gallery-track, .builder-gallery-track");
       state.cards = track ? $$(".fonkie-gallery-card, .builder-gallery-card", track) : [source];
@@ -2114,27 +2185,42 @@
         }
         close();
       });
-      choose.addEventListener("click", () => {
-        if (state.switching || state.closing) return;
-        const plus = matchingPlusButton(state.source, state.kind, state.currentName);
-        const row = plus?.closest(".fonkie-flavor, .fomb-flavor");
-        if (!plus || !row || choose.disabled) return;
-        const originalLabel = choose.textContent;
-        choose.disabled = true;
+      const changeExpandedFlavorQuantity = (delta, requestedControl) => {
+        if (state.switching || state.closing || state.quantityBusy) return;
+        const controls = matchingFlavorControls(state.source, state.kind, state.currentName);
+        const button = delta > 0 ? controls?.increase : controls?.decrease;
+        if (!controls?.row || !button || button.disabled || (delta > 0 && state.flavorUnavailable)) return;
+        const requestedFlavor = state.currentName;
+        state.quantityBusy = true;
+        syncExpandedFlavorQuantity(state);
         syncFlavorCue(state);
-        choose.textContent = "Comprobando disponibilidad…";
-        row.addEventListener("fontana:flavor-change", event => {
+        controls.row.addEventListener("fontana:flavor-change", () => {
           if (active !== state) return;
-          if (event.detail?.success) {
-            close();
+          state.quantityBusy = false;
+          if (state.currentName === requestedFlavor) {
+            syncExpandedFlavorQuantity(state);
+          }
+          syncFlavorCue(state);
+          if (state.pendingClose) {
+            const immediate = state.pendingClose === "immediate";
+            state.pendingClose = null;
+            close(immediate);
             return;
           }
-          choose.disabled = false;
-          syncFlavorCue(state);
-          choose.textContent = originalLabel;
+          const focusTarget = [
+            requestedControl,
+            delta < 0 ? state.quantityIncrease : state.quantityDecrease,
+            state.done,
+            state.swipeCue,
+            state.media
+          ].find(control => control?.isConnected && !control.disabled && !control.hidden);
+          focusTarget?.focus({ preventScroll: true });
         }, { once: true });
-        plus.click();
-      });
+        button.click();
+      };
+      quantityDecrease.addEventListener("click", () => changeExpandedFlavorQuantity(-1, quantityDecrease));
+      quantityIncrease.addEventListener("click", () => changeExpandedFlavorQuantity(1, quantityIncrease));
+      done.addEventListener("click", () => close());
 
       let pointer = null;
       const finishPointer = event => {
@@ -2195,7 +2281,7 @@
           || state.closing
           || state.pendingClose
           || state.cards.length < 2
-          || state.choose.disabled
+          || state.quantityBusy
         ) return;
         const now = performance.now();
         if (
@@ -2288,7 +2374,32 @@
     backdrop.addEventListener("touchmove", event => event.preventDefault(), { passive: false });
     backdrop.addEventListener("wheel", event => event.preventDefault(), { passive: false });
     document.addEventListener("keydown", event => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") {
+        close();
+        return;
+      }
+      if (event.key !== "Tab" || !active || active.closing) return;
+      const focusable = [...active.overlay.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )].filter(element => !element.hidden && element.getClientRects().length);
+      if (!focusable.length) {
+        event.preventDefault();
+        active.back.focus({ preventScroll: true });
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const focused = document.activeElement;
+      if (!active.overlay.contains(focused) || !focusable.includes(focused)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus({ preventScroll: true });
+      } else if (event.shiftKey && focused === first) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+      } else if (!event.shiftKey && focused === last) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
     });
   }
 
