@@ -6,6 +6,7 @@ import {
 } from "@simplewebauthn/server";
 
 import { fombPricingMatchesRequest, resolveFombPricing } from "./pricing.mjs";
+import { applyPublicBuilderAvailability } from "./public-availability.mjs";
 
 const SESSION_COOKIE = "fontana_admin_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -257,14 +258,7 @@ function applyPublicAvailability(state, inventory, operations = { electricityEna
     builder.temporarilyUnavailable = !operations.electricityEnabled && builder.requiresElectricity;
     const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
     const candidates = byProduct.get(productId) || [];
-    const builderAvailable = resolved(candidates);
-    if (builderAvailable !== null) builder.status = builderAvailable ? "available" : "sold-out";
-    for (const flavor of builder.flavors || []) {
-      const available = resolved(candidates.filter(item => item.flavorName === flavor.name));
-      if (available !== null) flavor.status = available ? "available" : "sold-out";
-      delete flavor.stockQuantity;
-    }
-    delete builder.stockQuantity;
+    applyPublicBuilderAvailability(builder, candidates, inventory);
   }
   return publicState;
 }

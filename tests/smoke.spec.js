@@ -132,6 +132,84 @@ async function fillCheckout(page, { allergies = false, birthdayCandle = false } 
   }
 }
 
+function createBuilderAvailabilityState() {
+  return {
+    version: 2,
+    settings: { productionWithElectricity: true, stockTodayOpen: true },
+    products: [],
+    builders: {
+      fonkies: {
+        visible: true,
+        status: "available",
+        requiresElectricity: false,
+        minimumQuantity: 4,
+        singlePrice: 15,
+        mixedPrice: 17,
+        extraPrice: 3.5,
+        image: "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg",
+        flavors: [
+          {
+            name: "Fonkie con stock real",
+            ingredients: "Harina de almendra y chocolate vegano oscuro",
+            image: "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg",
+            status: "available",
+            stockTracked: true
+          },
+          {
+            name: "Fonkie para encargo",
+            ingredients: "Harina de almendra y pistacho",
+            image: "assets/fonkie-pistachio-white-chocolate-fontana-pro.jpg",
+            status: "sold-out",
+            stockTracked: true
+          },
+          {
+            name: "Fonkie sin inventario cargado",
+            ingredients: "Harina de almendra y canela",
+            image: "assets/fonkie-cinnamon-roll-fontana-pro.jpg",
+            status: "available"
+          }
+        ]
+      },
+      fomb: {
+        visible: true,
+        status: "available",
+        minimumQuantity: 4,
+        sizes: [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }],
+        extraPrice: 3.5,
+        image: "assets/fomb-pistachio-fontana-pro.jpg",
+        flavors: [
+          {
+            name: "Fomb con cantidad cargada",
+            ingredients: "Pistacho y chocolate blanco vegano",
+            image: "assets/fomb-pistachio-fontana-pro.jpg",
+            status: "available",
+            stockTracked: true
+          },
+          {
+            name: "Fomb para encargo",
+            ingredients: "Avellana y chocolate oscuro vegano",
+            image: "assets/fomb-ferrero-fontana-pro.jpg",
+            status: "sold-out",
+            stockTracked: true
+          },
+          {
+            name: "Fomb sin inventario cargado",
+            ingredients: "Coco y chocolate blanco vegano",
+            image: "assets/fomb-raffaello-fontana-pro.jpg",
+            status: "available"
+          }
+        ]
+      }
+    }
+  };
+}
+
+async function installBuilderAvailabilityCatalog(page) {
+  await page.addInitScript(state => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify(state));
+  }, createBuilderAvailabilityState());
+}
+
 test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
   await openPreview(page);
   const cake = await openProductCard(page, '[data-id="pistacho"]');
@@ -1696,8 +1774,8 @@ test("Fonkies agotados pasan automáticamente a Pre-Order de dos días", async (
             name: "Chips de Chocolate Oscuro",
             ingredients: "Harina de almendra y chocolate vegano oscuro",
             image: "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg",
-            status: "sold-out",
-            stockQuantity: 0
+            status: "available",
+            stockTracked: true
           }]
         }
       }
@@ -1709,13 +1787,371 @@ test("Fonkies agotados pasan automáticamente a Pre-Order de dos días", async (
   const flavor = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
   await expect(flavor).toContainText("Pre-Order");
   for (let index = 0; index < 4; index += 1) await flavor.locator('[data-delta="1"]').click();
-  await expect(page.locator("#fonkieValidation")).toContainText("pre-order");
+  await expect(page.locator("#fonkieValidation")).toContainText(/pre-order/i);
   await page.locator("#addFonkieBox").click();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días hábiles");
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#checkoutPreparationGuide")).toContainText("Mínimo 2 días de preparación");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("Fonkies y Fomb anuncian el inventario real en galería, selector y vista ampliada", async ({ page }) => {
+  test.setTimeout(60_000);
+  await installBuilderAvailabilityCatalog(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const availabilityCases = [
+    { state: "immediate", copy: "Entrega inmediata" },
+    { state: "preorder", copy: "Pre-Order · 2 días hábiles" },
+    { state: "pending", copy: "Disponibilidad por confirmar" }
+  ];
+  const builders = [
+    {
+      filter: "Fonkies · Galletas",
+      builder: ".fonkie-builder",
+      card: ".fonkie-gallery-card",
+      row: ".fonkie-flavor",
+      names: [
+        "Fonkie con stock real",
+        "Fonkie para encargo",
+        "Fonkie sin inventario cargado"
+      ]
+    },
+    {
+      filter: "Fomb · Bombones",
+      builder: ".fomb-builder",
+      card: ".builder-gallery-card",
+      row: ".fomb-flavor",
+      names: [
+        "Fomb con cantidad cargada",
+        "Fomb para encargo",
+        "Fomb sin inventario cargado"
+      ]
+    }
+  ];
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    for (const builderCase of builders) {
+      await page.getByRole("button", { name: builderCase.filter }).click();
+      const builder = page.locator(builderCase.builder);
+      await expect(builder).toBeVisible();
+
+      for (let index = 0; index < availabilityCases.length; index += 1) {
+        const expected = availabilityCases[index];
+        const flavorName = builderCase.names[index];
+        const compactCard = builder.locator(`${builderCase.card}[data-flavor="${flavorName}"]`);
+        await expect(compactCard).toHaveAttribute("data-stock-state", expected.state);
+        await expect(compactCard.locator(".builder-flavor-availability")).toHaveText(expected.copy);
+        if (expected.state === "pending") await expect(compactCard).not.toContainText("Entrega inmediata");
+      }
+
+      await openFlavorChoice(page, builderCase.builder);
+      for (let index = 0; index < availabilityCases.length; index += 1) {
+        const expected = availabilityCases[index];
+        const flavorName = builderCase.names[index];
+        const selectorRow = builder.locator(`${builderCase.row}[data-flavor="${flavorName}"]`);
+        await expect(selectorRow).toHaveAttribute("data-stock-state", expected.state);
+        await expect(selectorRow.locator(".builder-flavor-availability")).toHaveText(expected.copy);
+        if (expected.state === "pending") await expect(selectorRow).not.toContainText("Entrega inmediata");
+      }
+
+      const firstCard = builder.locator(`${builderCase.card}[data-flavor="${builderCase.names[0]}"]`);
+      const firstRow = builder.locator(`${builderCase.row}[data-flavor="${builderCase.names[0]}"]`);
+      const visibleLabelsFit = await firstCard.evaluate((card, rowSelector) => {
+        const cardLabel = card.querySelector(":scope > span");
+        const cardAvailability = card.querySelector(".builder-flavor-availability");
+        const row = card.closest("article").querySelector(rowSelector);
+        const rowName = row?.querySelector(".fonkie-flavor-name");
+        const rowAvailability = row?.querySelector(".builder-flavor-availability");
+        const stepper = row?.querySelector(".fonkie-stepper");
+        const cardBox = card.getBoundingClientRect();
+        const cardLabelBox = cardLabel?.getBoundingClientRect();
+        const cardAvailabilityBox = cardAvailability?.getBoundingClientRect();
+        const rowBox = row?.getBoundingClientRect();
+        const rowNameBox = rowName?.getBoundingClientRect();
+        const rowAvailabilityBox = rowAvailability?.getBoundingClientRect();
+        const stepperBox = stepper?.getBoundingClientRect();
+        return {
+          cardDisplay: cardAvailability ? getComputedStyle(cardAvailability).display : "",
+          cardContained: Boolean(cardLabelBox && cardAvailabilityBox
+            && cardAvailabilityBox.left >= cardLabelBox.left - 1
+            && cardAvailabilityBox.right <= cardLabelBox.right + 1
+            && cardAvailabilityBox.bottom <= cardBox.bottom + 1),
+          rowDisplay: rowAvailability ? getComputedStyle(rowAvailability).display : "",
+          rowContained: Boolean(rowBox && rowNameBox && rowAvailabilityBox && stepperBox
+            && rowAvailabilityBox.left >= rowNameBox.left - 1
+            && rowAvailabilityBox.right <= rowNameBox.right + 1
+            && rowNameBox.right <= stepperBox.left + 1
+            && rowAvailabilityBox.bottom <= rowBox.bottom + 1),
+          rowFits: Boolean(row && row.scrollWidth <= row.clientWidth + 1)
+        };
+      }, `${builderCase.row}[data-flavor="${builderCase.names[0]}"]`);
+      expect(visibleLabelsFit.cardDisplay).toBe("block");
+      expect(visibleLabelsFit.cardContained).toBe(true);
+      expect(visibleLabelsFit.rowDisplay).toBe("block");
+      expect(visibleLabelsFit.rowContained).toBe(true);
+      expect(visibleLabelsFit.rowFits).toBe(true);
+      await firstCard.click();
+      const overlay = page.locator(".builder-flavor-flip-card");
+      await expect(overlay).toBeVisible();
+      for (let index = 0; index < availabilityCases.length; index += 1) {
+        const expected = availabilityCases[index];
+        await expect(overlay.locator(".builder-flavor-expanded-details h3")).toHaveText(builderCase.names[index]);
+        const expandedAvailability = overlay.locator(".builder-flavor-expanded-availability");
+        await expect(expandedAvailability).toHaveAttribute("data-stock-state", expected.state);
+        await expect(expandedAvailability).toHaveText(expected.copy);
+        if (expected.state === "pending") await expect(overlay.locator(".builder-flavor-expanded-details")).not.toContainText("Entrega inmediata");
+        if (index < availabilityCases.length - 1) await page.keyboard.press("ArrowRight");
+      }
+
+      const overlayFit = await overlay.evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const availability = element.querySelector(".builder-flavor-expanded-availability");
+        return {
+          left: box.left,
+          right: box.right,
+          viewport: window.innerWidth,
+          availabilityFits: !availability || availability.scrollWidth <= availability.clientWidth + 1,
+          pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth
+        };
+      });
+      expect(overlayFit.left).toBeGreaterThanOrEqual(-1);
+      expect(overlayFit.right).toBeLessThanOrEqual(overlayFit.viewport + 1);
+      expect(overlayFit.availabilityFits).toBe(true);
+      expect(overlayFit.pageFits).toBe(true);
+      await overlay.locator(".builder-flavor-expanded-media").click();
+      await expect(overlay).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    }
+  }
+});
+
+test("la disponibilidad seleccionada llega al resumen, carrito y tiempos del checkout", async ({ page }) => {
+  test.setTimeout(60_000);
+  await installBuilderAvailabilityCatalog(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const states = [
+    {
+      fonkiesName: "Fonkie con stock real",
+      fombName: "Fomb con cantidad cargada",
+      availability: "immediate",
+      summary: "Hay stock real: entrega inmediata.",
+      cart: /Entrega inmediata/i
+    },
+    {
+      fonkiesName: "Fonkie para encargo",
+      fombName: "Fomb para encargo",
+      availability: "preorder",
+      summary: "Pre-Order: tu caja estará lista en 2 días hábiles.",
+      cart: /Pre-Order · 2 días hábiles/i
+    },
+    {
+      fonkiesName: "Fonkie sin inventario cargado",
+      fombName: "Fomb sin inventario cargado",
+      availability: "pending",
+      summary: "Disponibilidad por confirmar con Fontana.",
+      cart: /Disponibilidad por confirmar/i
+    }
+  ];
+  const builders = [
+    {
+      filter: "Fonkies · Galletas",
+      builder: ".fonkie-builder",
+      row: ".fonkie-flavor",
+      nameKey: "fonkiesName",
+      validation: "#fonkieValidation",
+      add: "#addFonkieBox"
+    },
+    {
+      filter: "Fomb · Bombones",
+      builder: ".fomb-builder",
+      row: ".fomb-flavor",
+      nameKey: "fombName",
+      validation: "#fombValidation",
+      add: "#addFombBox"
+    }
+  ];
+
+  for (const builderCase of builders) {
+    await page.getByRole("button", { name: builderCase.filter }).click();
+    await openFlavorChoice(page, builderCase.builder);
+    for (const expected of states) {
+      const flavorName = expected[builderCase.nameKey];
+      const row = page.locator(`${builderCase.builder} ${builderCase.row}[data-flavor="${flavorName}"]`);
+      const plus = row.locator('[data-delta="1"]');
+      const minus = row.locator('[data-delta="-1"]');
+      for (let quantity = 0; quantity < 4; quantity += 1) await plus.click();
+      await expect(page.locator(`${builderCase.builder} ${builderCase.validation}`)).toHaveText(expected.summary);
+      await expect(page.locator(`${builderCase.builder} ${builderCase.add}`)).toBeEnabled();
+      await page.locator(`${builderCase.builder} ${builderCase.add}`).click();
+      for (let quantity = 0; quantity < 4; quantity += 1) await minus.click();
+    }
+  }
+
+  await expect(page.locator("#cartCount")).toHaveText("6");
+  const storedAvailability = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+    .map(item => item.inventory?.availability)
+    .sort());
+  expect(storedAvailability).toEqual([
+    "immediate", "immediate", "pending", "pending", "preorder", "preorder"
+  ]);
+
+  await page.locator("#cartButton").click();
+  for (const builderCase of builders) {
+    for (const expected of states) {
+      const flavorName = expected[builderCase.nameKey];
+      const item = page.locator(".cart-item").filter({ hasText: flavorName });
+      await expect(item).toHaveCount(1);
+      await expect(item.locator(".cart-choices")).toContainText(expected.cart);
+      if (expected.availability === "pending") await expect(item).not.toContainText("Entrega inmediata");
+    }
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.locator("#continueCheckout").click();
+  const preparationGuide = page.locator("#checkoutPreparationGuide");
+  await expect(preparationGuide.locator(".checkout-preparation-row.same-day strong")).toHaveText("Puede pedirse para el mismo día");
+  await expect(preparationGuide.locator(".checkout-preparation-row.prepared strong")).toHaveText("Mínimo 2 días de preparación");
+  await expect(preparationGuide.locator(".checkout-preparation-row.pending strong")).toHaveText("Tiempo por confirmar");
+  for (const selector of [".same-day", ".prepared", ".pending"]) {
+    const row = preparationGuide.locator(`.checkout-preparation-row${selector}`);
+    await expect(row).toContainText("Caja de 4 Fonkies · Un sabor");
+    await expect(row).toContainText("Caja de 4 Fomb · Un sabor");
+  }
+  await expect(page.locator("#deliveryPlanPanel")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const checkoutFit = await page.locator("#drawer").evaluate(drawer => ({
+    viewport: window.innerWidth,
+    width: drawer.getBoundingClientRect().width,
+    scrollWidth: drawer.scrollWidth,
+    pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth
+  }));
+  expect(checkoutFit.width).toBeLessThanOrEqual(checkoutFit.viewport);
+  expect(checkoutFit.scrollWidth).toBeLessThanOrEqual(checkoutFit.width + 1);
+  expect(checkoutFit.pageFits).toBe(true);
+  await expect(preparationGuide.locator(".checkout-preparation-row")).toHaveCount(3);
+});
+
+test("la tienda hidrata el control de stock desde el catálogo público real", async ({ page }) => {
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  expect(JSON.stringify(state)).not.toContain("stockQuantity");
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ state })
+  }));
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect(page.locator('.fonkie-gallery-card[data-flavor="Fonkie con stock real"]')).toHaveAttribute("data-stock-state", "immediate");
+  await expect(page.locator('.fonkie-gallery-card[data-flavor="Fonkie para encargo"]')).toHaveAttribute("data-stock-state", "preorder");
+  await expect(page.locator('.fonkie-gallery-card[data-flavor="Fonkie sin inventario cargado"]')).toHaveAttribute("data-stock-state", "pending");
+  await expect(page.locator('.builder-gallery-card[data-flavor="Fomb con cantidad cargada"]')).toContainText("Entrega inmediata");
+  await expect(page.locator('.builder-gallery-card[data-flavor="Fomb sin inventario cargado"]')).not.toContainText("Entrega inmediata");
+});
+
+test("las cajas mixtas heredan el tiempo más conservador", async ({ page }) => {
+  await installBuilderAvailabilityCatalog(page);
+  await openPreview(page);
+  const builders = [
+    {
+      filter: "Fonkies · Galletas",
+      builder: ".fonkie-builder",
+      row: ".fonkie-flavor",
+      immediate: "Fonkie con stock real",
+      preorder: "Fonkie para encargo",
+      pending: "Fonkie sin inventario cargado",
+      validation: "#fonkieValidation"
+    },
+    {
+      filter: "Fomb · Bombones",
+      builder: ".fomb-builder",
+      row: ".fomb-flavor",
+      immediate: "Fomb con cantidad cargada",
+      preorder: "Fomb para encargo",
+      pending: "Fomb sin inventario cargado",
+      validation: "#fombValidation"
+    }
+  ];
+
+  for (const entry of builders) {
+    await page.getByRole("button", { name: entry.filter }).click();
+    await openFlavorChoice(page, entry.builder);
+    const change = async (name, delta, count) => {
+      const button = page.locator(`${entry.builder} ${entry.row}[data-flavor="${name}"] [data-delta="${delta}"]`);
+      for (let index = 0; index < count; index += 1) await button.click();
+    };
+    await change(entry.immediate, 1, 2);
+    await change(entry.pending, 1, 2);
+    await expect(page.locator(`${entry.builder} ${entry.validation}`)).toHaveText("Disponibilidad por confirmar con Fontana.");
+    await change(entry.immediate, -1, 2);
+    await change(entry.pending, -1, 2);
+    await change(entry.immediate, 1, 2);
+    await change(entry.preorder, 1, 2);
+    await expect(page.locator(`${entry.builder} ${entry.validation}`)).toHaveText("Pre-Order: tu caja estará lista en 2 días hábiles.");
+    await change(entry.immediate, -1, 2);
+    await change(entry.preorder, -1, 2);
+  }
+});
+
+test("un carrito guardado se reconcilia con el inventario vigente", async ({ page }) => {
+  await installBuilderAvailabilityCatalog(page);
+  await page.addInitScript(cart => {
+    localStorage.setItem("fontana-cart-v1", JSON.stringify(cart));
+  }, [
+    {
+      id: "fonkie-box-old-preorder",
+      productId: "fonkie-box",
+      name: "Caja vieja de Fonkies",
+      price: 15,
+      choices: "4 Fonkie para encargo · ENTREGA INMEDIATA",
+      inventory: { kind: "fonkies", flavors: [{ name: "Fonkie para encargo", qty: 4, preorder: false, stockState: "immediate" }], preorder: false, availability: "immediate" },
+      qty: 1
+    },
+    {
+      id: "fomb-box-4-0-4-0-0",
+      productId: "fomb-box",
+      name: "Caja vieja de Fomb",
+      price: 15,
+      choices: "4 Fomb con cantidad cargada · DISPONIBILIDAD POR CONFIRMAR",
+      inventory: { kind: "fomb", flavors: [{ name: "Fomb con cantidad cargada", qty: 4, preorder: false, stockState: "pending" }], boxSize: 4, extraCount: 0, preorder: false, availability: "pending" },
+      qty: 1
+    },
+    {
+      id: "fonkie-box-old-removed",
+      productId: "fonkie-box",
+      name: "Caja con sabor retirado",
+      price: 15,
+      choices: "4 Sabor retirado · ENTREGA INMEDIATA",
+      inventory: { kind: "fonkies", flavors: [{ name: "Sabor retirado", qty: 4, preorder: false, stockState: "immediate" }], preorder: false, availability: "immediate" },
+      qty: 1
+    }
+  ]);
+
+  await openPreview(page);
+  const reconciled = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+    .map(item => ({ name: item.name, choices: item.choices, availability: item.inventory?.availability })));
+  expect(reconciled).toEqual(expect.arrayContaining([
+    expect.objectContaining({ name: "Pre-order · Caja vieja de Fonkies", availability: "preorder" }),
+    expect.objectContaining({ name: "Caja vieja de Fomb", availability: "immediate" }),
+    expect.objectContaining({ name: "Caja con sabor retirado", availability: "pending" })
+  ]));
+
+  await page.locator("#cartButton").click();
+  const removedFlavor = page.locator(".cart-item").filter({ hasText: "Sabor retirado" });
+  await expect(removedFlavor.locator(".cart-choices")).toContainText("DISPONIBILIDAD POR CONFIRMAR");
+  await removedFlavor.locator(".remove").click();
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator("#checkoutPreparationGuide .same-day")).toContainText("Caja vieja de Fomb");
+  await expect(page.locator("#checkoutPreparationGuide .prepared")).toContainText("Caja vieja de Fonkies");
 });
 
 test("salados con stock cero pasan a Pre-Order y las tortas no cambian", async ({ page }) => {
@@ -1756,7 +2192,7 @@ test("los selectores de Fonkies y Fomb son compactos en escritorio y pueden pleg
   const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
   expect(columns).toBe(3);
   const fonkieBox = await page.locator(".fonkie-flavors").boundingBox();
-  expect(fonkieBox.height).toBeLessThanOrEqual(190);
+  expect(fonkieBox.height).toBeLessThanOrEqual(205);
   await panel.locator("summary").click();
   await expect(page.locator(".fonkie-flavors")).toBeHidden();
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
@@ -3992,6 +4428,8 @@ test("sin electricidad pausa Fonkies, muestra rojo y bloquea un carrito existent
   await page.goto("/");
   await expect(page.locator("#electricityNotice")).toHaveText("Producción de Fonkies temporalmente pausada. El resto del catálogo sigue disponible.");
   await expect(page.locator(".fonkie-builder")).toContainText("Temporalmente no disponible");
+  await expect(page.locator(".fonkie-builder .builder-flavor-availability").first()).toHaveText("Temporalmente no disponible");
+  await expect(page.locator(".fonkie-builder")).not.toContainText("Entrega inmediata");
   const unavailableTag = page.locator(".fonkie-builder .builder-admin-tags .status-unavailable").first();
   await expect(unavailableTag).toHaveCSS("background-color", "rgb(180, 56, 56)");
   await expect(unavailableTag).toHaveCSS("color", "rgb(255, 255, 255)");
@@ -4008,6 +4446,47 @@ test("sin electricidad pausa Fonkies, muestra rojo y bloquea un carrito existent
   await page.locator("#closeCart").click();
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   await expect(page.locator(".fomb-builder")).not.toContainText("Temporalmente no disponible");
+});
+
+test("la pausa eléctrica respeta qué builder depende de electricidad", async ({ page }) => {
+  const state = createBuilderAvailabilityState();
+  state.settings.productionWithElectricity = false;
+  state.builders.fonkies.requiresElectricity = false;
+  state.builders.fomb.requiresElectricity = true;
+  await page.addInitScript(({ catalog, cart }) => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify(catalog));
+    localStorage.setItem("fontana-cart-v1", JSON.stringify(cart));
+  }, {
+    catalog: state,
+    cart: [{
+      id: "fomb-box-4-0-4-0-0",
+      productId: "fomb-box",
+      name: "Caja de 4 Fomb · Un sabor",
+      price: 15,
+      image: "assets/fomb-pistachio-fontana-pro.jpg",
+      choices: "4 Fomb con cantidad cargada · ENTREGA INMEDIATA",
+      inventory: {
+        kind: "fomb",
+        flavors: [{ name: "Fomb con cantidad cargada", qty: 4, preorder: false, stockState: "immediate" }],
+        boxSize: 4,
+        extraCount: 0,
+        preorder: false,
+        availability: "immediate"
+      },
+      qty: 1
+    }]
+  });
+
+  await openPreview(page);
+  await expect(page.locator("#electricityNotice")).toHaveText("Producción de Fomb temporalmente pausada. El resto del catálogo sigue disponible.");
+  await expect(page.locator('.fonkie-gallery-card[data-flavor="Fonkie con stock real"] .builder-flavor-availability')).toHaveText("Entrega inmediata");
+  await expect(page.locator('.builder-gallery-card[data-flavor="Fomb con cantidad cargada"] .builder-flavor-availability')).toHaveText("Temporalmente no disponible");
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await expect(page.locator("#addFombBox")).toBeDisabled();
+
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item")).toContainText("Temporalmente no disponible");
+  await expect(page.locator("#continueCheckout")).toBeDisabled();
 });
 
 test("los formularios operativos conservan cabecera, contenido y acciones accesibles en móvil", async ({ page }, testInfo) => {
