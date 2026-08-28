@@ -185,7 +185,7 @@
         <label>Nombre<input name="name" required></label>
         <label>Identificador<input name="id" required pattern="[a-z0-9-]+"><small>Minúsculas, números y guiones.</small></label>
         <label>Categoría<select name="category"><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="snacks">Otros</option></select></label>
-        <label>Precio USD<input name="price" type="number" min="0" step="0.01" placeholder="Vacío = por confirmar"></label>
+        <label>Precio REF<input name="price" type="number" min="0" step="0.01" placeholder="Vacío = por confirmar"></label>
         <label class="wide">Descripción<textarea name="description" rows="3"></textarea></label>
         <label class="wide">Ingredientes<textarea name="ingredients" rows="4"></textarea></label>
         <fieldset class="wide dietary-fieldset">
@@ -237,7 +237,7 @@
       <input type="hidden" name="id">
       <div class="form-grid">
         <label>Fecha de venta<input name="soldAt" type="date" required></label>
-        <label>Monto total USD<input name="total" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+        <label>Monto total REF<input name="total" type="number" min="0" step="0.01" inputmode="decimal" required></label>
         <label>Estado<select name="status"><option value="confirmed">Confirmada / cobrada</option><option value="pending">Pendiente de cobro</option><option value="cancelled">Anulada</option></select></label>
         <label>Canal<select name="channel"><option value="WhatsApp">WhatsApp</option><option value="Instagram">Instagram</option><option value="Presencial">Presencial</option><option value="Otro">Otro</option></select></label>
         <label>Forma de pago<select name="paymentMethod"><option value="Pago Móvil">Pago Móvil</option><option value="Binance">Binance</option><option value="Efectivo">Efectivo</option><option value="Otro">Otro</option></select></label>

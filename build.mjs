@@ -30,7 +30,11 @@ function productPath(product) {
 
 function money(value) {
   if (!Number.isFinite(Number(value))) return "Precio por confirmar";
-  return new Intl.NumberFormat(site.locale, { style: "currency", currency: site.currency }).format(Number(value));
+  const amount = new Intl.NumberFormat(site.locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number(value));
+  return `${site.displayCurrency || "REF"}\u00a0${amount}`;
 }
 
 function latestSignificantDate() {

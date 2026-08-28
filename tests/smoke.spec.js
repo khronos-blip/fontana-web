@@ -343,7 +343,7 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
 
   const message = await page.evaluate(() => window.__copiedOrder);
   expect(message).toMatch(/^Hola Fontana sin gluten 💜 Quiero hacer este pedido:\n\n\*Pedido FNT-[^\n]+\*\n\n• 1× Torta de Pistacho y Frambuesa/);
-  expect(message).toContain("\n\n*Total estimado: USD 60,00*\n\n");
+  expect(message).toContain("\n\n*Total estimado: REF 60,00*\n\n");
   expect(message).toContain("• Nombre: Andrea Pérez");
   expect(message).toContain("• Teléfono: 0412 000 0000");
   expect(message).toContain("• Modalidad: Pickup en Mañongo (detalles por WhatsApp)");
@@ -2810,7 +2810,7 @@ test("Fomb calcula automáticamente los bombones extra desde la selección", asy
   await page.locator("#addFombBox").click();
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item h4")).toContainText(["Caja de 4 Fomb · Mixta", "Caja de 5 Fomb · Mixta"]);
-  await expect(page.locator(".cart-item").last()).toContainText("USD 18,50");
+  await expect(page.locator(".cart-item").last()).toContainText("REF 18,50");
   await page.locator("#closeCart").click();
 
   let selectedTotal = 5;
@@ -2852,7 +2852,7 @@ test("Fomb calcula automáticamente los bombones extra desde la selección", asy
   expect(thirteenBox).toMatchObject({ price:33.5, inventory:{kind:"fomb",boxSize:12,extraCount:1} });
   await page.locator("#cartButton").click();
   const thirteenCartItem = page.locator(".cart-item").filter({ hasText:"Caja de 13 Fomb" });
-  await expect(thirteenCartItem).toContainText("USD 33,50");
+  await expect(thirteenCartItem).toContainText("REF 33,50");
   await expect(thirteenCartItem.locator(".cart-choices")).toContainText("12 Pistacho, 1 Dubai");
   await page.locator("#closeCart").click();
 
@@ -2900,15 +2900,15 @@ test("Fomb corrige una caja de 12 guardada con el tramo anterior y conserva What
   });
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-item")).toContainText("Caja de 12 Fomb · Un sabor");
-  await expect(page.locator(".cart-item")).toContainText("USD 30,00");
+  await expect(page.locator(".cart-item")).toContainText("REF 30,00");
   await page.locator("#closeCart").click();
 
   await fillCheckout(page);
   await page.locator('#checkoutForm button[type="submit"]').click();
   const message = await page.evaluate(() => window.__copiedOrder);
   expect(message).toContain("Caja de 12 Fomb · Un sabor");
-  expect(message).toContain("USD 30,00");
-  expect(message).toContain("*Total estimado: USD 30,00*");
+  expect(message).toContain("REF 30,00");
+  expect(message).toContain("*Total estimado: REF 30,00*");
 });
 
 test("el servidor aplica automáticamente el tramo Fomb alcanzado", async () => {
@@ -3647,7 +3647,7 @@ test("catálogo incluye productos confirmados y fotos profesionales", async ({ p
   await expect(page.locator('[data-product-id="san-pellegrino"]')).toContainText("7,00");
   await expect(page.locator('[data-product-id="san-pellegrino"] img')).toHaveAttribute("src", "assets/beverage-sanpellegrino-fontana-pro.jpg");
   await expect(page.locator('[data-product-id="agua-gasificada-minalba"] img')).toHaveAttribute("src", "assets/beverage-minalba-limon-fontana-pro.jpg");
-  await expect(page.locator('[data-product-id="tevia-durazno"]')).toContainText("USD 4,00");
+  await expect(page.locator('[data-product-id="tevia-durazno"]')).toContainText("REF 4,00");
   await expect(page.locator('[data-product-id="tevia-durazno"]')).toContainText("360 ML");
   await page.getByRole("button", { name: "Stock de hoy" }).click();
   await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
@@ -3667,10 +3667,10 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
     "Mozzarella, salsa y pecorino"
   ]);
   await expect(raviolis.locator("h3")).toHaveText("Raviolis");
-  await expect(raviolis.locator(".price")).toContainText("Desde USD 15,00");
+  await expect(raviolis.locator(".price")).toContainText("Desde REF 15,00");
   await expect(raviolis.locator(".product-size option")).toHaveText([
-    "180 g · USD 15,00",
-    "300 g · USD 20,00"
+    "180 g · REF 15,00",
+    "300 g · REF 20,00"
   ]);
   await expect(raviolis.locator(".product-variant option")).toHaveText([
     "Carne",
@@ -3685,12 +3685,12 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
   await expect(page.locator(".cart-choices")).toHaveText("Mozzarella, salsa y pecorino");
   await page.locator("#closeCart").click();
   await openProductCard(page, raviolis);
-  await raviolis.locator(".product-size").selectOption({ label: "300 g · USD 20,00" });
+  await raviolis.locator(".product-size").selectOption({ label: "300 g · REF 20,00" });
   await raviolis.locator(".product-variant").selectOption({ label: "Carne" });
   await raviolis.locator(".product-back .add").click();
   await closeProductCard(page);
   await page.locator("#cartButton").click();
-  await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" })).toContainText("USD 20,00");
+  await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" })).toContainText("REF 20,00");
   await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" }).locator(".cart-choices")).toHaveText("300 g · Carne");
 });
 
@@ -3841,6 +3841,7 @@ test("el panel móvil cierra sus formularios y evita el zoom automático en camp
   await page.getByRole("button", { name: "+ Nuevo producto" }).first().click();
   const dialog = page.locator("#productDialog");
   await expect(dialog).toBeVisible();
+  await expect(dialog.locator("label").filter({ hasText: "Precio REF" })).toBeVisible();
   await expect(dialog.locator('[name="name"]')).toHaveCSS("font-size", "16px");
   await dialog.getByRole("button", { name: "Cerrar" }).click();
   await expect(dialog).not.toBeVisible();
@@ -3848,6 +3849,14 @@ test("el panel móvil cierra sus formularios y evita el zoom automático en camp
   await page.getByRole("button", { name: "+ Nuevo producto" }).first().click();
   await dialog.getByRole("button", { name: "Cancelar" }).click();
   await expect(dialog).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Fonkies", exact: true }).click();
+  await page.locator('#fonkiesEditor .builder-settings summary').click();
+  await expect(page.locator('#fonkiesEditor .builder-form')).toContainText("Precio REF · 4 iguales");
+  await expect(page.locator('#fonkiesEditor .builder-form')).toContainText("Precio extra REF");
+  await page.getByRole("button", { name: "Fomb", exact: true }).click();
+  await page.locator('#fombEditor .builder-settings summary').click();
+  await expect(page.locator('#fombEditor .builder-form')).toContainText("Precio REF · caja de 12");
 });
 
 test("el administrador ofrece Face ID y cuentas separadas sin romper la vista móvil", async ({ page }) => {
@@ -3901,13 +3910,14 @@ test("el panel registra ventas manuales y separa la configuración del catálogo
 
   await page.getByRole("button", { name: "Ventas", exact: true }).click();
   await page.getByRole("button", { name: "+ Registrar venta" }).click();
+  await expect(page.locator('#saleForm label').filter({ hasText: "Monto total REF" })).toBeVisible();
   await page.locator('#saleForm [name="total"]').fill("47");
   await page.locator('#saleForm [name="customerName"]').fill("Cliente de prueba");
   await page.locator('#saleForm [name="items"]').fill("1 Torta de manjar de naranja");
   await page.locator('#saleForm button[type="submit"]').click();
   await expect(page.locator("#salesList")).toContainText("Cliente de prueba");
-  await expect(page.locator("#salesList")).toContainText("USD 47,00");
-  await expect(page.locator("#salesStats")).toContainText("USD 47,00");
+  await expect(page.locator("#salesList")).toContainText("REF 47,00");
+  await expect(page.locator("#salesStats")).toContainText("REF 47,00");
   await page.screenshot({ path: testInfo.outputPath("ventas-admin-movil.png"), fullPage: false });
 
   await page.reload();

@@ -9,6 +9,8 @@ test("el build publica JavaScript versionado sin inflar el HTML principal", asyn
   expect(html).toMatch(/<script src="config\.[a-f0-9]{12}\.js"><\/script>/);
   expect(html).toMatch(/<script src="app\.[a-f0-9]{12}\.js"><\/script>/);
   expect(html).not.toContain("data-store-app");
+  expect(html).toContain("Precios expresados en REF.");
+  expect(html).not.toMatch(/>\$\d/);
   expect(Buffer.byteLength(html)).toBeLessThan(150_000);
   const files = await readdir(path.join(process.cwd(), "dist"));
   const appFile = files.find(file => /^app\.[a-f0-9]{12}\.js$/.test(file));
@@ -82,7 +84,8 @@ test("cada ficha publica Product, Offer y contenido visible equivalente", async 
   await page.goto(`${productionPreview}/productos/pistacho/`);
   await expect(page.locator("h1")).toHaveText("Torta de Pistacho y Frambuesa");
   await expect(page.getByRole("heading", { name: "Ingredientes publicados" })).toBeVisible();
-  await expect(page.getByText("USD 60,00")).toBeVisible();
+  await expect(page.getByText("REF 60,00")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("USD");
   const jsonLd = await page.locator('script[type="application/ld+json"]').textContent();
   const graph = JSON.parse(jsonLd)["@graph"];
   const product = graph.find(item => item["@type"] === "Product");

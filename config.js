@@ -8,6 +8,7 @@ window.FONTANA_CONFIG = {
   whatsappNumber: "584244350800",
   orderPrefix: "FNT",
   currency: "USD",
+  displayCurrency: "REF",
   locale: "es-VE",
   previewMode: false,
   adminApiBase: "https://api.fontanasingluten.com",

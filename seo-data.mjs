@@ -4,6 +4,7 @@ export const site = {
   shortName: "Fontana",
   locale: "es-VE",
   currency: "USD",
+  displayCurrency: "REF",
   telephone: "+58 424-4350800",
   whatsapp: "584244350800",
   instagram: "https://www.instagram.com/fontanasingluten/",

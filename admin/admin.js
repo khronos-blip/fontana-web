@@ -247,7 +247,15 @@
 
   function money(value) {
     if (value === null || value === "" || !Number.isFinite(Number(value))) return "Por confirmar";
-    return new Intl.NumberFormat(config.locale || "es-VE", {style:"currency",currency:config.currency || "USD"}).format(Number(value));
+    const amount = new Intl.NumberFormat(config.locale || "es-VE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(Number(value));
+    return `${config.displayCurrency || "REF"}\u00a0${amount}`;
+  }
+
+  function visibleActivityDetails(value) {
+    return String(value || "Sin detalle").replace(/\bUSD(?=[\s\u00a0]+\d)/g, config.displayCurrency || "REF");
   }
 
   function toast(message) {
@@ -346,7 +354,7 @@
     const type = $("#activityTypeFilter")?.value || "all";
     return activityItems.filter(item => {
       const [label,group] = activityMeta(item.action);
-      const matchesSearch = !query || `${item.username} ${label} ${item.details}`.toLowerCase().includes(query);
+      const matchesSearch = !query || `${item.username} ${label} ${visibleActivityDetails(item.details)}`.toLowerCase().includes(query);
       return matchesSearch && (type === "all" || type === group);
     });
   }
@@ -355,7 +363,7 @@
     const [label,group] = activityMeta(item.action);
     const dateOptions = compact ? {timeStyle:"short"} : {dateStyle:"medium",timeStyle:"short"};
     const date = item.createdAt ? new Date(item.createdAt).toLocaleString("es-VE",dateOptions) : "Fecha no disponible";
-    return `<article class="activity-row ${compact ? "compact-activity" : ""}"><span class="activity-dot ${escapeHtml(group)}"></span><div><h3>${escapeHtml(label)}</h3><p>${escapeHtml(item.details || "Sin detalle")}</p><small>${escapeHtml(item.username || "sistema")} · ${escapeHtml(date)}</small></div></article>`;
+    return `<article class="activity-row ${compact ? "compact-activity" : ""}"><span class="activity-dot ${escapeHtml(group)}"></span><div><h3>${escapeHtml(label)}</h3><p>${escapeHtml(visibleActivityDetails(item.details))}</p><small>${escapeHtml(item.username || "sistema")} · ${escapeHtml(date)}</small></div></article>`;
   }
 
   function renderActivity() {
@@ -712,8 +720,8 @@
     const builder = state.builders[kind];
     const title = kind === "fonkies" ? "Fonkies" : "Fomb";
     const pricing = kind === "fonkies"
-      ? `<label>Precio 4 iguales<input data-builder-field="singlePrice" type="number" min="0" step=".01" value="${builder.singlePrice}"></label><label>Precio 4 mixtas<input data-builder-field="mixedPrice" type="number" min="0" step=".01" value="${builder.mixedPrice}"></label><label>Precio extra<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label><label>Mínimo<input data-builder-field="minimumQuantity" type="number" min="1" value="${builder.minimumQuantity}"></label>`
-      : `<label>Precio caja de 4<input data-builder-size="0" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[0]?.price ?? 15}"></label><label>Precio caja de 12<input data-builder-size="1" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[1]?.price ?? 30}"></label><label>Precio extra<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label>`;
+      ? `<label>Precio REF · 4 iguales<input data-builder-field="singlePrice" type="number" min="0" step=".01" value="${builder.singlePrice}"></label><label>Precio REF · 4 mixtas<input data-builder-field="mixedPrice" type="number" min="0" step=".01" value="${builder.mixedPrice}"></label><label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label><label>Mínimo<input data-builder-field="minimumQuantity" type="number" min="1" value="${builder.minimumQuantity}"></label>`
+      : `<label>Precio REF · caja de 4<input data-builder-size="0" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[0]?.price ?? 15}"></label><label>Precio REF · caja de 12<input data-builder-size="1" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[1]?.price ?? 30}"></label><label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label>`;
     const availability = builder.status === "sold-out" ? "Agotado" : builder.visible === false ? "Oculto" : "Disponible";
     $(`#${kind}Editor`).innerHTML = `<article class="builder-card" data-builder="${kind}"><details class="builder-settings"><summary><span><b>Configuración general</b><small>Precios, sellos y disponibilidad</small></span><span class="builder-state">${availability}</span></summary><div class="builder-form">${pricing}<label>Estado<select data-builder-field="status"><option value="available" ${builder.status !== "sold-out" ? "selected" : ""}>Disponible</option><option value="sold-out" ${builder.status === "sold-out" ? "selected" : ""}>Agotado</option></select></label><label>Cantidad administrada<input data-builder-field="stockQuantity" type="number" min="0" step="1" value="${builder.stockQuantity ?? ""}" placeholder="Sin control numérico"></label><label class="switch"><input data-builder-field="visible" type="checkbox" ${builder.visible !== false ? "checked" : ""}><span>Visible en la tienda</span></label><label class="switch"><input data-builder-field="isNew" type="checkbox" ${builder.isNew ? "checked" : ""}><span>Etiqueta Nuevo</span></label><label class="switch"><input data-builder-field="promo" type="checkbox" ${builder.promo ? "checked" : ""}><span>Promoción del día</span></label><label class="switch"><input data-builder-field="immediate" type="checkbox" ${builder.immediate ? "checked" : ""}><span>Stock de hoy</span></label><label class="switch"><input data-builder-field="allowPreorder" type="checkbox" ${builder.allowPreorder ? "checked" : ""}><span>Permitir pre-order agotado</span></label><label class="switch"><input data-builder-field="glutenFree" type="checkbox" ${builder.glutenFree ? "checked" : ""}><span>Mostrar sello Sin gluten</span></label><label class="switch"><input data-builder-field="sugarFree" type="checkbox" ${builder.sugarFree ? "checked" : ""}><span>Mostrar sello Sin azúcar</span></label><label class="switch"><input data-builder-field="lactoseFree" type="checkbox" ${builder.lactoseFree ? "checked" : ""}><span>Mostrar sello Sin lactosa</span></label></div></details><div class="panel-head builder-flavor-head"><div><span class="eyebrow">${builder.flavors.length} sabores</span><h2>Sabores de ${title}</h2></div><button class="ghost" data-add-flavor="${kind}">+ Agregar sabor</button></div><div class="flavor-admin-list">${builder.flavors.map((flavor,index) => { const soldOut = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="flavor-row"><img src="${escapeHtml(absoluteImage(flavor.image))}" alt=""><div class="flavor-copy"><div class="flavor-title"><h3>${escapeHtml(flavor.name)}</h3><span class="badge ${soldOut ? "red" : "green"}">${soldOut ? "Agotado" : "Disponible"}${flavor.stockQuantity === null || flavor.stockQuantity === undefined ? "" : ` · ${flavor.stockQuantity}`}</span></div><p>${escapeHtml(flavor.ingredients)}</p></div><div class="row-actions"><button data-edit-flavor="${kind}:${index}" aria-label="Editar sabor">✎</button><button data-delete-flavor="${kind}:${index}" aria-label="Eliminar sabor">×</button></div></div>`; }).join("")}</div><div class="builder-actions"><button class="primary" data-save-builder="${kind}" aria-label="Guardar ${title}">Guardar y publicar ${title}</button></div></article>`;
     $(".builder-form", $(`#${kind}Editor`)).insertAdjacentHTML("beforeend", `<label class="switch"><input data-builder-field="eggFree" type="checkbox" ${builder.eggFree ? "checked" : ""}><span>Mostrar sello Sin huevo</span></label><label class="switch"><input data-builder-field="requiresElectricity" type="checkbox" ${builder.requiresElectricity ? "checked" : ""}><span>Requiere electricidad para producirse</span></label>`);

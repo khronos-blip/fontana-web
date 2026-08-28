@@ -302,10 +302,11 @@
   }
 
   function money(value) {
-    return new Intl.NumberFormat(config.locale || "es-VE", {
-      style: "currency",
-      currency: config.currency || "USD"
+    const amount = new Intl.NumberFormat(config.locale || "es-VE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(value);
+    return `${config.displayCurrency || "REF"}\u00a0${amount}`;
   }
 
   function setupWhatsappChatLink() {
@@ -2807,6 +2808,8 @@
     const temporaryUnavailable = builder.dataset.temporarilyUnavailable === "true";
     const unavailable = temporaryUnavailable || (builder.dataset.soldOut === "true" && !preorderAllowed);
     const minimum = Math.max(1, Number(adminState?.builders?.fonkies?.minimumQuantity || 4));
+    const configuredExtraPrice = Number(adminState?.builders?.fonkies?.extraPrice ?? 3.5);
+    const extraPrice = Number.isFinite(configuredExtraPrice) && configuredExtraPrice >= 0 ? configuredExtraPrice : 3.5;
     $("#fonkieIngredients div").textContent = builder.dataset.ingredients;
     const builderIntro = $(".fonkie-builder-head p", builder);
     if (builderIntro) builderIntro.textContent = `Elige sabores y cantidades. La disponibilidad se actualiza con el inventario real de Fontana. Mínimo ${minimum} unidades.`;
@@ -2838,8 +2841,8 @@
         $("#fonkieValidation").textContent = `Mínimo ${minimum} galletas para armar tu caja.`;
       } else {
         const type = selected.length === 1 ? "Caja de un solo sabor" : "Caja mixta";
-        const extras = total - 4;
-        $("#fonkiePriceRule").textContent = `${type}${extras ? ` + ${extras} extra${extras === 1 ? "" : "s"} a $3,50` : ""}.`;
+        const extras = total - minimum;
+        $("#fonkiePriceRule").textContent = `${type}${extras ? ` + ${extras} extra${extras === 1 ? "" : "s"} a ${money(extraPrice)}` : ""}.`;
         $("#fonkieValidation").textContent = availability === "immediate"
           ? "Hay stock real: entrega inmediata."
           : availability === "preorder"
