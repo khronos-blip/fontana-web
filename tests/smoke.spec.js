@@ -1112,6 +1112,88 @@ test("las tarjetas conservan altura y pie simétricos dentro de cada fila visual
   }
 });
 
+test("abrir varios ingredientes conserva la tarjeta tocada y no salta a Historia", async ({ page }) => {
+  const settleCardHeights = () => page.evaluate(() => new Promise(resolve => {
+    let frames = 5;
+    const advance = () => {
+      frames -= 1;
+      if (frames <= 0) resolve();
+      else requestAnimationFrame(advance);
+    };
+    requestAnimationFrame(advance);
+  }));
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    await expect(page.locator(".product.product-flip-ready").first()).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(500);
+
+    const summaries = [
+      page.locator('[data-id="pistacho"] .product-front .product-safety summary'),
+      page.locator('[data-id="naranja"] .product-front .product-safety summary'),
+      page.locator('[data-id="zanahoria"] .product-front .product-safety summary'),
+      page.locator('[data-product-id="raviolis"] .product-front .product-safety summary')
+    ];
+
+    for (const summary of summaries) {
+      await summary.evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        window.scrollTo({
+          left: 0,
+          top: window.scrollY + rect.top - 360,
+          behavior: "instant"
+        });
+      });
+      await expect.poll(() => summary.evaluate(element => (
+        Math.round(element.getBoundingClientRect().top)
+      ))).toBe(360);
+      const before = await summary.evaluate(element => ({
+        id: element.closest(".product").dataset.productId || element.closest(".product").dataset.id,
+        scrollY: window.scrollY,
+        cardTop: element.closest(".product").getBoundingClientRect().top
+      }));
+
+      await summary.click();
+      await expect(summary.locator("..")).toHaveAttribute("open", "");
+      await settleCardHeights();
+
+      const after = await summary.evaluate(element => ({
+        scrollY: window.scrollY,
+        cardTop: element.closest(".product").getBoundingClientRect().top,
+        storyTop: document.querySelector("#historia").getBoundingClientRect().top,
+        hash: location.hash,
+        modalOpen: document.body.classList.contains("product-modal-open")
+      }));
+      expect(Math.abs(after.scrollY - before.scrollY), `${before.id} cambió scrollY`).toBeLessThanOrEqual(2);
+      expect(Math.abs(after.cardTop - before.cardTop), `${before.id} movió su fila`).toBeLessThanOrEqual(2);
+      expect(after.storyTop).toBeGreaterThan(viewport.height);
+      expect(after.hash).toBe("");
+      expect(after.modalOpen).toBe(false);
+    }
+
+    const ravioliSummary = summaries.at(-1);
+    const beforeClose = await ravioliSummary.evaluate(element => ({
+      scrollY: window.scrollY,
+      cardTop: element.closest(".product").getBoundingClientRect().top
+    }));
+    await ravioliSummary.click();
+    await expect(ravioliSummary.locator("..")).not.toHaveAttribute("open", "");
+    await settleCardHeights();
+    const afterClose = await ravioliSummary.evaluate(element => ({
+      scrollY: window.scrollY,
+      cardTop: element.closest(".product").getBoundingClientRect().top,
+      htmlOverflowAnchor: document.documentElement.style.overflowAnchor,
+      bodyOverflowAnchor: document.body.style.overflowAnchor
+    }));
+    expect(Math.abs(afterClose.scrollY - beforeClose.scrollY)).toBeLessThanOrEqual(2);
+    expect(Math.abs(afterClose.cardTop - beforeClose.cardTop)).toBeLessThanOrEqual(2);
+    expect(afterClose.htmlOverflowAnchor).toBe("");
+    expect(afterClose.bodyOverflowAnchor).toBe("");
+  }
+});
+
 test("Salados compacta el frente y conserva todas las opciones al ampliar", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);

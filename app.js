@@ -467,12 +467,79 @@
   }
 
   let productCardHeightFrame = 0;
+  let productCardHeightAnchor = null;
+  let productCardHeightAnchorCycle = 0;
+  let productCardHeightOverflowAnchorState = null;
+
+  function restoreInlineOverflowAnchor(element, value) {
+    if (value) element.style.overflowAnchor = value;
+    else element.style.removeProperty("overflow-anchor");
+  }
+
+  function captureProductCardHeightAnchor(element) {
+    if (!element?.isConnected) return;
+    const html = document.documentElement;
+    const body = document.body;
+    if (!productCardHeightOverflowAnchorState) {
+      productCardHeightOverflowAnchorState = {
+        html: html.style.overflowAnchor,
+        body: body.style.overflowAnchor
+      };
+    }
+    html.style.overflowAnchor = "none";
+    body.style.overflowAnchor = "none";
+    productCardHeightAnchor = {
+      element,
+      top: element.getBoundingClientRect().top,
+      x: window.scrollX,
+      cycle: ++productCardHeightAnchorCycle
+    };
+  }
+
+  function restoreProductCardHeightAnchor(anchor) {
+    const html = document.documentElement;
+    const correctPosition = () => {
+      if (!anchor?.element?.isConnected || !Number.isFinite(anchor.top)) return;
+      const delta = anchor.element.getBoundingClientRect().top - anchor.top;
+      if (Math.abs(delta) <= 1) return;
+      const scrollBehavior = html.style.scrollBehavior;
+      html.style.scrollBehavior = "auto";
+      void html.offsetHeight;
+      window.scrollTo(anchor.x, window.scrollY + delta);
+      void html.offsetHeight;
+      html.style.scrollBehavior = scrollBehavior;
+    };
+    correctPosition();
+    if (!anchor) return;
+    requestAnimationFrame(() => {
+      if (productCardHeightAnchorCycle !== anchor.cycle) return;
+      correctPosition();
+      requestAnimationFrame(() => {
+        if (productCardHeightAnchorCycle !== anchor.cycle) return;
+        correctPosition();
+        const state = productCardHeightOverflowAnchorState;
+        productCardHeightOverflowAnchorState = null;
+        if (!state) return;
+        restoreInlineOverflowAnchor(html, state.html);
+        restoreInlineOverflowAnchor(document.body, state.body);
+        requestAnimationFrame(() => {
+          if (productCardHeightAnchorCycle !== anchor.cycle) return;
+          correctPosition();
+        });
+      });
+    });
+  }
 
   function syncProductCardHeights() {
     productCardHeightFrame = 0;
+    const scrollAnchor = productCardHeightAnchor;
+    productCardHeightAnchor = null;
     $$(".catalog-group-grid").forEach(grid => {
       const cards = $$(".product-flip-ready:not(.hidden):not(.product-expanded)", grid);
       if (!cards.length) return;
+      const previousMinHeight = grid.style.minHeight;
+      const stableGridHeight = Math.ceil(grid.getBoundingClientRect().height);
+      if (stableGridHeight > 0) grid.style.minHeight = `${stableGridHeight}px`;
       grid.classList.add("product-height-syncing");
 
       // Measure every visual row from a clean layout first, then apply the
@@ -518,18 +585,40 @@
       // and moves whatever section the customer is currently reading.
       void grid.offsetHeight;
       grid.classList.remove("product-height-syncing");
+      if (previousMinHeight) grid.style.minHeight = previousMinHeight;
+      else grid.style.removeProperty("min-height");
+      void grid.offsetHeight;
     });
+    // Opening several ingredient panels used to collapse every catalog row
+    // during the shared measurement pass. The rows were restored before paint,
+    // but Safari/Chrome had already clamped the document scroll and could leave
+    // the customer thousands of pixels below the card they touched. Keep that
+    // exact summary at the same viewport coordinate after the final heights
+    // have been committed.
+    restoreProductCardHeightAnchor(scrollAnchor);
   }
 
-  function scheduleProductCardHeightSync() {
+  function scheduleProductCardHeightSync(anchorElement = null) {
+    if (
+      anchorElement?.isConnected
+      && productCardHeightAnchor?.element !== anchorElement
+    ) captureProductCardHeightAnchor(anchorElement);
     if (productCardHeightFrame) cancelAnimationFrame(productCardHeightFrame);
     productCardHeightFrame = requestAnimationFrame(syncProductCardHeights);
   }
 
   window.addEventListener("resize", scheduleProductCardHeightSync);
   document.fonts?.ready?.then(scheduleProductCardHeightSync);
+  // Capture before the native <details> default action changes the card's
+  // internal layout. The later toggle event is already too late to know where
+  // the customer actually touched the summary.
+  document.addEventListener("click", event => {
+    const summary = event.target.closest?.(".product-front .product-safety summary");
+    if (summary) captureProductCardHeightAnchor(summary);
+  }, true);
   document.addEventListener("toggle", event => {
-    if (event.target.closest?.(".product-front")) scheduleProductCardHeightSync();
+    if (!event.target.closest?.(".product-front")) return;
+    scheduleProductCardHeightSync($("summary", event.target) || event.target);
   }, true);
 
   let modalScrollCycle = 0;
