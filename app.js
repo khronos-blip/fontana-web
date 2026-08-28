@@ -461,8 +461,17 @@
       const productType = product.dataset.productType ? `Categoría: ${product.dataset.productType}. ` : "";
       const leadTime = config.leadTimesByProduct?.[product.dataset.id]?.label;
       note.textContent = `${productType}Ingredientes: ${ingredients}.${leadTime ? ` Preparación: ${leadTime}.` : ""}`;
+      const ingredientSentence = /[.!?]$/.test(ingredients.trim()) ? ingredients.trim() : `${ingredients.trim()}.`;
+      const expandedIngredients = document.createElement("section");
+      expandedIngredients.className = "product-expanded-ingredients";
+      const expandedHeading = document.createElement("h4");
+      expandedHeading.textContent = "Ingredientes";
+      const expandedNote = document.createElement("div");
+      expandedNote.textContent = `${ingredientSentence}${leadTime ? ` Preparación: ${leadTime}.` : ""}`;
+      expandedIngredients.append(expandedHeading, expandedNote);
       details.append(summary, note);
       body.insertBefore(details, footer);
+      body.insertBefore(expandedIngredients, footer);
     });
   }
 
@@ -851,17 +860,22 @@
         restoreTarget = trigger || media;
         const rect = card.getBoundingClientRect();
         const mobile = window.matchMedia("(max-width: 640px)").matches;
+        const desktop = window.matchMedia("(min-width: 960px)").matches;
         const viewportHeight = window.visualViewport?.height || window.innerHeight;
-        const horizontalMargin = mobile ? 28 : 80;
-        const verticalMargin = mobile ? 52 : 60;
-        const targetWidth = Math.round(Math.min(
-          window.innerWidth - (horizontalMargin * 2),
-          Math.max(mobile ? 280 : 520, rect.width * (mobile ? 1.55 : 1.42))
-        ));
-        const targetHeight = Math.round(Math.min(
-          viewportHeight - (verticalMargin * 2),
-          Math.max(mobile ? 560 : 600, rect.height * (mobile ? 1.34 : 1.12))
-        ));
+        const horizontalMargin = mobile ? 28 : desktop ? 48 : 80;
+        const verticalMargin = mobile ? 52 : desktop ? 48 : 60;
+        const targetWidth = Math.round(desktop
+          ? Math.min(window.innerWidth - (horizontalMargin * 2), 1040)
+          : Math.min(
+              window.innerWidth - (horizontalMargin * 2),
+              Math.max(mobile ? 280 : 520, rect.width * (mobile ? 1.55 : 1.42))
+            ));
+        const targetHeight = Math.round(desktop
+          ? Math.min(viewportHeight - (verticalMargin * 2), 640)
+          : Math.min(
+              viewportHeight - (verticalMargin * 2),
+              Math.max(mobile ? 560 : 600, rect.height * (mobile ? 1.34 : 1.12))
+            ));
         const targetX = (window.innerWidth - targetWidth) / 2;
         const targetY = (viewportHeight - targetHeight) / 2;
         const startX = rect.left + (rect.width / 2) - (targetX + (targetWidth / 2));

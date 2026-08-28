@@ -341,9 +341,10 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   await resumePhysicalCardTurn(desktopCard);
   await page.waitForTimeout(520);
   const desktopExpandedBox = await desktopCard.boundingBox();
-  expect(desktopExpandedBox.width).toBeGreaterThan(desktopCompactBox.width * 1.33);
-  expect(desktopExpandedBox.width).toBeLessThanOrEqual(620);
-  expect(desktopExpandedBox.height).toBeLessThanOrEqual(781);
+  expect(desktopExpandedBox.width).toBeGreaterThan(desktopCompactBox.width * 2.2);
+  expect(desktopExpandedBox.width).toBeLessThanOrEqual(1040);
+  expect(desktopExpandedBox.height).toBeLessThanOrEqual(640);
+  expect(desktopExpandedBox.width / desktopExpandedBox.height).toBeGreaterThan(1.5);
   expect(desktopExpandedBox.x).toBeGreaterThanOrEqual(79);
   expect(desktopExpandedBox.y).toBeGreaterThanOrEqual(59);
   const desktopBack = desktopCard.locator(".product-back");
@@ -357,6 +358,148 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   await expect(desktopCard).not.toHaveClass(/product-expanded-closing/);
   await page.locator(".product-flip-backdrop").click({ position: { x: 4, y: 4 } });
   await expect(desktopCard).not.toHaveClass(/product-flipped/);
+});
+
+test("la vista ampliada de escritorio muestra mejor la foto y todos los ingredientes", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const desktopCases = [
+    { width: 1280, height: 800, selector: '[data-id="naranja"]' },
+    { width: 1440, height: 900, selector: '[data-id="pistacho-clasico"]' },
+    { width: 1024, height: 768, selector: '[data-product-id="raviolis"]' },
+    { width: 960, height: 768, selector: '[data-product-id="raviolis"]' }
+  ];
+
+  for (const item of desktopCases) {
+    await page.setViewportSize({ width: item.width, height: item.height });
+    await openPreview(page);
+    const card = page.locator(item.selector);
+    const sourceIngredients = await card.getAttribute("data-ingredients");
+    await expect(card.locator(".product-front .product-safety")).not.toHaveAttribute("open", "");
+    await openProductCard(page, card);
+
+    const back = card.locator(".product-back");
+    const ingredients = back.locator(".product-expanded-ingredients");
+    await expect(ingredients).toBeVisible();
+    await expect(ingredients.locator("h4")).toHaveText("Ingredientes");
+    await expect(ingredients.locator("div")).toBeVisible();
+    await expect(ingredients).toContainText(sourceIngredients);
+    await expect(back.locator(".product-safety")).toBeHidden();
+    await expect(back).toBeFocused();
+
+    const layout = await card.evaluate(element => {
+      const cardBox = element.getBoundingClientRect();
+      const back = element.querySelector(".product-back");
+      const media = back.querySelector(".product-expanded-media").getBoundingClientRect();
+      const bodyElement = back.querySelector(".product-expanded-body");
+      const body = bodyElement.getBoundingClientRect();
+      const ingredientsBox = back.querySelector(".product-expanded-ingredients").getBoundingClientRect();
+      const ingredientsTextElement = back.querySelector(".product-expanded-ingredients div");
+      const ingredientsText = ingredientsTextElement.getBoundingClientRect();
+      const footer = back.querySelector(".product-footer").getBoundingClientRect();
+      const image = back.querySelector(".product-expanded-media img");
+      const imageBox = image.getBoundingClientRect();
+      const sourceRatio = image.naturalWidth / image.naturalHeight;
+      const mediaRatio = media.width / media.height;
+      return {
+        card: { x: cardBox.x, y: cardBox.y, right: cardBox.right, bottom: cardBox.bottom, width: cardBox.width, height: cardBox.height },
+        media: { x: media.x, y: media.y, right: media.right, width: media.width, height: media.height, ratio: mediaRatio },
+        body: { x: body.x, y: body.y, width: body.width, height: body.height, clientHeight: bodyElement.clientHeight, scrollHeight: bodyElement.scrollHeight },
+        ingredients: { top: ingredientsBox.top, bottom: ingredientsBox.bottom, height: ingredientsBox.height },
+        ingredientsText: {
+          top: ingredientsText.top,
+          bottom: ingredientsText.bottom,
+          clientHeight: ingredientsTextElement.clientHeight,
+          scrollHeight: ingredientsTextElement.scrollHeight
+        },
+        footer: { top: footer.top, bottom: footer.bottom },
+        image: {
+          x: imageBox.x,
+          y: imageBox.y,
+          width: imageBox.width,
+          height: imageBox.height,
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          objectFit: getComputedStyle(image).objectFit,
+          transform: getComputedStyle(image).transform,
+          visibleFraction: Math.min(mediaRatio / sourceRatio, sourceRatio / mediaRatio)
+        },
+        pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+
+    expect(layout.card.width).toBeGreaterThanOrEqual(Math.min(1000, item.width - 96));
+    expect(layout.card.width / layout.card.height).toBeGreaterThan(1.3);
+    expect(layout.card.x).toBeGreaterThanOrEqual(47);
+    expect(layout.card.y).toBeGreaterThanOrEqual(47);
+    expect(layout.card.right).toBeLessThanOrEqual(item.width - 47);
+    expect(layout.card.bottom).toBeLessThanOrEqual(item.height - 47);
+    expect(layout.media.width / layout.card.width).toBeGreaterThan(0.57);
+    expect(layout.media.ratio).toBeGreaterThanOrEqual(item.width < 1100 ? 0.75 : 0.9);
+    expect(Math.abs(layout.media.height - (layout.card.height - 2))).toBeLessThanOrEqual(2);
+    expect(Math.abs(layout.media.right - layout.body.x)).toBeLessThanOrEqual(2);
+    expect(layout.ingredients.height).toBeGreaterThan(130);
+    expect(layout.ingredients.top).toBeGreaterThanOrEqual(layout.body.y);
+    expect(layout.ingredients.bottom).toBeLessThanOrEqual(layout.footer.top);
+    expect(layout.ingredientsText.top).toBeGreaterThanOrEqual(layout.ingredients.top);
+    expect(layout.ingredientsText.bottom).toBeLessThanOrEqual(layout.ingredients.bottom);
+    expect(layout.ingredientsText.scrollHeight).toBeLessThanOrEqual(layout.ingredientsText.clientHeight + 1);
+    expect(layout.footer.top - layout.ingredients.bottom).toBeLessThanOrEqual(24);
+    expect(layout.body.scrollHeight).toBeLessThanOrEqual(layout.body.clientHeight + 2);
+    expect(layout.image.naturalWidth).toBeGreaterThanOrEqual(1200);
+    expect(layout.image.naturalHeight).toBeGreaterThanOrEqual(1000);
+    expect(layout.image.objectFit).toBe("cover");
+    expect(layout.image.transform).toBe("none");
+    expect(Math.abs(layout.image.x - layout.media.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.image.y - layout.card.y - 1)).toBeLessThanOrEqual(2);
+    expect(Math.abs(layout.image.width - layout.media.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.image.height - layout.media.height)).toBeLessThanOrEqual(1);
+    expect(layout.image.visibleFraction).toBeGreaterThanOrEqual(item.width < 1100 ? 0.57 : 0.65);
+    expect(layout.pageOverflow).toBeLessThanOrEqual(0);
+
+    await closeProductCard(page);
+    await expect(card.locator(".product-front .product-safety")).toBeVisible();
+    await expect(card.locator(".product-front .product-safety")).not.toHaveAttribute("open", "");
+    await expect(card.locator(".product-front .product-expanded-ingredients")).toBeHidden();
+    await expect(card.locator(".product-front .product-media")).toBeFocused();
+  }
+
+  await page.setViewportSize({ width: 959, height: 768 });
+  await openPreview(page);
+  const tabletCard = page.locator('[data-id="naranja"]');
+  await openProductCard(page, tabletCard);
+  await expect(tabletCard.locator(".product-back .product-expanded-ingredients")).toBeHidden();
+  await expect(tabletCard.locator(".product-back .product-safety")).toBeVisible();
+  const tabletBox = await tabletCard.boundingBox();
+  expect(tabletBox.width).toBeLessThanOrEqual(620);
+  await closeProductCard(page);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  const mobileCard = page.locator('[data-id="naranja"]');
+  const compactBox = await mobileCard.boundingBox();
+  await openProductCard(page, mobileCard);
+  await expect(mobileCard.locator(".product-back .product-expanded-ingredients")).toBeHidden();
+  await expect(mobileCard.locator(".product-back .product-safety")).toBeVisible();
+  await expect(mobileCard.locator(".product-back .product-safety")).not.toHaveAttribute("open", "");
+  const mobileLayout = await mobileCard.evaluate(element => {
+    const card = element.getBoundingClientRect();
+    const media = element.querySelector(".product-expanded-media").getBoundingClientRect();
+    const body = element.querySelector(".product-expanded-body").getBoundingClientRect();
+    return { card, media, body, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+  });
+  expect(mobileLayout.card.width).toBeLessThanOrEqual(334);
+  expect(Math.abs(mobileLayout.media.width - (mobileLayout.card.width - 2))).toBeLessThanOrEqual(2);
+  expect(mobileLayout.media.bottom).toBeLessThanOrEqual(mobileLayout.body.top + 2);
+  expect(mobileLayout.overflow).toBeLessThanOrEqual(0);
+  await closeProductCard(page);
+  await expect.poll(async () => {
+    const restoredBox = await mobileCard.boundingBox();
+    return Math.max(
+      Math.abs(restoredBox.width - compactBox.width),
+      Math.abs(restoredBox.height - compactBox.height)
+    );
+  }).toBeLessThanOrEqual(1);
+  await expect(mobileCard.locator(".product-front .product-safety")).not.toHaveAttribute("open", "");
 });
 
 test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scroll", async ({ page }, testInfo) => {

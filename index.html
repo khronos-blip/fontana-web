@@ -270,6 +270,7 @@
     .product-safety summary:after{content:'+';float:right;font-size:1rem;line-height:1}
     .product-safety[open] summary:after{content:'−'}
     .product-safety div{padding:0 0 12px;color:var(--muted);font-size:.7rem;line-height:1.5}
+    .product-expanded-ingredients{display:none}
     .product-dietary-seals{display:flex;align-items:flex-start;justify-content:flex-start;gap:9px;margin:12px 0 15px;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
     .product-dietary-seal{flex:0 1 66px;min-width:0;display:grid;justify-items:center;gap:5px;color:var(--plum)}
     .product-dietary-seal svg{width:36px;height:36px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -739,6 +740,21 @@
     .review-invitation{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:24px 0 0;padding:18px 20px;border:1px solid rgba(110,35,111,.24);border-radius:18px;background:var(--lilac)}.review-invitation p{margin:0;color:var(--plum-dark)}.review-invitation .btn{flex:0 0 auto;background:var(--plum);color:#fff;border-color:var(--plum)}.review-invitation .btn:hover{background:var(--plum-dark);color:#fff;border-color:var(--plum-dark)}
     .review-source span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--plum-dark);color:var(--acid);font-size:.75rem}
     .quote.featured .review-source{color:var(--night)}
+    @media(min-width:960px){
+      .product.product-expanded .product-back{grid-template-columns:minmax(0,58%) minmax(0,42%)}
+      .product.product-expanded .product-expanded-media{background:#dec9e1}
+      .product.product-expanded .product-expanded-media img{object-fit:cover;object-position:50% 50%;transform:none}
+      .product.product-expanded .product-expanded-body{padding:30px 34px 26px}
+      .product.product-expanded .product-expanded-body .product-top{gap:14px}
+      .product.product-expanded .product-expanded-body .product-top h3{font-size:clamp(1.9rem,2.5vw,2.35rem);line-height:.98}
+      .product.product-expanded .product-expanded-body>p{margin:12px 0 18px;font-size:.84rem;line-height:1.58}
+      .product.product-expanded .product-expanded-body .product-dietary-seals{margin:0 0 18px;padding:12px 0}
+      .product.product-expanded .product-expanded-body>.product-safety{display:none}
+      .product.product-expanded .product-back .product-expanded-ingredients{display:flex;flex:1 1 auto;min-height:132px;flex-direction:column;margin:0 0 18px;padding:16px 18px;border:1px solid rgba(110,35,111,.16);border-radius:16px;background:rgba(255,255,255,.38)}
+      .product.product-expanded .product-back .product-expanded-ingredients h4{margin:0 0 10px;color:var(--plum);font-size:.68rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
+      .product.product-expanded .product-back .product-expanded-ingredients div{color:#665267;font-size:.76rem;line-height:1.62}
+      .product.product-expanded .product-expanded-body .product-footer{padding-top:2px}
+    }
     @media(max-width:640px){
       .review-invitation{align-items:stretch;flex-direction:column}.review-invitation .btn{width:100%}
       .products{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
