@@ -106,7 +106,7 @@ async function swipeExpandedFlavor(page, direction, targetSelector = ".builder-f
   }, direction);
 }
 
-async function expectExpandedFlavorLayoutFits(overlay) {
+async function expectExpandedFlavorLayoutFits(overlay, { fixed = false } = {}) {
   const layout = await overlay.evaluate(element => {
     const box = element.getBoundingClientRect();
     const media = element.querySelector(".builder-flavor-expanded-media")?.getBoundingClientRect();
@@ -124,6 +124,15 @@ async function expectExpandedFlavorLayoutFits(overlay) {
       detailsClientHeight: detailsElement?.clientHeight || 0,
       detailsScrollHeight: detailsElement?.scrollHeight || 0,
       detailsScrollTop: detailsElement?.scrollTop || 0,
+      detailsOverflowY: detailsElement ? getComputedStyle(detailsElement).overflowY : "",
+      detailsChildrenInside: Boolean(details && detailsElement
+        && [...detailsElement.children].every(child => {
+          const childBox = child.getBoundingClientRect();
+          return childBox.top >= details.top - 1
+            && childBox.bottom <= details.bottom + 1
+            && childBox.left >= details.left - 1
+            && childBox.right <= details.right + 1;
+        })),
       cueInsideMedia: Boolean(media && cue
         && cue.top >= media.top - 1
         && cue.bottom <= media.bottom + 1),
@@ -146,6 +155,8 @@ async function expectExpandedFlavorLayoutFits(overlay) {
   expect(layout.detailsHeight).toBeGreaterThan(0);
   expect(layout.detailsScrollTop).toBeLessThanOrEqual(1);
   expect(layout.detailsScrollHeight).toBeLessThanOrEqual(layout.detailsClientHeight + 1);
+  if (fixed) expect(layout.detailsOverflowY).toBe("hidden");
+  expect(layout.detailsChildrenInside).toBe(true);
   expect(layout.cueInsideMedia).toBe(true);
   expect(layout.dockInsideMedia).toBe(true);
   expect(layout.cueBeforeDetails).toBe(true);
@@ -258,6 +269,68 @@ async function installBuilderAvailabilityCatalog(page) {
   await page.addInitScript(state => {
     localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify(state));
   }, createBuilderAvailabilityState());
+}
+
+function createExpandedFlavorLayoutState() {
+  const fonkieFlavors = [
+    ["Chips de Chocolate Oscuro", "Harina de almendra, huevo, aceite de coco, chocolate vegano oscuro y monkfruit", "fonkie-dark-chocolate-chips-fontana-pro.jpg"],
+    ["Chispa de Chocolate Blanco", "Ingredientes pendientes de confirmar con Fontana", "fonkie-white-chocolate-chips-fontana-pro.jpg"],
+    ["Pistacho con Chocolate Blanco", "Harina de almendra, huevo, aceite de coco, chocolate vegano blanco, pistacho y monkfruit", "fonkie-pistachio-white-chocolate-fontana-pro.jpg"],
+    ["Triple Chocolate Fudge", "Harina de almendra, huevo, aceite de coco, chocolate vegano oscuro, cacao y monkfruit", "fonkie-triple-chocolate-fudge-fontana-pro.jpg"],
+    ["Nutella Fit", "Harina de almendra, huevo, aceite de coco, nutella artesanal de cacao y avellana, aceite de oliva, alulosa y monkfruit", "fonkie-nutella-fit-fontana-pro.jpg"],
+    ["Almond Caramel", "Harina de almendra, huevo, aceite de coco, cacao, caramelo de almendra y monkfruit", "fonkie-almond-caramel-fontana-pro.jpg"],
+    ["Cinnamon Roll", "Harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit y canela", "fonkie-cinnamon-roll-fontana-pro.jpg"],
+    ["Kinder Bueno", "Harina de almendra, huevo, aceite de coco, chocolate vegano blanco, monkfruit, avellana y cacao", "fonkie-kinder-bueno-fontana-pro.jpg"],
+    ["Chips Ahoy Fit", "Harina de arroz, harina de yuca, ghee, crema de dátiles, monkfruit, chispas de chocolate vegano y huevo", "fonkie-chips-ahoy-fit-fontana-pro.jpg"]
+  ].map(([name, ingredients, image]) => ({
+    name,
+    ingredients,
+    image: `assets/${image}`,
+    status: "available"
+  }));
+  const fombFlavors = [
+    ["Pistacho", "Almendra, chocolate blanco vegano, monkfruit, pistacho y blueberry", "fomb-pistachio-fontana-pro.jpg"],
+    ["Dubai", "Almendra, chocolate blanco y oscuro vegano, monkfruit, pistacho y crunch de arroz", "fomb-dubai-fontana-pro.jpg"],
+    ["Ferrero", "Almendra, chocolate oscuro vegano, monkfruit y avellana", "fomb-ferrero-fontana-pro.jpg"],
+    ["Raffaello", "Almendra, chocolate blanco vegano, monkfruit, coco y avellana", "fomb-raffaello-fontana-pro.jpg"]
+  ].map(([name, ingredients, image]) => ({
+    name,
+    ingredients,
+    image: `assets/${image}`,
+    status: "available"
+  }));
+  return {
+    version: 2,
+    settings: { productionWithElectricity: true, stockTodayOpen: true },
+    products: [],
+    builders: {
+      fonkies: {
+        visible: true,
+        status: "available",
+        requiresElectricity: false,
+        minimumQuantity: 4,
+        singlePrice: 15,
+        mixedPrice: 17,
+        extraPrice: 3.5,
+        flavors: fonkieFlavors
+      },
+      fomb: {
+        visible: true,
+        status: "available",
+        requiresElectricity: false,
+        minimumQuantity: 4,
+        sizes: [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }],
+        extraPrice: 3.5,
+        flavors: fombFlavors
+      }
+    }
+  };
+}
+
+async function installExpandedFlavorLayoutCatalog(page) {
+  await page.addInitScript(state => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify(state));
+  }, createExpandedFlavorLayoutState());
 }
 
 test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
@@ -1015,23 +1088,93 @@ test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en es
   }
 });
 
-test("un sabor largo ampliado cabe completo en un móvil de poca altura", async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 667 });
+test("el panel ampliado de todos los sabores queda fijo y completo en móviles", async ({ page }) => {
+  test.setTimeout(90_000);
+  const layoutState = createExpandedFlavorLayoutState();
+  await installExpandedFlavorLayoutCatalog(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const viewport of [
+    { width: 430, height: 932 },
+    { width: 390, height: 740 },
+    { width: 375, height: 667 },
+    { width: 320, height: 568 },
+    { width: 640, height: 844 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+
+    for (const builderCase of [
+      {
+        filter: "Fonkies · Galletas",
+        card: ".fonkie-gallery-card",
+        names: layoutState.builders.fonkies.flavors.map(flavor => flavor.name)
+      },
+      {
+        filter: "Fomb · Bombones",
+        card: ".builder-gallery-card",
+        names: layoutState.builders.fomb.flavors.map(flavor => flavor.name)
+      }
+    ]) {
+      await page.getByRole("button", { name: builderCase.filter }).click();
+      const cards = page.locator(builderCase.card);
+      await expect(cards).toHaveCount(builderCase.names.length);
+      await cards.first().evaluate(element => element.click());
+      const overlay = page.locator(".builder-flavor-flip-card");
+      const details = overlay.locator(".builder-flavor-expanded-details");
+      const swipeCue = overlay.locator(".builder-flavor-swipe-cue");
+      await expect(overlay).toBeVisible();
+
+      for (let index = 0; index < builderCase.names.length; index += 1) {
+        await expect(overlay.locator("h3")).toHaveText(builderCase.names[index]);
+        await expectExpandedFlavorLayoutFits(overlay, { fixed: true });
+        const forcedScrollTop = await details.evaluate(element => {
+          element.scrollTop = 50;
+          return element.scrollTop;
+        });
+        expect(forcedScrollTop).toBe(0);
+        const actionHeights = await overlay.locator(".builder-flavor-expanded-actions button").evaluateAll(buttons => (
+          buttons.map(button => button.getBoundingClientRect().height)
+        ));
+        expect(actionHeights.every(height => height >= 44)).toBe(true);
+        if (index < builderCase.names.length - 1) await swipeCue.press("ArrowRight");
+      }
+
+      const detailsBox = await details.boundingBox();
+      expect(detailsBox).not.toBeNull();
+      await page.mouse.move(detailsBox.x + (detailsBox.width / 2), detailsBox.y + (detailsBox.height / 2));
+      await page.mouse.wheel(0, 300);
+      await page.waitForTimeout(30);
+      await expect.poll(() => details.evaluate(element => element.scrollTop)).toBe(0);
+      await overlay.locator(".builder-flavor-done").click();
+      await expect(overlay).toHaveCount(0);
+    }
+  }
+});
+
+test("el panel fijo tolera las métricas de texto ampliadas de Safari móvil", async ({ page }) => {
+  await installExpandedFlavorLayoutCatalog(page);
+  await page.setViewportSize({ width: 430, height: 932 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openPreview(page);
-  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await page.locator("html").evaluate(element => { element.style.fontSize = "18px"; });
 
-  const source = page.locator('.fonkie-gallery-card[data-flavor="Pistacho con Chocolate Blanco"]');
-  await expect(source).toHaveCount(1);
-  await source.evaluate(element => element.click());
-  const overlay = page.locator(".builder-flavor-flip-card");
-  await expect(overlay).toBeVisible();
-  await expect(overlay.locator("h3")).toHaveText("Pistacho con Chocolate Blanco");
-  await expectExpandedFlavorLayoutFits(overlay);
-  const actionHeights = await overlay.locator(".builder-flavor-expanded-actions button").evaluateAll(buttons => (
-    buttons.map(button => button.getBoundingClientRect().height)
-  ));
-  expect(actionHeights.every(height => height >= 44)).toBe(true);
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await page.locator(".fonkie-gallery-card").first().evaluate(element => element.click());
+  let overlay = page.locator(".builder-flavor-flip-card");
+  for (let index = 0; index < 5; index += 1) {
+    await overlay.locator(".builder-flavor-swipe-cue").press("ArrowRight");
+  }
+  await expect(overlay.locator("h3")).toHaveText("Almond Caramel");
+  await expectExpandedFlavorLayoutFits(overlay, { fixed: true });
+  await overlay.locator(".builder-flavor-done").click();
+  await expect(overlay).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await page.locator(".builder-gallery-card").first().evaluate(element => element.click());
+  overlay = page.locator(".builder-flavor-flip-card");
+  await overlay.locator(".builder-flavor-swipe-cue").press("ArrowRight");
+  await expect(overlay.locator("h3")).toHaveText("Dubai");
+  await expectExpandedFlavorLayoutFits(overlay, { fixed: true });
   await overlay.locator(".builder-flavor-done").click();
   await expect(overlay).toHaveCount(0);
 });

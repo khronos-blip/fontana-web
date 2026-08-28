@@ -1925,17 +1925,31 @@
 
       const mobile = window.matchMedia("(max-width: 640px)").matches;
       const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      const portraitMobile = mobile && viewportHeight >= window.innerWidth;
+      // Keep the full flavor copy and quantity controls visible without turning
+      // the lower panel into a nested scroller on wider portrait phones.
+      const mobileDetailsHeight = 230;
+      const mobileHeightLimit = viewportHeight - (portraitMobile ? 40 : 72);
+      const mobileBaseWidth = Math.min(window.innerWidth - 20, Math.max(rect.width * 1.04, 320));
+      const mobileWidthLimit = portraitMobile
+        ? Math.max(280, mobileHeightLimit - mobileDetailsHeight)
+        : mobileBaseWidth;
       const desktopHeightLimit = viewportHeight - 96;
       const desktopDetailsHeight = Math.min(230, Math.max(160, desktopHeightLimit * 0.28));
       const targetWidth = mobile
-        ? Math.min(window.innerWidth - 20, Math.max(rect.width * 1.04, 320))
+        ? Math.min(mobileBaseWidth, mobileWidthLimit)
         : Math.min(
           window.innerWidth - 96,
           desktopHeightLimit - desktopDetailsHeight,
           Math.max(rect.width * 1.28, 420)
         );
+      const fixedMobileDetails = portraitMobile
+        && mobileHeightLimit >= targetWidth + mobileDetailsHeight;
       const targetHeight = mobile
-        ? Math.min(viewportHeight - 72, Math.max(rect.height * 1.5, 580))
+        ? Math.min(
+          mobileHeightLimit,
+          Math.max(rect.height * 1.5, 580, portraitMobile ? targetWidth + mobileDetailsHeight : 0)
+        )
         : targetWidth + desktopDetailsHeight;
       const targetX = (window.innerWidth - targetWidth) / 2;
       const targetY = (viewportHeight - targetHeight) / 2;
@@ -1965,6 +1979,7 @@
 
       const overlay = document.createElement("section");
       overlay.className = "builder-flavor-flip-card";
+      if (fixedMobileDetails) overlay.classList.add("builder-flavor-fixed-details");
       overlay.setAttribute("role", "dialog");
       overlay.setAttribute("aria-modal", "true");
       overlay.setAttribute("aria-label", `${kind === "fonkies" ? "Fonkie" : "Fomb"} ${name}`);
