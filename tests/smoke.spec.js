@@ -3330,17 +3330,20 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
 
 test("SEO público es indexable y mantiene privado el panel", async ({ page, request }) => {
   await page.goto("/");
-  await expect(page).toHaveTitle("Postres sin gluten y sin azúcar en Carabobo | Fontana");
+  await expect(page).toHaveTitle("Postres sin gluten y sin azúcar | Fontana");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /index,follow/);
   await expect(page.locator('meta[name="google-site-verification"]')).toHaveAttribute("content", "P8eJAN1O83e_F3FfoQuvlA60BWmrvrYRkxTK9jUVHJo");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /sin gluten en Carabobo/);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://fontanasingluten.com/");
   await expect(page.locator('link[rel="alternate"][hreflang="es-VE"]')).toHaveAttribute("href", "https://fontanasingluten.com/");
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", "Postres sin gluten y sin azúcar | Fontana");
+  await expect(page.locator('meta[name="twitter:title"]')).toHaveAttribute("content", "Postres sin gluten y sin azúcar | Fontana");
   await expect(page.locator('meta[property="og:image:type"]')).toHaveAttribute("content", "image/jpeg");
   await expect(page.locator("h1")).toContainText("Postres sin gluten y sin azúcar en Carabobo");
 
   const structuredData = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent());
   expect(structuredData["@graph"].some(item => item["@type"] === "WebSite" && item.name === "Fontana sin gluten")).toBe(true);
+  expect(structuredData["@graph"].some(item => item["@type"] === "WebPage" && item.name === "Postres sin gluten y sin azúcar | Fontana")).toBe(true);
   expect(structuredData["@graph"].some(item => item["@type"] === "WebPage" && item.primaryImageOfPage?.width === 1448)).toBe(true);
   expect(structuredData["@graph"].some(item => item["@type"] === "Bakery" && item.address.addressLocality === "Mañongo")).toBe(true);
 
