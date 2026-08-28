@@ -1075,7 +1075,7 @@
         return;
       }
 
-      const createLoopCard = (source, index) => {
+      const createLoopCard = (source, index, copy) => {
         const clone = source.cloneNode(true);
         clone.classList.remove("fonkie-gallery-card", "builder-gallery-card");
         clone.classList.add("flavor-gallery-loop-card");
@@ -1083,6 +1083,7 @@
           ? "flavor-gallery-loop-card--fonkie"
           : "flavor-gallery-loop-card--fomb");
         clone.dataset.galleryLoopIndex = String(index);
+        clone.dataset.galleryLoopCopy = copy;
         clone.setAttribute("aria-hidden", "true");
         clone.setAttribute("inert", "");
         clone.removeAttribute("id");
@@ -1100,15 +1101,23 @@
         const image = $("img", clone);
         if (image) {
           image.alt = "";
-          image.loading = "eager";
+          image.loading = "lazy";
+          image.decoding = "async";
         }
         return clone;
       };
 
-      const leadingClone = createLoopCard(cards[cards.length - 1], cards.length - 1);
-      const trailingClone = createLoopCard(cards[0], 0);
-      track.prepend(leadingClone);
-      track.append(trailingClone);
+      // A complete visual cycle on each side gives the browser enough physical
+      // runway to preserve native momentum across the last/first flavor. The
+      // previous single sentinel sat directly on the scroll boundary, so iOS
+      // hit rubber-band and visibly stopped before JavaScript could recenter it.
+      const leadingClones = cards.map((card, index) => createLoopCard(card, index, "leading"));
+      const trailingClones = cards.map((card, index) => createLoopCard(card, index, "trailing"));
+      const physicalCards = [...leadingClones, ...cards, ...trailingClones];
+      $("img", leadingClones[leadingClones.length - 1])?.setAttribute("loading", "eager");
+      $("img", trailingClones[0])?.setAttribute("loading", "eager");
+      track.prepend(...leadingClones);
+      track.append(...trailingClones);
       track.dataset.galleryLoop = "true";
 
       const controller = new AbortController();
@@ -1118,7 +1127,9 @@
       let touchInteracting = false;
       let settleTimer = 0;
       let resizeFrame = 0;
-      let suppressNormalizationUntil = 0;
+      let recenterFrame = 0;
+      let recentering = false;
+      let resizePending = false;
 
       const scrollPositionFor = card => track.scrollLeft
         + card.getBoundingClientRect().left
@@ -1128,7 +1139,6 @@
         if (!Number.isFinite(position) || track.clientWidth <= 0) return;
         const previousSnapType = track.style.scrollSnapType;
         const previousBehavior = track.style.scrollBehavior;
-        suppressNormalizationUntil = performance.now() + 80;
         track.style.scrollSnapType = "none";
         track.style.scrollBehavior = "auto";
         track.scrollLeft = position;
@@ -1145,76 +1155,124 @@
         moveToPositionInstantly(scrollPositionFor(card), index);
       };
 
-      const recenterBoundaryClone = (tolerance = 3) => {
-        if (track.clientWidth <= 0) return false;
-        const maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
-        const current = Math.min(maxScrollLeft, Math.max(0, track.scrollLeft));
-        const boundaries = [
-          { clone: leadingClone, card: cards[cards.length - 1], index: cards.length - 1 },
-          { clone: trailingClone, card: cards[0], index: 0 }
-        ];
-        const boundary = boundaries
-          .map(item => ({ ...item, clonePosition: scrollPositionFor(item.clone) }))
-          .find(item => Math.abs(current - item.clonePosition) <= tolerance);
-        if (!boundary) return false;
-        const offsetFromClone = current - boundary.clonePosition;
-        moveToPositionInstantly(scrollPositionFor(boundary.card) + offsetFromClone, boundary.index);
-        return true;
+      const updateLogicalIndex = position => {
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        physicalCards.forEach((card, physicalIndex) => {
+          const distance = Math.abs(position - scrollPositionFor(card));
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            logicalIndex = physicalIndex % cards.length;
+          }
+        });
       };
 
-      const prepareInteraction = () => {
-        window.clearTimeout(settleTimer);
-        settleTimer = 0;
-        recenterBoundaryClone(track.clientWidth * .45);
-      };
-
-      const scheduleNormalization = (delay = 140) => {
+      const scheduleNormalization = (delay = 180) => {
         window.clearTimeout(settleTimer);
         settleTimer = window.setTimeout(normalizePosition, delay);
       };
 
+      const alignAfterResize = () => {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => {
+          resizeFrame = 0;
+          if (!resizePending) return;
+          if (pointerInteracting || touchInteracting) {
+            scheduleNormalization();
+            return;
+          }
+          if (recentering) {
+            cancelAnimationFrame(recenterFrame);
+            recenterFrame = 0;
+            recentering = false;
+          }
+          resizePending = false;
+          moveInstantly(cards[logicalIndex], logicalIndex);
+        });
+      };
+
       const normalizePosition = () => {
+        window.clearTimeout(settleTimer);
+        settleTimer = 0;
         if (track.clientWidth <= 0) return;
-        if (pointerInteracting || touchInteracting || performance.now() < suppressNormalizationUntil) {
-          scheduleNormalization(100);
+        if (pointerInteracting || touchInteracting) {
+          scheduleNormalization();
           return;
         }
-        const width = track.clientWidth;
-        if (recenterBoundaryClone(width * .45)) return;
+        if (resizePending) {
+          alignAfterResize();
+          return;
+        }
+        if (recentering) {
+          scheduleNormalization();
+          return;
+        }
         const current = track.scrollLeft;
-        let nearestDistance = Number.POSITIVE_INFINITY;
-        cards.forEach((card, index) => {
-          const distance = Math.abs(current - scrollPositionFor(card));
-          if (distance < nearestDistance) {
-            nearestDistance = distance;
-            logicalIndex = index;
-          }
+        const maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+        // Safari can report elastic values outside the real range while the
+        // rubber-band is returning. Never recenter from that transient state.
+        if (current < 0 || current > maxScrollLeft) {
+          scheduleNormalization();
+          return;
+        }
+        const middleStart = scrollPositionFor(cards[0]);
+        const trailingStart = scrollPositionFor(trailingClones[0]);
+        const cycleSpan = trailingStart - middleStart;
+        if (!Number.isFinite(cycleSpan) || cycleSpan <= 0) return;
+        let target = current;
+        if (current < middleStart - 1) target = current + cycleSpan;
+        else if (current >= trailingStart - 1) target = current - cycleSpan;
+        if (Math.abs(target - current) <= 1) {
+          updateLogicalIndex(current);
+          return;
+        }
+
+        // This runs only after scrollend (or silence in the fallback). The
+        // destination is the pixel-identical position in the middle cycle, so
+        // snap can remain enabled and native momentum is never interrupted.
+        recentering = true;
+        track.scrollLeft = target;
+        updateLogicalIndex(target);
+        cancelAnimationFrame(recenterFrame);
+        recenterFrame = requestAnimationFrame(() => {
+          recenterFrame = requestAnimationFrame(() => {
+            recenterFrame = 0;
+            recentering = false;
+          });
         });
       };
 
       track.addEventListener("scroll", () => scheduleNormalization(), { passive: true, signal });
       track.addEventListener("scrollend", normalizePosition, { signal });
-      track.addEventListener("wheel", prepareInteraction, { passive: true, signal });
       let activePointerId = null;
       track.addEventListener("pointerdown", event => {
-        prepareInteraction();
+        window.clearTimeout(settleTimer);
+        settleTimer = 0;
         pointerInteracting = true;
         activePointerId = event.pointerId;
       }, { passive: true, signal });
       track.addEventListener("touchstart", () => {
-        prepareInteraction();
+        window.clearTimeout(settleTimer);
+        settleTimer = 0;
         touchInteracting = true;
       }, { passive: true, signal });
       const finishPointerInteraction = event => {
         if (!pointerInteracting || (activePointerId !== null && event.pointerId !== activePointerId)) return;
         pointerInteracting = false;
         activePointerId = null;
-        if (!touchInteracting && !recenterBoundaryClone(track.clientWidth * .45)) scheduleNormalization(40);
+        if (!touchInteracting) {
+          updateLogicalIndex(track.scrollLeft);
+          if (resizePending) alignAfterResize();
+          else scheduleNormalization();
+        }
       };
       const finishTouchInteraction = () => {
         if (!touchInteracting) return;
         touchInteracting = false;
-        if (!pointerInteracting && !recenterBoundaryClone(track.clientWidth * .45)) scheduleNormalization(40);
+        if (!pointerInteracting) {
+          updateLogicalIndex(track.scrollLeft);
+          if (resizePending) alignAfterResize();
+          else scheduleNormalization();
+        }
       };
       document.addEventListener("pointerup", finishPointerInteraction, { capture: true, passive: true, signal });
       document.addEventListener("pointercancel", finishPointerInteraction, { capture: true, passive: true, signal });
@@ -1225,8 +1283,8 @@
         ? new ResizeObserver(entries => {
           const width = entries[0]?.contentRect.width || 0;
           if (width <= 0) return;
-          cancelAnimationFrame(resizeFrame);
-          resizeFrame = requestAnimationFrame(() => moveInstantly(cards[logicalIndex], logicalIndex));
+          resizePending = true;
+          alignAfterResize();
         })
         : null;
       observer?.observe(track);
@@ -1238,6 +1296,10 @@
           observer?.disconnect();
           window.clearTimeout(settleTimer);
           cancelAnimationFrame(resizeFrame);
+          cancelAnimationFrame(recenterFrame);
+          [...leadingClones, ...trailingClones].forEach(clone => clone.remove());
+          track.removeAttribute("data-gallery-loop");
+          delete track._fontanaGalleryLoop;
         }
       };
     });

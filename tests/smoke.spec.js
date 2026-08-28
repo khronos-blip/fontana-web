@@ -1808,19 +1808,54 @@ test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito"
     const cardCount = await cards.count();
     const lastIndex = cardCount - 1;
     expect(cardCount).toBeGreaterThan(1);
-    await expect(clones).toHaveCount(2);
+    await expect(clones).toHaveCount(cardCount * 2);
     await expect(track.getByRole("button", { name: /Ver detalles de/ })).toHaveCount(cardCount);
     const cloneAccessibility = await clones.evaluateAll(elements => elements.map(element => ({
       ariaHidden: element.getAttribute("aria-hidden"),
       inert: element.hasAttribute("inert"),
       role: element.getAttribute("role"),
       tabIndex: element.getAttribute("tabindex"),
+      id: element.getAttribute("id"),
+      alt: element.querySelector("img")?.getAttribute("alt"),
+      descendantIds: element.querySelectorAll("[id]").length,
+      pointerEvents: getComputedStyle(element).pointerEvents,
       focusableDescendants: element.querySelectorAll('[tabindex],button,a[href],input,select,textarea').length
     })));
-    expect(cloneAccessibility).toEqual([
-      { ariaHidden: "true", inert: true, role: null, tabIndex: null, focusableDescendants: 0 },
-      { ariaHidden: "true", inert: true, role: null, tabIndex: null, focusableDescendants: 0 }
-    ]);
+    expect(cloneAccessibility.every(clone => (
+      clone.ariaHidden === "true"
+      && clone.inert
+      && clone.role === null
+      && clone.tabIndex === null
+      && clone.id === null
+      && clone.alt === ""
+      && clone.descendantIds === 0
+      && clone.pointerEvents === "none"
+      && clone.focusableDescendants === 0
+    ))).toBe(true);
+
+    const structure = await track.evaluate((element, cardSelector) => {
+      const realCards = [...element.querySelectorAll(cardSelector)];
+      const leading = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="leading"]')];
+      const trailing = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="trailing"]')];
+      const trackBox = element.getBoundingClientRect();
+      const positionFor = child => element.scrollLeft + child.getBoundingClientRect().left - trackBox.left;
+      const width = element.clientWidth;
+      return {
+        width,
+        leadingIndexes: leading.map(clone => Number.parseInt(clone.dataset.galleryLoopIndex, 10)),
+        trailingIndexes: trailing.map(clone => Number.parseInt(clone.dataset.galleryLoopIndex, 10)),
+        leadingSpan: positionFor(realCards[0]) - positionFor(leading[0]),
+        trailingSpan: positionFor(trailing[0]) - positionFor(realCards[0]),
+        leftRunway: positionFor(leading[leading.length - 1]),
+        rightRunway: (element.scrollWidth - width) - positionFor(trailing[0])
+      };
+    }, item.card);
+    expect(structure.leadingIndexes).toEqual([...Array(cardCount).keys()]);
+    expect(structure.trailingIndexes).toEqual([...Array(cardCount).keys()]);
+    expect(Math.abs(structure.leadingSpan - (cardCount * structure.width))).toBeLessThanOrEqual(1);
+    expect(Math.abs(structure.trailingSpan - (cardCount * structure.width))).toBeLessThanOrEqual(1);
+    expect(structure.leftRunway).toBeGreaterThanOrEqual(((cardCount - 1) * structure.width) - 1);
+    expect(structure.rightRunway).toBeGreaterThanOrEqual(((cardCount - 1) * structure.width) - 1);
 
     await track.scrollIntoViewIfNeeded();
     const baseline = await page.evaluate(() => ({ y: scrollY }));
@@ -1848,79 +1883,178 @@ test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito"
     await expect.poll(async () => (await centeredReal()).realIndex).toBe(0);
     await expect.poll(async () => (await centeredReal()).distance).toBeLessThanOrEqual(1);
 
-    const moveToClone = async position => {
-      await track.evaluate((element, targetPosition) => {
-        const clones = element.querySelectorAll(":scope > .flavor-gallery-loop-card");
-        const clone = targetPosition === "trailing" ? clones[1] : clones[0];
-        const trackBox = element.getBoundingClientRect();
-        const cloneBox = clone.getBoundingClientRect();
-        element.scrollLeft += cloneBox.left - trackBox.left;
-        element.dispatchEvent(new Event("scrollend"));
-      }, position);
-    };
-
-    await moveToClone("trailing");
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
-    }).toBe(true);
-
-    await moveToClone("leading");
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
-    }).toBe(true);
-
-    await track.evaluate(element => {
-      element.dispatchEvent(new PointerEvent("pointerdown", {
-        pointerId: 73,
-        pointerType: "touch",
-        isPrimary: true,
-        button: 0,
-        buttons: 1,
-        bubbles: true
-      }));
-      element.dispatchEvent(new Event("touchstart", { bubbles: true }));
-      const trailingClone = element.querySelectorAll(":scope > .flavor-gallery-loop-card")[1];
+    const runBoundaryBurst = (direction, dispatchScrollEnd = true) => track.evaluate((element, options) => {
+      if (!options.dispatchScrollEnd) {
+        const blockScrollEnd = event => event.stopImmediatePropagation();
+        element._fontanaTestBlockScrollEnd = blockScrollEnd;
+        element.addEventListener("scrollend", blockScrollEnd, { capture: true });
+      }
+      const realCards = [...element.querySelectorAll(options.cardSelector)];
+      const leading = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="leading"]')];
+      const trailing = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="trailing"]')];
       const trackBox = element.getBoundingClientRect();
-      const cloneBox = trailingClone.getBoundingClientRect();
-      element.scrollLeft += cloneBox.left - trackBox.left;
-      element.dispatchEvent(new PointerEvent("pointercancel", {
-        pointerId: 73,
-        pointerType: "touch",
-        isPrimary: true,
-        bubbles: true
-      }));
-      element.dispatchEvent(new Event("scrollend"));
-    });
-    await page.waitForTimeout(220);
-    const firstBufferedClone = await centeredReal();
-    expect(firstBufferedClone.isReal).toBe(false);
-    expect(firstBufferedClone.loopIndex).toBe(0);
+      const positionFor = child => element.scrollLeft + child.getBoundingClientRect().left - trackBox.left;
+      const moveForSetup = child => {
+        const previousSnapType = element.style.scrollSnapType;
+        element.style.scrollSnapType = "none";
+        element.scrollLeft = positionFor(child);
+        void element.offsetWidth;
+        if (previousSnapType) element.style.scrollSnapType = previousSnapType;
+        else element.style.removeProperty("scroll-snap-type");
+      };
+      const begin = pointerId => {
+        element.dispatchEvent(new PointerEvent("pointerdown", {
+          pointerId,
+          pointerType: "touch",
+          isPrimary: true,
+          button: 0,
+          buttons: 1,
+          bubbles: true
+        }));
+        element.dispatchEvent(new Event("touchstart", { bubbles: true }));
+      };
+      const end = pointerId => {
+        element.dispatchEvent(new PointerEvent("pointerup", {
+          pointerId,
+          pointerType: "touch",
+          isPrimary: true,
+          button: 0,
+          buttons: 0,
+          bubbles: true
+        }));
+        element.dispatchEvent(new Event("touchend", { bubbles: true }));
+      };
+      const forward = options.direction === "forward";
+      const startCard = forward ? realCards[realCards.length - 1] : realCards[0];
+      const firstTarget = forward ? trailing[0] : leading[leading.length - 1];
+      const secondTarget = forward ? trailing[1] : leading[leading.length - 2];
+      moveForSetup(startCard);
+      const start = element.scrollLeft;
 
-    const recenteredOnRelease = await track.evaluate((element, cardSelector) => {
-      element.dispatchEvent(new Event("touchend", { bubbles: true }));
-      const trackBox = element.getBoundingClientRect();
+      begin(81);
+      const firstDown = element.scrollLeft;
+      element.scrollLeft = positionFor(firstTarget);
+      const firstMove = element.scrollLeft;
+      end(81);
+      const firstRelease = element.scrollLeft;
+
+      begin(82);
+      const secondDown = element.scrollLeft;
+      element.scrollLeft = positionFor(secondTarget);
+      const secondMove = element.scrollLeft;
+      end(82);
+      const secondRelease = element.scrollLeft;
+      const beforeSettle = element.scrollLeft;
+      if (options.dispatchScrollEnd) element.dispatchEvent(new Event("scrollend"));
+      const afterSettle = element.scrollLeft;
+
       const center = trackBox.left + (trackBox.width / 2);
-      const realCards = [...element.querySelectorAll(cardSelector)];
       const closest = [...element.children].reduce((best, child) => {
         const box = child.getBoundingClientRect();
         const distance = Math.abs((box.left + (box.width / 2)) - center);
         return !best || distance < best.distance ? { child, distance } : best;
       }, null);
       return {
-        isReal: closest?.child.matches(cardSelector) || false,
-        realIndex: realCards.indexOf(closest?.child),
-        distance: closest?.distance ?? Number.POSITIVE_INFINITY
+        width: element.clientWidth,
+        cycleSpan: positionFor(trailing[0]) - positionFor(realCards[0]),
+        start,
+        firstDown,
+        firstMove,
+        firstRelease,
+        secondDown,
+        secondMove,
+        secondRelease,
+        beforeSettle,
+        afterSettle,
+        centeredRealIndex: realCards.indexOf(closest?.child),
+        centeredDistance: closest?.distance ?? Number.POSITIVE_INFINITY
       };
-    }, item.card);
-    expect(recenteredOnRelease.isReal).toBe(true);
-    expect(recenteredOnRelease.realIndex).toBe(0);
-    expect(recenteredOnRelease.distance).toBeLessThanOrEqual(1);
+    }, { cardSelector: item.card, direction, dispatchScrollEnd });
 
+    const forward = await runBoundaryBurst("forward");
+    expect(Math.abs(forward.firstDown - forward.start)).toBeLessThanOrEqual(1);
+    expect(Math.abs((forward.firstMove - forward.start) - forward.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(forward.firstRelease - forward.firstMove)).toBeLessThanOrEqual(1);
+    expect(Math.abs(forward.secondDown - forward.firstRelease)).toBeLessThanOrEqual(1);
+    expect(Math.abs((forward.secondMove - forward.secondDown) - forward.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(forward.secondRelease - forward.secondMove)).toBeLessThanOrEqual(1);
+    expect(Math.abs(forward.beforeSettle - forward.secondRelease)).toBeLessThanOrEqual(1);
+    expect(Math.abs((forward.afterSettle - forward.beforeSettle) + forward.cycleSpan)).toBeLessThanOrEqual(1);
+    expect(forward.centeredRealIndex).toBe(1);
+    expect(forward.centeredDistance).toBeLessThanOrEqual(1);
+
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const reverse = await runBoundaryBurst("reverse", false);
+    expect(Math.abs(reverse.firstDown - reverse.start)).toBeLessThanOrEqual(1);
+    expect(Math.abs((reverse.firstMove - reverse.start) + reverse.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(reverse.firstRelease - reverse.firstMove)).toBeLessThanOrEqual(1);
+    expect(Math.abs(reverse.secondDown - reverse.firstRelease)).toBeLessThanOrEqual(1);
+    expect(Math.abs((reverse.secondMove - reverse.secondDown) + reverse.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(reverse.secondRelease - reverse.secondMove)).toBeLessThanOrEqual(1);
+    expect(Math.abs(reverse.beforeSettle - reverse.secondRelease)).toBeLessThanOrEqual(1);
+    expect(Math.abs(reverse.afterSettle - reverse.beforeSettle)).toBeLessThanOrEqual(1);
+    expect(reverse.centeredRealIndex).toBe(-1);
+    expect(reverse.centeredDistance).toBeLessThanOrEqual(1);
+
+    // Safari versions without scrollend use the silence fallback. It must
+    // recenter only after the gesture has settled, never on release.
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === lastIndex - 1 && centered.distance <= 1;
+    }).toBe(true);
+    await track.evaluate(element => {
+      if (!element._fontanaTestBlockScrollEnd) return;
+      element.removeEventListener("scrollend", element._fontanaTestBlockScrollEnd, { capture: true });
+      delete element._fontanaTestBlockScrollEnd;
+    });
+    await page.evaluate(() => new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+
+    // A resize can land during the two compositor frames that suppress the
+    // synthetic scroll produced by recentering. Force that exact overlap and
+    // require the same logical flavor to remain centered.
     await track.evaluate((element, cardSelector) => {
+      const realCards = [...element.querySelectorAll(cardSelector)];
+      const trailing = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="trailing"]')];
+      const trackBox = element.getBoundingClientRect();
+      const positionFor = child => element.scrollLeft + child.getBoundingClientRect().left - trackBox.left;
+      const previousSnapType = element.style.scrollSnapType;
+      element.style.scrollSnapType = "none";
+      element.scrollLeft = positionFor(realCards[realCards.length - 1]);
+      element.scrollLeft = positionFor(trailing[0]);
+      void element.offsetWidth;
+      if (previousSnapType) element.style.scrollSnapType = previousSnapType;
+      else element.style.removeProperty("scroll-snap-type");
+      element.dispatchEvent(new Event("scrollend"));
+      element.style.width = `${Math.max(1, element.clientWidth - 2)}px`;
+    }, item.card);
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
+    }).toBe(true);
+    await track.evaluate(element => element.style.removeProperty("width"));
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
+    }).toBe(true);
+
+    // Releasing on a boundary clone must update the logical flavor before a
+    // rotation. Otherwise ResizeObserver can return to the previously centered
+    // flavor during the 180 ms settle window.
+    const resizeRace = await track.evaluate((element, options) => {
+      const realCards = [...element.querySelectorAll(options.cardSelector)];
+      const trailing = [...element.querySelectorAll(':scope > [data-gallery-loop-copy="trailing"]')];
+      const trackBox = element.getBoundingClientRect();
+      const positionFor = child => element.scrollLeft + child.getBoundingClientRect().left - trackBox.left;
+      const previousSnapType = element.style.scrollSnapType;
+      element.style.scrollSnapType = "none";
+      element.scrollLeft = positionFor(realCards[realCards.length - 1]);
+      void element.offsetWidth;
+      if (previousSnapType) element.style.scrollSnapType = previousSnapType;
+      else element.style.removeProperty("scroll-snap-type");
       element.dispatchEvent(new PointerEvent("pointerdown", {
-        pointerId: 74,
+        pointerId: 91,
         pointerType: "touch",
         isPrimary: true,
         button: 0,
@@ -1928,93 +2062,69 @@ test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito"
         bubbles: true
       }));
       element.dispatchEvent(new Event("touchstart", { bubbles: true }));
-      const nextCard = element.querySelectorAll(cardSelector)[1];
-      const trackBox = element.getBoundingClientRect();
-      const cardBox = nextCard.getBoundingClientRect();
-      element.scrollLeft += cardBox.left - trackBox.left;
+      element.scrollLeft = positionFor(trailing[0]);
+      const moved = element.scrollLeft;
       element.dispatchEvent(new PointerEvent("pointerup", {
-        pointerId: 74,
-        pointerType: "touch",
-        isPrimary: true,
-        bubbles: true
-      }));
-      element.dispatchEvent(new Event("touchend", { bubbles: true }));
-      element.dispatchEvent(new Event("scrollend"));
-    }, item.card);
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === 1 && centered.distance <= 1;
-    }).toBe(true);
-
-    const preparedNearBoundary = await track.evaluate((element, cardSelector) => {
-      const trailingClone = element.querySelectorAll(":scope > .flavor-gallery-loop-card")[1];
-      const trackBox = element.getBoundingClientRect();
-      const cloneBox = trailingClone.getBoundingClientRect();
-      const clonePosition = element.scrollLeft + cloneBox.left - trackBox.left;
-      const previousSnapType = element.style.scrollSnapType;
-      element.style.scrollSnapType = "none";
-      element.scrollLeft = clonePosition - 12;
-      void element.offsetWidth;
-      const beforeDistance = Math.abs(
-        (trailingClone.getBoundingClientRect().left + trailingClone.getBoundingClientRect().width / 2)
-        - (trackBox.left + trackBox.width / 2)
-      );
-      const beforeScrollLeft = element.scrollLeft;
-      element.dispatchEvent(new PointerEvent("pointerdown", {
-        pointerId: 75,
+        pointerId: 91,
         pointerType: "touch",
         isPrimary: true,
         button: 0,
-        buttons: 1,
+        buttons: 0,
         bubbles: true
       }));
-      const firstReal = element.querySelectorAll(cardSelector)[0];
-      const afterDistance = Math.abs(
-        (firstReal.getBoundingClientRect().left + firstReal.getBoundingClientRect().width / 2)
-        - (trackBox.left + trackBox.width / 2)
-      );
-      const afterScrollLeft = element.scrollLeft;
-      if (previousSnapType) element.style.scrollSnapType = previousSnapType;
-      else element.style.removeProperty("scroll-snap-type");
-      element.dispatchEvent(new PointerEvent("pointerup", {
-        pointerId: 75,
-        pointerType: "touch",
-        isPrimary: true,
-        bubbles: true
-      }));
-      return {
-        beforeDistance,
-        afterDistance,
-        beforeScrollLeft,
-        afterScrollLeft,
-        width: element.clientWidth,
-        cardCount: element.querySelectorAll(cardSelector).length
-      };
-    }, item.card);
-    expect(Math.abs(preparedNearBoundary.beforeDistance - 12)).toBeLessThanOrEqual(1);
-    expect(Math.abs(preparedNearBoundary.afterDistance - 12)).toBeLessThanOrEqual(1);
-    expect(Math.abs(
-      preparedNearBoundary.beforeScrollLeft
-      - preparedNearBoundary.afterScrollLeft
-      - (preparedNearBoundary.cardCount * preparedNearBoundary.width)
-    )).toBeLessThanOrEqual(1);
+      element.dispatchEvent(new Event("touchend", { bubbles: true }));
+      return { moved, released: element.scrollLeft };
+    }, { cardSelector: item.card });
+    expect(Math.abs(resizeRace.released - resizeRace.moved)).toBeLessThanOrEqual(1);
 
-    await moveToClone("leading");
-    await expect.poll(async () => {
-      const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
-    }).toBe(true);
+    await track.evaluate(element => {
+      const initialWidth = element.clientWidth;
+      window.__fontanaGalleryResizeSnapshot = null;
+      const observer = new ResizeObserver(() => {
+        if (element.clientWidth === initialWidth) return;
+        requestAnimationFrame(() => {
+          const trackBox = element.getBoundingClientRect();
+          const center = trackBox.left + (trackBox.width / 2);
+          const realCards = [...element.querySelectorAll(".fonkie-gallery-card,.builder-gallery-card")];
+          const closest = [...element.children].reduce((best, child) => {
+            const box = child.getBoundingClientRect();
+            const distance = Math.abs((box.left + (box.width / 2)) - center);
+            return !best || distance < best.distance ? { child, distance } : best;
+          }, null);
+          window.__fontanaGalleryResizeSnapshot = {
+            isReal: closest?.child.matches(".fonkie-gallery-card,.builder-gallery-card") || false,
+            realIndex: realCards.indexOf(closest?.child),
+            distance: closest?.distance ?? Number.POSITIVE_INFINITY
+          };
+          observer.disconnect();
+        });
+      });
+      observer.observe(element);
+    });
 
     await page.setViewportSize({ width: 430, height: 844 });
+    await expect.poll(() => page.evaluate(() => window.__fontanaGalleryResizeSnapshot)).not.toBeNull();
+    const resizeSnapshot = await page.evaluate(() => window.__fontanaGalleryResizeSnapshot);
+    expect(resizeSnapshot.isReal).toBe(true);
+    expect(resizeSnapshot.realIndex).toBe(0);
+    expect(resizeSnapshot.distance).toBeLessThanOrEqual(1);
     await expect.poll(async () => {
       const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
+      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
     }).toBe(true);
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(async () => {
       const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
+      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
     }).toBe(true);
+
+    const expectedFlavor = (await cards.first().locator("span").textContent())?.trim() || "";
+    await cards.first().click();
+    const overlay = page.locator(".builder-flavor-flip-card");
+    await expect(overlay).toHaveAttribute("data-flavor", expectedFlavor);
+    await expect(overlay.locator(".builder-flavor-swipe-cue")).toBeVisible({ timeout: 2000 });
+    await overlay.locator(".builder-flavor-expanded-media").click({ position: { x: 120, y: 120 } });
+    await expect(overlay).toHaveCount(0, { timeout: 2000 });
 
     const after = await page.evaluate(() => ({ y: scrollY }));
     const afterTrackTop = await track.evaluate(element => element.getBoundingClientRect().top);
