@@ -81,10 +81,10 @@ async function resumePhysicalCardTurn(locator) {
   });
 }
 
-async function swipeExpandedFlavor(page, direction) {
-  const media = page.locator(".builder-flavor-expanded-media");
-  await expect(media).toBeVisible();
-  await media.evaluate((element, swipeDirection) => {
+async function swipeExpandedFlavor(page, direction, targetSelector = ".builder-flavor-expanded-media") {
+  const target = page.locator(targetSelector);
+  await expect(target).toBeVisible();
+  await target.evaluate((element, swipeDirection) => {
     const box = element.getBoundingClientRect();
     const y = box.top + (box.height * .48);
     const startX = swipeDirection === "left" ? box.left + (box.width * .78) : box.left + (box.width * .22);
@@ -680,69 +680,58 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     const overlay = page.locator(".builder-flavor-flip-card");
     await expect(overlay).toBeVisible();
 
-    const previousFlavor = overlay.locator(".builder-flavor-nav-button--previous");
-    const nextFlavor = overlay.locator(".builder-flavor-nav-button--next");
-    await expect(previousFlavor).toBeVisible();
-    await expect(nextFlavor).toBeVisible();
-    await expect(previousFlavor).toBeEnabled();
-    await expect(nextFlavor).toBeEnabled();
-    await expect(previousFlavor).toHaveText("‹");
-    await expect(nextFlavor).toHaveText("›");
+    const swipeCue = overlay.locator(".builder-flavor-swipe-cue");
+    await expect(swipeCue).toBeVisible();
+    await expect(overlay.locator(".builder-flavor-nav")).toHaveCount(0);
+    await expect(swipeCue).toHaveAttribute("role", "slider");
+    await expect(swipeCue).toHaveAttribute("aria-valuemin", "1");
+    await expect(swipeCue).toHaveAttribute("aria-valuemax", String(names.length));
+    await expect(swipeCue).toHaveAttribute("aria-valuenow", "1");
+    await expect(swipeCue).not.toHaveClass(/builder-flavor-swipe-cue--used/);
+    await expect(swipeCue.locator(".builder-flavor-swipe-word")).toHaveText("Desliza");
+    await expect(overlay).toHaveAttribute("aria-describedby", "builder-flavor-swipe-instructions");
+    await expect(overlay.locator("#builder-flavor-swipe-instructions")).toContainText("Desliza horizontalmente");
     const initialBox = await overlay.boundingBox();
-    await expect(previousFlavor).toHaveAttribute("aria-label", new RegExp(names.at(-1)));
-    await expect(nextFlavor).toHaveAttribute("aria-label", new RegExp(names[1]));
-    const navigationLayout = await overlay.evaluate(element => {
+    const cueLayout = await overlay.evaluate(element => {
       const media = element.querySelector(".builder-flavor-expanded-media").getBoundingClientRect();
-      const buttons = [...element.querySelectorAll(".builder-flavor-nav-button")].map(button => {
-        const hitbox = button.getBoundingClientRect();
-        const span = button.querySelector("span");
-        const visual = span.getBoundingClientRect();
-        const accent = getComputedStyle(span, "::after");
-        return {
-          hitbox,
-          visual,
-          background: getComputedStyle(button).backgroundColor,
-          visualBackground: getComputedStyle(span).backgroundColor,
-          accentColor: accent.backgroundColor,
-          accentWidth: accent.width,
-          edgeDistance: button.classList.contains("builder-flavor-nav-button--previous")
-            ? visual.left - media.left
-            : media.right - visual.right
-        };
-      });
+      const details = element.querySelector(".builder-flavor-expanded-details").getBoundingClientRect();
+      const cue = element.querySelector(".builder-flavor-swipe-cue");
+      const hitbox = cue.getBoundingClientRect();
+      const dock = cue.querySelector(".builder-flavor-swipe-dock").getBoundingClientRect();
       return {
         media,
-        buttons: buttons.map(({ hitbox, visual, background, visualBackground, accentColor, accentWidth, edgeDistance }) => ({
-          width: hitbox.width,
-          height: hitbox.height,
-          visualWidth: visual.width,
-          visualHeight: visual.height,
-          background,
-          visualBackground,
-          accentColor,
-          accentWidth,
-          edgeDistance,
-          inside: hitbox.left >= media.left && hitbox.right <= media.right
-            && hitbox.top >= media.top && hitbox.bottom <= media.bottom
-        }))
+        details,
+        width: hitbox.width,
+        height: hitbox.height,
+        dockWidth: dock.width,
+        dockHeight: dock.height,
+        topOverlap: media.bottom - hitbox.top,
+        bottomOverlap: hitbox.bottom - details.top,
+        centered: Math.abs((hitbox.left + hitbox.width / 2) - (media.left + media.width / 2)),
+        pointerEvents: getComputedStyle(cue).pointerEvents,
+        background: getComputedStyle(cue.querySelector(".builder-flavor-swipe-dock")).backgroundColor,
+        borderColor: getComputedStyle(cue.querySelector(".builder-flavor-swipe-dock")).borderColor,
+        accentColor: getComputedStyle(cue.querySelector(".builder-flavor-swipe-glider")).backgroundColor
       };
     });
-    for (const button of navigationLayout.buttons) {
-      expect(button.width).toBeGreaterThanOrEqual(44);
-      expect(button.height).toBeGreaterThanOrEqual(51.5);
-      expect(button.visualWidth).toBeGreaterThanOrEqual(21.5);
-      expect(button.visualWidth).toBeLessThanOrEqual(22.5);
-      expect(button.visualHeight).toBeGreaterThanOrEqual(41.5);
-      expect(button.visualHeight).toBeLessThanOrEqual(42.5);
-      expect(button.background).toBe("rgba(0, 0, 0, 0)");
-      expect(button.visualBackground).toBe("rgba(79, 22, 81, 0.88)");
-      expect(button.accentColor).toBe("rgb(184, 205, 105)");
-      expect(Number.parseFloat(button.accentWidth)).toBeCloseTo(2, 1);
-      expect(Math.abs(button.edgeDistance)).toBeLessThanOrEqual(.5);
-      expect(button.inside).toBe(true);
-    }
+    expect(cueLayout.width).toBeGreaterThanOrEqual(157.5);
+    expect(cueLayout.width).toBeLessThanOrEqual(158.5);
+    expect(cueLayout.height).toBeGreaterThanOrEqual(43.5);
+    expect(cueLayout.height).toBeLessThanOrEqual(44.5);
+    expect(cueLayout.dockWidth).toBeGreaterThanOrEqual(157.5);
+    expect(cueLayout.dockWidth).toBeLessThanOrEqual(158.5);
+    expect(cueLayout.dockHeight).toBeGreaterThanOrEqual(33.5);
+    expect(cueLayout.dockHeight).toBeLessThanOrEqual(34.5);
+    expect(Math.abs(cueLayout.topOverlap - 22)).toBeLessThanOrEqual(2.5);
+    expect(Math.abs(cueLayout.bottomOverlap - 22)).toBeLessThanOrEqual(2.5);
+    expect(cueLayout.centered).toBeLessThanOrEqual(.5);
+    expect(cueLayout.pointerEvents).toBe("auto");
+    expect(cueLayout.background).toBe("rgba(79, 22, 81, 0.94)");
+    expect(cueLayout.borderColor).toBe("rgba(184, 205, 105, 0.72)");
+    expect(cueLayout.accentColor).toBe("rgb(184, 205, 105)");
 
-    await nextFlavor.click();
+    await swipeExpandedFlavor(page, "left", ".builder-flavor-swipe-cue");
+    await expect(swipeCue).toHaveAttribute("aria-busy", "true");
     const switchingFace = overlay.locator(".builder-flavor-flip-back");
     await expect.poll(() => switchingFace.evaluate(element => element.getAnimations()
       .filter(animation => animation.effect?.target === element)
@@ -753,16 +742,23 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
       }))).toBe(true);
     await expect(overlay.locator("h3")).toHaveText(names[1], { timeout: 900 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
-    await previousFlavor.click();
+    await expect(swipeCue).toHaveAttribute("aria-busy", "false");
+    await expect(swipeCue).toHaveAttribute("aria-disabled", "false");
+    await expect(swipeCue).toHaveClass(/builder-flavor-swipe-cue--used/);
+    await expect(swipeCue.locator(".builder-flavor-swipe-counter")).toHaveText(`2 / ${names.length}`);
+    await expect(swipeCue).toHaveAttribute("aria-valuenow", "2");
+    await expect(swipeCue).toHaveAttribute("aria-valuetext", `${names[1]}, sabor 2 de ${names.length}`);
+    await page.keyboard.press("ArrowLeft");
     await expect(overlay.locator("h3")).toHaveText(names[0], { timeout: 900 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+    await expect(swipeCue.locator(".builder-flavor-swipe-counter")).toHaveText(`1 / ${names.length}`);
 
-    const nextHitbox = await nextFlavor.boundingBox();
-    await page.mouse.move(nextHitbox.x + (nextHitbox.width / 2), nextHitbox.y + (nextHitbox.height / 2));
+    const cueHitbox = await swipeCue.boundingBox();
+    await page.mouse.move(cueHitbox.x + (cueHitbox.width / 2), cueHitbox.y + (cueHitbox.height / 2));
     await page.mouse.down();
     await page.mouse.move(
-      navigationLayout.media.left + (navigationLayout.media.width * .3),
-      nextHitbox.y + (nextHitbox.height / 2),
+      cueLayout.media.left + (cueLayout.media.width * .3),
+      cueHitbox.y + (cueHitbox.height / 2),
       { steps: 6 }
     );
     await page.mouse.up();
@@ -806,37 +802,57 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
   await desktopSource.click();
   const desktopOverlay = page.locator(".builder-flavor-flip-card");
   await page.waitForTimeout(920);
-  const desktopNames = await page.locator(".fonkie-gallery-card").evaluateAll(elements => elements.map(element => element.dataset.flavor
+  const desktopNames = await page.locator(".fonkie-gallery-track > .fonkie-gallery-card").evaluateAll(elements => elements.map(element => element.dataset.flavor
     || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
+  const desktopMedia = desktopOverlay.locator(".builder-flavor-expanded-media");
+  const desktopSwipeCue = desktopOverlay.locator(".builder-flavor-swipe-cue");
+  await expect(desktopSwipeCue).toBeVisible();
+  await expect(desktopOverlay.locator(".builder-flavor-nav")).toHaveCount(0);
+  await expect(desktopOverlay).toHaveAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight");
+  await expect(desktopSwipeCue).toHaveAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight ArrowUp ArrowDown Home End");
+  const desktopCueLayout = await desktopSwipeCue.evaluate(element => {
+    const hitbox = element.getBoundingClientRect();
+    const dock = element.querySelector(".builder-flavor-swipe-dock").getBoundingClientRect();
+    return { width: hitbox.width, height: hitbox.height, dockWidth: dock.width, dockHeight: dock.height };
+  });
+  expect(desktopCueLayout.width).toBeGreaterThanOrEqual(163.5);
+  expect(desktopCueLayout.width).toBeLessThanOrEqual(164.5);
+  expect(desktopCueLayout.height).toBeGreaterThanOrEqual(47.5);
+  expect(desktopCueLayout.height).toBeLessThanOrEqual(48.5);
+  expect(desktopCueLayout.dockWidth).toBeGreaterThanOrEqual(163.5);
+  expect(desktopCueLayout.dockHeight).toBeGreaterThanOrEqual(33.5);
+  expect(desktopCueLayout.dockHeight).toBeLessThanOrEqual(34.5);
   await page.keyboard.press("ArrowRight");
   await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[1], { timeout: 900 });
+  await desktopOverlay.locator(".builder-flavor-choose").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[1]);
   await page.keyboard.press("ArrowLeft");
   await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[0], { timeout: 900 });
   await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
-  const desktopMedia = desktopOverlay.locator(".builder-flavor-expanded-media");
-  const desktopPreviousFlavor = desktopOverlay.locator(".builder-flavor-nav-button--previous");
-  const desktopNextFlavor = desktopOverlay.locator(".builder-flavor-nav-button--next");
-  await expect(desktopPreviousFlavor).toBeVisible();
-  await expect(desktopNextFlavor).toBeVisible();
-  const desktopArrowVisuals = await desktopOverlay.locator(".builder-flavor-nav-button span").evaluateAll(elements => elements.map(element => {
-    const box = element.getBoundingClientRect();
-    return { width: box.width, height: box.height };
-  }));
-  for (const visual of desktopArrowVisuals) {
-    expect(visual.width).toBeGreaterThanOrEqual(21.5);
-    expect(visual.width).toBeLessThanOrEqual(22.5);
-    expect(visual.height).toBeGreaterThanOrEqual(41.5);
-    expect(visual.height).toBeLessThanOrEqual(42.5);
-  }
-  await desktopPreviousFlavor.focus();
-  await desktopPreviousFlavor.press("Enter");
+  await expect(desktopSwipeCue).toHaveClass(/builder-flavor-swipe-cue--used/);
+  await expect(desktopSwipeCue.locator(".builder-flavor-swipe-counter")).toHaveText(`1 / ${desktopNames.length}`);
+  await desktopSwipeCue.focus();
+  await desktopSwipeCue.press("End");
   await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[desktopNames.length - 1], { timeout: 900 });
   await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
-  await expect(desktopPreviousFlavor).toBeFocused();
-  await desktopNextFlavor.press("Enter");
+  await desktopSwipeCue.press("Home");
   await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[0], { timeout: 900 });
   await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
-  await expect(desktopNextFlavor).toBeFocused();
+  await desktopSwipeCue.press("ArrowUp");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[1], { timeout: 900 });
+  await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+  await desktopSwipeCue.press("ArrowDown");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[0], { timeout: 900 });
+  await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+  await desktopSwipeCue.press("ArrowLeft");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[desktopNames.length - 1], { timeout: 900 });
+  await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+  await expect(desktopSwipeCue).toBeFocused();
+  await desktopSwipeCue.press("ArrowRight");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[0], { timeout: 900 });
+  await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+  await expect(desktopSwipeCue).toBeFocused();
   const mediaBox = await desktopMedia.boundingBox();
   await page.mouse.move(mediaBox.x + (mediaBox.width * .82), mediaBox.y + (mediaBox.height * .5));
   await page.mouse.down();
@@ -1041,11 +1057,14 @@ test("Fonkies y Fomb respetan movimiento reducido sin animaciones residuales", a
     await expect(overlay).toBeVisible();
     expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
     await expect(overlay.locator(".builder-flavor-flip-back")).toBeVisible();
-    const nextFlavor = overlay.locator(".builder-flavor-nav-button--next");
-    await nextFlavor.focus();
-    await nextFlavor.press("Enter");
+    const swipeCue = overlay.locator(".builder-flavor-swipe-cue");
+    await expect(swipeCue).toBeVisible();
+    await swipeCue.focus();
+    await swipeCue.press("ArrowRight");
     await expect(overlay.locator("h3")).toHaveText(names[1]);
-    await expect(nextFlavor).toBeFocused();
+    await expect(swipeCue).toBeFocused();
+    await expect(swipeCue).toHaveClass(/builder-flavor-swipe-cue--used/);
+    await expect(swipeCue.locator(".builder-flavor-swipe-counter")).toHaveText(`2 / ${names.length}`);
     expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
     await swipeExpandedFlavor(page, "right");
     await expect(overlay.locator("h3")).toHaveText(names[0]);
@@ -1704,9 +1723,11 @@ test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito"
     const cards = track.locator(item.card);
     const clones = track.locator(":scope > .flavor-gallery-loop-card");
     await expect(track).toHaveAttribute("data-gallery-loop", "true");
+    const cardCount = await cards.count();
+    const lastIndex = cardCount - 1;
+    expect(cardCount).toBeGreaterThan(1);
     await expect(clones).toHaveCount(2);
-    expect(await cards.count()).toBeGreaterThan(1);
-    await expect(track.getByRole("button", { name: /Ver detalles de/ })).toHaveCount(await cards.count());
+    await expect(track.getByRole("button", { name: /Ver detalles de/ })).toHaveCount(cardCount);
     const cloneAccessibility = await clones.evaluateAll(elements => elements.map(element => ({
       ariaHidden: element.getAttribute("aria-hidden"),
       inert: element.hasAttribute("inert"),
@@ -1735,6 +1756,7 @@ test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito"
       return {
         isReal: closest?.child.matches(cardSelector) || false,
         realIndex: realCards.indexOf(closest?.child),
+        loopIndex: Number.parseInt(closest?.child.dataset.galleryLoopIndex || "", 10),
         distance: closest?.distance ?? Number.POSITIVE_INFINITY,
         scrollLeft: element.scrollLeft,
         width: element.clientWidth
@@ -1762,7 +1784,6 @@ test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito"
     }).toBe(true);
 
     await moveToClone("leading");
-    const lastIndex = (await cards.count()) - 1;
     await expect.poll(async () => {
       const centered = await centeredReal();
       return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
@@ -1791,12 +1812,110 @@ test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito"
       element.dispatchEvent(new Event("scrollend"));
     });
     await page.waitForTimeout(220);
-    expect((await centeredReal()).isReal).toBe(false);
-    await track.evaluate(element => element.dispatchEvent(new Event("touchend", { bubbles: true })));
+    const firstBufferedClone = await centeredReal();
+    expect(firstBufferedClone.isReal).toBe(false);
+    expect(firstBufferedClone.loopIndex).toBe(0);
+
+    const recenteredOnRelease = await track.evaluate((element, cardSelector) => {
+      element.dispatchEvent(new Event("touchend", { bubbles: true }));
+      const trackBox = element.getBoundingClientRect();
+      const center = trackBox.left + (trackBox.width / 2);
+      const realCards = [...element.querySelectorAll(cardSelector)];
+      const closest = [...element.children].reduce((best, child) => {
+        const box = child.getBoundingClientRect();
+        const distance = Math.abs((box.left + (box.width / 2)) - center);
+        return !best || distance < best.distance ? { child, distance } : best;
+      }, null);
+      return {
+        isReal: closest?.child.matches(cardSelector) || false,
+        realIndex: realCards.indexOf(closest?.child),
+        distance: closest?.distance ?? Number.POSITIVE_INFINITY
+      };
+    }, item.card);
+    expect(recenteredOnRelease.isReal).toBe(true);
+    expect(recenteredOnRelease.realIndex).toBe(0);
+    expect(recenteredOnRelease.distance).toBeLessThanOrEqual(1);
+
+    await track.evaluate((element, cardSelector) => {
+      element.dispatchEvent(new PointerEvent("pointerdown", {
+        pointerId: 74,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons: 1,
+        bubbles: true
+      }));
+      element.dispatchEvent(new Event("touchstart", { bubbles: true }));
+      const nextCard = element.querySelectorAll(cardSelector)[1];
+      const trackBox = element.getBoundingClientRect();
+      const cardBox = nextCard.getBoundingClientRect();
+      element.scrollLeft += cardBox.left - trackBox.left;
+      element.dispatchEvent(new PointerEvent("pointerup", {
+        pointerId: 74,
+        pointerType: "touch",
+        isPrimary: true,
+        bubbles: true
+      }));
+      element.dispatchEvent(new Event("touchend", { bubbles: true }));
+      element.dispatchEvent(new Event("scrollend"));
+    }, item.card);
     await expect.poll(async () => {
       const centered = await centeredReal();
-      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
+      return centered.isReal && centered.realIndex === 1 && centered.distance <= 1;
     }).toBe(true);
+
+    const preparedNearBoundary = await track.evaluate((element, cardSelector) => {
+      const trailingClone = element.querySelectorAll(":scope > .flavor-gallery-loop-card")[1];
+      const trackBox = element.getBoundingClientRect();
+      const cloneBox = trailingClone.getBoundingClientRect();
+      const clonePosition = element.scrollLeft + cloneBox.left - trackBox.left;
+      const previousSnapType = element.style.scrollSnapType;
+      element.style.scrollSnapType = "none";
+      element.scrollLeft = clonePosition - 12;
+      void element.offsetWidth;
+      const beforeDistance = Math.abs(
+        (trailingClone.getBoundingClientRect().left + trailingClone.getBoundingClientRect().width / 2)
+        - (trackBox.left + trackBox.width / 2)
+      );
+      const beforeScrollLeft = element.scrollLeft;
+      element.dispatchEvent(new PointerEvent("pointerdown", {
+        pointerId: 75,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons: 1,
+        bubbles: true
+      }));
+      const firstReal = element.querySelectorAll(cardSelector)[0];
+      const afterDistance = Math.abs(
+        (firstReal.getBoundingClientRect().left + firstReal.getBoundingClientRect().width / 2)
+        - (trackBox.left + trackBox.width / 2)
+      );
+      const afterScrollLeft = element.scrollLeft;
+      if (previousSnapType) element.style.scrollSnapType = previousSnapType;
+      else element.style.removeProperty("scroll-snap-type");
+      element.dispatchEvent(new PointerEvent("pointerup", {
+        pointerId: 75,
+        pointerType: "touch",
+        isPrimary: true,
+        bubbles: true
+      }));
+      return {
+        beforeDistance,
+        afterDistance,
+        beforeScrollLeft,
+        afterScrollLeft,
+        width: element.clientWidth,
+        cardCount: element.querySelectorAll(cardSelector).length
+      };
+    }, item.card);
+    expect(Math.abs(preparedNearBoundary.beforeDistance - 12)).toBeLessThanOrEqual(1);
+    expect(Math.abs(preparedNearBoundary.afterDistance - 12)).toBeLessThanOrEqual(1);
+    expect(Math.abs(
+      preparedNearBoundary.beforeScrollLeft
+      - preparedNearBoundary.afterScrollLeft
+      - (preparedNearBoundary.cardCount * preparedNearBoundary.width)
+    )).toBeLessThanOrEqual(1);
 
     await moveToClone("leading");
     await expect.poll(async () => {

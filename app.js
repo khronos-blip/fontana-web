@@ -1035,20 +1035,48 @@
         + card.getBoundingClientRect().left
         - track.getBoundingClientRect().left;
 
-      const moveInstantly = (card, index) => {
-        if (!card || track.clientWidth <= 0) return;
+      const moveToPositionInstantly = (position, index) => {
+        if (!Number.isFinite(position) || track.clientWidth <= 0) return;
         const previousSnapType = track.style.scrollSnapType;
         const previousBehavior = track.style.scrollBehavior;
         suppressNormalizationUntil = performance.now() + 80;
         track.style.scrollSnapType = "none";
         track.style.scrollBehavior = "auto";
-        track.scrollLeft = scrollPositionFor(card);
+        track.scrollLeft = position;
         void track.offsetWidth;
         if (previousSnapType) track.style.scrollSnapType = previousSnapType;
         else track.style.removeProperty("scroll-snap-type");
         if (previousBehavior) track.style.scrollBehavior = previousBehavior;
         else track.style.removeProperty("scroll-behavior");
         logicalIndex = index;
+      };
+
+      const moveInstantly = (card, index) => {
+        if (!card) return;
+        moveToPositionInstantly(scrollPositionFor(card), index);
+      };
+
+      const recenterBoundaryClone = (tolerance = 3) => {
+        if (track.clientWidth <= 0) return false;
+        const maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+        const current = Math.min(maxScrollLeft, Math.max(0, track.scrollLeft));
+        const boundaries = [
+          { clone: leadingClone, card: cards[cards.length - 1], index: cards.length - 1 },
+          { clone: trailingClone, card: cards[0], index: 0 }
+        ];
+        const boundary = boundaries
+          .map(item => ({ ...item, clonePosition: scrollPositionFor(item.clone) }))
+          .find(item => Math.abs(current - item.clonePosition) <= tolerance);
+        if (!boundary) return false;
+        const offsetFromClone = current - boundary.clonePosition;
+        moveToPositionInstantly(scrollPositionFor(boundary.card) + offsetFromClone, boundary.index);
+        return true;
+      };
+
+      const prepareInteraction = () => {
+        window.clearTimeout(settleTimer);
+        settleTimer = 0;
+        recenterBoundaryClone(track.clientWidth * .45);
       };
 
       const scheduleNormalization = (delay = 140) => {
@@ -1063,17 +1091,8 @@
           return;
         }
         const width = track.clientWidth;
+        if (recenterBoundaryClone(width * .45)) return;
         const current = track.scrollLeft;
-        const leadingPosition = scrollPositionFor(leadingClone);
-        const trailingPosition = scrollPositionFor(trailingClone);
-        if (Math.abs(current - leadingPosition) <= width * .45) {
-          moveInstantly(cards[cards.length - 1], cards.length - 1);
-          return;
-        }
-        if (Math.abs(current - trailingPosition) <= width * .45) {
-          moveInstantly(cards[0], 0);
-          return;
-        }
         let nearestDistance = Number.POSITIVE_INFINITY;
         cards.forEach((card, index) => {
           const distance = Math.abs(current - scrollPositionFor(card));
@@ -1086,22 +1105,27 @@
 
       track.addEventListener("scroll", () => scheduleNormalization(), { passive: true, signal });
       track.addEventListener("scrollend", normalizePosition, { signal });
+      track.addEventListener("wheel", prepareInteraction, { passive: true, signal });
       let activePointerId = null;
       track.addEventListener("pointerdown", event => {
+        prepareInteraction();
         pointerInteracting = true;
         activePointerId = event.pointerId;
       }, { passive: true, signal });
-      track.addEventListener("touchstart", () => { touchInteracting = true; }, { passive: true, signal });
+      track.addEventListener("touchstart", () => {
+        prepareInteraction();
+        touchInteracting = true;
+      }, { passive: true, signal });
       const finishPointerInteraction = event => {
         if (!pointerInteracting || (activePointerId !== null && event.pointerId !== activePointerId)) return;
         pointerInteracting = false;
         activePointerId = null;
-        if (!touchInteracting) scheduleNormalization(40);
+        if (!touchInteracting && !recenterBoundaryClone(track.clientWidth * .45)) scheduleNormalization(40);
       };
       const finishTouchInteraction = () => {
         if (!touchInteracting) return;
         touchInteracting = false;
-        if (!pointerInteracting) scheduleNormalization(40);
+        if (!pointerInteracting && !recenterBoundaryClone(track.clientWidth * .45)) scheduleNormalization(40);
       };
       document.addEventListener("pointerup", finishPointerInteraction, { capture: true, passive: true, signal });
       document.addEventListener("pointercancel", finishPointerInteraction, { capture: true, passive: true, signal });
@@ -1184,18 +1208,21 @@
       });
     };
 
-    const syncFlavorNavigation = state => {
-      if (!state.navigation) return;
+    const syncFlavorCue = state => {
+      if (!state.swipeCue) return;
       const hasMultipleFlavors = state.cards.length > 1;
-      state.navigation.hidden = !state.ready || state.closing || !hasMultipleFlavors;
-      const disabled = !state.ready || state.closing || state.switching || state.choose.disabled || !hasMultipleFlavors;
-      state.previousFlavor.disabled = disabled;
-      state.nextFlavor.disabled = disabled;
-      if (!hasMultipleFlavors) return;
-      const previousIndex = (state.currentIndex - 1 + state.cards.length) % state.cards.length;
-      const nextIndex = (state.currentIndex + 1) % state.cards.length;
-      state.previousFlavor.setAttribute("aria-label", `Ver sabor anterior: ${flavorName(state.cards[previousIndex])}`);
-      state.nextFlavor.setAttribute("aria-label", `Ver sabor siguiente: ${flavorName(state.cards[nextIndex])}`);
+      const visible = state.ready && !state.closing && hasMultipleFlavors;
+      state.swipeCue.hidden = !visible;
+      state.swipeCue.tabIndex = visible ? 0 : -1;
+      state.swipeCue.classList.toggle("builder-flavor-swipe-cue--ready", visible);
+      state.swipeCue.classList.toggle("builder-flavor-swipe-cue--used", state.swipeCueUsed);
+      state.swipeCue.classList.toggle("builder-flavor-swipe-cue--busy", state.switching || state.choose.disabled);
+      state.swipeCue.setAttribute("aria-busy", String(state.switching));
+      state.swipeCue.setAttribute("aria-disabled", String(state.choose.disabled || state.closing));
+      state.swipeCueCounter.textContent = `${state.currentIndex + 1} / ${state.cards.length}`;
+      state.swipeCue.setAttribute("aria-valuemax", String(Math.max(1, state.cards.length)));
+      state.swipeCue.setAttribute("aria-valuenow", String(state.currentIndex + 1));
+      state.swipeCue.setAttribute("aria-valuetext", `${state.currentName}, sabor ${state.currentIndex + 1} de ${state.cards.length}`);
     };
 
     const renderFlavor = (state, card) => {
@@ -1217,7 +1244,7 @@
       state.overlay.setAttribute("aria-label", `${state.kind === "fonkies" ? "Fonkie" : "Fomb"} ${nextName}`);
       state.media.setAttribute("aria-label", `Cerrar detalles de ${nextName}`);
       state.liveStatus.textContent = `${nextName}, sabor ${state.currentIndex + 1} de ${state.cards.length}`;
-      syncFlavorNavigation(state);
+      syncFlavorCue(state);
       warmAdjacentFlavorImages(state);
     };
 
@@ -1250,7 +1277,7 @@
         return;
       }
       state.closing = true;
-      syncFlavorNavigation(state);
+      syncFlavorCue(state);
       state.overlay.classList.add("builder-flavor-flip-closing");
       if (
         immediate
@@ -1283,12 +1310,10 @@
         state.pendingDirections.push(direction);
         return;
       }
-      const navigationFocus = state.navigation?.contains(document.activeElement)
-        ? document.activeElement
-        : null;
+      if (!state.swipeCueUsed) state.swipeCueUsed = true;
       state.switching = true;
       state.overlay.classList.add("builder-flavor-switching");
-      syncFlavorNavigation(state);
+      syncFlavorCue(state);
       const nextIndex = (state.currentIndex + direction + state.cards.length) % state.cards.length;
       const nextCard = state.cards[nextIndex];
       await preloadFlavorImage(nextCard);
@@ -1351,8 +1376,7 @@
           close(immediate);
           return;
         }
-        syncFlavorNavigation(state);
-        if (navigationFocus?.isConnected) navigationFocus.focus({ preventScroll: true });
+        syncFlavorCue(state);
         const pendingDirection = state.pendingDirections.shift();
         if (pendingDirection) switchFlavor(pendingDirection);
       }
@@ -1448,30 +1472,41 @@
       media.setAttribute("aria-label", `Cerrar detalles de ${name}`);
       const backImage = image.cloneNode(true);
       media.append(backImage);
-      const navigation = document.createElement("div");
-      navigation.className = "builder-flavor-nav";
-      navigation.hidden = true;
-      navigation.setAttribute("role", "group");
-      navigation.setAttribute("aria-label", "Cambiar sabor");
-      const previousFlavor = document.createElement("button");
-      previousFlavor.type = "button";
-      previousFlavor.className = "builder-flavor-nav-button builder-flavor-nav-button--previous";
-      previousFlavor.disabled = true;
-      previousFlavor.setAttribute("aria-label", "Ver sabor anterior");
-      const previousArrow = document.createElement("span");
-      previousArrow.setAttribute("aria-hidden", "true");
-      previousArrow.textContent = "‹";
-      previousFlavor.append(previousArrow);
-      const nextFlavor = document.createElement("button");
-      nextFlavor.type = "button";
-      nextFlavor.className = "builder-flavor-nav-button builder-flavor-nav-button--next";
-      nextFlavor.disabled = true;
-      nextFlavor.setAttribute("aria-label", "Ver sabor siguiente");
-      const nextArrow = document.createElement("span");
-      nextArrow.setAttribute("aria-hidden", "true");
-      nextArrow.textContent = "›";
-      nextFlavor.append(nextArrow);
-      navigation.append(previousFlavor, nextFlavor);
+      const swipeCue = document.createElement("div");
+      swipeCue.className = "builder-flavor-swipe-cue";
+      swipeCue.hidden = true;
+      swipeCue.tabIndex = -1;
+      swipeCue.setAttribute("role", "slider");
+      swipeCue.setAttribute("aria-label", "Cambiar sabor");
+      swipeCue.setAttribute("aria-orientation", "horizontal");
+      swipeCue.setAttribute("aria-valuemin", "1");
+      swipeCue.setAttribute("aria-valuemax", "1");
+      swipeCue.setAttribute("aria-valuenow", "1");
+      const swipeCueDock = document.createElement("span");
+      swipeCueDock.className = "builder-flavor-swipe-dock";
+      swipeCueDock.setAttribute("aria-hidden", "true");
+      const swipeCueIntro = document.createElement("span");
+      swipeCueIntro.className = "builder-flavor-swipe-intro";
+      const swipeCueWord = document.createElement("span");
+      swipeCueWord.className = "builder-flavor-swipe-word";
+      swipeCueWord.textContent = "Desliza";
+      const swipeCueTrack = document.createElement("span");
+      swipeCueTrack.className = "builder-flavor-swipe-track";
+      const swipeCueGlider = document.createElement("span");
+      swipeCueGlider.className = "builder-flavor-swipe-glider";
+      swipeCueTrack.append(swipeCueGlider);
+      swipeCueIntro.append(swipeCueWord, swipeCueTrack);
+      const swipeCueProgress = document.createElement("span");
+      swipeCueProgress.className = "builder-flavor-swipe-progress";
+      const swipeCueCounter = document.createElement("span");
+      swipeCueCounter.className = "builder-flavor-swipe-counter";
+      swipeCueCounter.textContent = "1 / 1";
+      const swipeCueDots = document.createElement("span");
+      swipeCueDots.className = "builder-flavor-swipe-dots";
+      swipeCueDots.innerHTML = '<i></i><i class="active"></i><i></i>';
+      swipeCueProgress.append(swipeCueCounter, swipeCueDots);
+      swipeCueDock.append(swipeCueIntro, swipeCueProgress);
+      swipeCue.append(swipeCueDock);
       const details = document.createElement("div");
       details.className = "builder-flavor-expanded-details";
       const eyebrow = document.createElement("span");
@@ -1487,8 +1522,13 @@
       const liveStatus = document.createElement("span");
       liveStatus.className = "sr-only";
       liveStatus.setAttribute("aria-live", "polite");
+      const swipeInstructions = document.createElement("span");
+      swipeInstructions.id = "builder-flavor-swipe-instructions";
+      swipeInstructions.className = "sr-only";
+      swipeInstructions.textContent = "Desliza horizontalmente sobre la foto o usa las flechas izquierda y derecha para cambiar de sabor.";
+      overlay.setAttribute("aria-describedby", swipeInstructions.id);
       details.append(eyebrow, heading, ingredients, choose);
-      back.append(media, navigation, details, liveStatus);
+      back.append(media, swipeCue, details, swipeInstructions, liveStatus);
       inner.append(front, back);
       overlay.append(inner);
       document.body.append(overlay);
@@ -1535,9 +1575,8 @@
         heading,
         ingredients,
         choose,
-        navigation,
-        previousFlavor,
-        nextFlavor,
+        swipeCue,
+        swipeCueCounter,
         liveStatus,
         motion,
         faceMotions,
@@ -1550,7 +1589,7 @@
         pendingDirections: [],
         ready: reduceMotion,
         suppressMediaClickUntil: 0,
-        suppressFlavorNavigationClickUntil: 0
+        swipeCueUsed: false
       };
       const track = source.closest(".fonkie-gallery-track, .builder-gallery-track");
       state.cards = track ? $$(".fonkie-gallery-card, .builder-gallery-card", track) : [source];
@@ -1572,22 +1611,6 @@
         }
         close();
       });
-      previousFlavor.addEventListener("click", event => {
-        event.stopPropagation();
-        if (performance.now() < state.suppressFlavorNavigationClickUntil) {
-          event.preventDefault();
-          return;
-        }
-        switchFlavor(-1);
-      });
-      nextFlavor.addEventListener("click", event => {
-        event.stopPropagation();
-        if (performance.now() < state.suppressFlavorNavigationClickUntil) {
-          event.preventDefault();
-          return;
-        }
-        switchFlavor(1);
-      });
       choose.addEventListener("click", () => {
         if (state.switching || state.closing) return;
         const plus = matchingPlusButton(state.source, state.kind, state.currentName);
@@ -1595,7 +1618,7 @@
         if (!plus || !row || choose.disabled) return;
         const originalLabel = choose.textContent;
         choose.disabled = true;
-        syncFlavorNavigation(state);
+        syncFlavorCue(state);
         choose.textContent = "Comprobando disponibilidad…";
         row.addEventListener("fontana:flavor-change", event => {
           if (active !== state) return;
@@ -1604,7 +1627,7 @@
             return;
           }
           choose.disabled = false;
-          syncFlavorNavigation(state);
+          syncFlavorCue(state);
           choose.textContent = originalLabel;
         }, { once: true });
         plus.click();
@@ -1626,7 +1649,6 @@
         if (!horizontal) return;
         event.preventDefault();
         state.suppressMediaClickUntil = performance.now() + 450;
-        state.suppressFlavorNavigationClickUntil = performance.now() + 450;
         switchFlavor(dx < 0 ? 1 : -1);
       };
       const startPointer = event => {
@@ -1642,27 +1664,43 @@
           event.currentTarget.setPointerCapture(event.pointerId);
         } catch (_error) {}
       };
-      [media, previousFlavor, nextFlavor].forEach(target => {
+      [media, swipeCue].forEach(target => {
         target.addEventListener("pointerdown", startPointer);
         target.addEventListener("pointerup", finishPointer);
         target.addEventListener("pointercancel", () => { pointer = null; });
       });
       overlay.addEventListener("keydown", event => {
-        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        const horizontalShortcut = event.key === "ArrowLeft" || event.key === "ArrowRight";
+        const sliderOnlyShortcut = event.key === "ArrowUp"
+          || event.key === "ArrowDown"
+          || event.key === "Home"
+          || event.key === "End";
+        if (!horizontalShortcut && !(sliderOnlyShortcut && event.target === swipeCue)) return;
+        const directions = {
+          ArrowLeft: -1,
+          ArrowDown: -1,
+          ArrowRight: 1,
+          ArrowUp: 1,
+          Home: -state.currentIndex,
+          End: state.cards.length - 1 - state.currentIndex
+        };
         event.preventDefault();
-        switchFlavor(event.key === "ArrowRight" ? 1 : -1);
+        if (state.switching && (event.key === "Home" || event.key === "End")) return;
+        const direction = directions[event.key];
+        if (direction) switchFlavor(direction);
       });
       overlay.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight");
+      swipeCue.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight ArrowUp ArrowDown Home End");
       if (reduceMotion) {
         back.setAttribute("aria-hidden", "false");
-        syncFlavorNavigation(state);
+        syncFlavorCue(state);
         back.focus({ preventScroll: true });
       } else {
         motion.finished.then(() => {
           if (active !== state || state.closing) return;
           state.ready = true;
           back.setAttribute("aria-hidden", "false");
-          syncFlavorNavigation(state);
+          syncFlavorCue(state);
           back.focus({ preventScroll: true });
         }).catch(() => {});
       }
