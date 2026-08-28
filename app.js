@@ -973,6 +973,163 @@
     scheduleProductCardHeightSync();
   }
 
+  function setupInfiniteFlavorGalleries() {
+    const tracks = $$(".fonkie-gallery-track, .builder-gallery-track");
+
+    tracks.forEach(track => {
+      track._fontanaGalleryLoop?.destroy?.();
+      $$(".flavor-gallery-loop-card", track).forEach(clone => clone.remove());
+
+      const cards = $$(".fonkie-gallery-card, .builder-gallery-card", track);
+      if (cards.length < 2) {
+        track.removeAttribute("data-gallery-loop");
+        return;
+      }
+
+      const createLoopCard = (source, index) => {
+        const clone = source.cloneNode(true);
+        clone.classList.remove("fonkie-gallery-card", "builder-gallery-card");
+        clone.classList.add("flavor-gallery-loop-card");
+        clone.classList.add(source.classList.contains("fonkie-gallery-card")
+          ? "flavor-gallery-loop-card--fonkie"
+          : "flavor-gallery-loop-card--fomb");
+        clone.dataset.galleryLoopIndex = String(index);
+        clone.setAttribute("aria-hidden", "true");
+        clone.setAttribute("inert", "");
+        clone.removeAttribute("id");
+        clone.removeAttribute("role");
+        clone.removeAttribute("tabindex");
+        clone.removeAttribute("aria-label");
+        clone.removeAttribute("aria-expanded");
+        clone.querySelectorAll("[id]").forEach(element => element.removeAttribute("id"));
+        clone.querySelectorAll("[role],[tabindex],[aria-label],[aria-expanded]").forEach(element => {
+          element.removeAttribute("role");
+          element.removeAttribute("tabindex");
+          element.removeAttribute("aria-label");
+          element.removeAttribute("aria-expanded");
+        });
+        const image = $("img", clone);
+        if (image) {
+          image.alt = "";
+          image.loading = "eager";
+        }
+        return clone;
+      };
+
+      const leadingClone = createLoopCard(cards[cards.length - 1], cards.length - 1);
+      const trailingClone = createLoopCard(cards[0], 0);
+      track.prepend(leadingClone);
+      track.append(trailingClone);
+      track.dataset.galleryLoop = "true";
+
+      const controller = new AbortController();
+      const { signal } = controller;
+      let logicalIndex = 0;
+      let pointerInteracting = false;
+      let touchInteracting = false;
+      let settleTimer = 0;
+      let resizeFrame = 0;
+      let suppressNormalizationUntil = 0;
+
+      const scrollPositionFor = card => track.scrollLeft
+        + card.getBoundingClientRect().left
+        - track.getBoundingClientRect().left;
+
+      const moveInstantly = (card, index) => {
+        if (!card || track.clientWidth <= 0) return;
+        const previousSnapType = track.style.scrollSnapType;
+        const previousBehavior = track.style.scrollBehavior;
+        suppressNormalizationUntil = performance.now() + 80;
+        track.style.scrollSnapType = "none";
+        track.style.scrollBehavior = "auto";
+        track.scrollLeft = scrollPositionFor(card);
+        void track.offsetWidth;
+        if (previousSnapType) track.style.scrollSnapType = previousSnapType;
+        else track.style.removeProperty("scroll-snap-type");
+        if (previousBehavior) track.style.scrollBehavior = previousBehavior;
+        else track.style.removeProperty("scroll-behavior");
+        logicalIndex = index;
+      };
+
+      const scheduleNormalization = (delay = 140) => {
+        window.clearTimeout(settleTimer);
+        settleTimer = window.setTimeout(normalizePosition, delay);
+      };
+
+      const normalizePosition = () => {
+        if (track.clientWidth <= 0) return;
+        if (pointerInteracting || touchInteracting || performance.now() < suppressNormalizationUntil) {
+          scheduleNormalization(100);
+          return;
+        }
+        const width = track.clientWidth;
+        const current = track.scrollLeft;
+        const leadingPosition = scrollPositionFor(leadingClone);
+        const trailingPosition = scrollPositionFor(trailingClone);
+        if (Math.abs(current - leadingPosition) <= width * .45) {
+          moveInstantly(cards[cards.length - 1], cards.length - 1);
+          return;
+        }
+        if (Math.abs(current - trailingPosition) <= width * .45) {
+          moveInstantly(cards[0], 0);
+          return;
+        }
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        cards.forEach((card, index) => {
+          const distance = Math.abs(current - scrollPositionFor(card));
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            logicalIndex = index;
+          }
+        });
+      };
+
+      track.addEventListener("scroll", () => scheduleNormalization(), { passive: true, signal });
+      track.addEventListener("scrollend", normalizePosition, { signal });
+      let activePointerId = null;
+      track.addEventListener("pointerdown", event => {
+        pointerInteracting = true;
+        activePointerId = event.pointerId;
+      }, { passive: true, signal });
+      track.addEventListener("touchstart", () => { touchInteracting = true; }, { passive: true, signal });
+      const finishPointerInteraction = event => {
+        if (!pointerInteracting || (activePointerId !== null && event.pointerId !== activePointerId)) return;
+        pointerInteracting = false;
+        activePointerId = null;
+        if (!touchInteracting) scheduleNormalization(40);
+      };
+      const finishTouchInteraction = () => {
+        if (!touchInteracting) return;
+        touchInteracting = false;
+        if (!pointerInteracting) scheduleNormalization(40);
+      };
+      document.addEventListener("pointerup", finishPointerInteraction, { capture: true, passive: true, signal });
+      document.addEventListener("pointercancel", finishPointerInteraction, { capture: true, passive: true, signal });
+      document.addEventListener("touchend", finishTouchInteraction, { capture: true, passive: true, signal });
+      document.addEventListener("touchcancel", finishTouchInteraction, { capture: true, passive: true, signal });
+
+      const observer = "ResizeObserver" in window
+        ? new ResizeObserver(entries => {
+          const width = entries[0]?.contentRect.width || 0;
+          if (width <= 0) return;
+          cancelAnimationFrame(resizeFrame);
+          resizeFrame = requestAnimationFrame(() => moveInstantly(cards[logicalIndex], logicalIndex));
+        })
+        : null;
+      observer?.observe(track);
+
+      moveInstantly(cards[0], 0);
+      track._fontanaGalleryLoop = {
+        destroy() {
+          controller.abort();
+          observer?.disconnect();
+          window.clearTimeout(settleTimer);
+          cancelAnimationFrame(resizeFrame);
+        }
+      };
+    });
+  }
+
   function setupBuilderFlavorCardFlips() {
     const tracks = $$(".fonkie-gallery-track, .builder-gallery-track");
     if (!tracks.length) return;
@@ -1027,6 +1184,20 @@
       });
     };
 
+    const syncFlavorNavigation = state => {
+      if (!state.navigation) return;
+      const hasMultipleFlavors = state.cards.length > 1;
+      state.navigation.hidden = !state.ready || state.closing || !hasMultipleFlavors;
+      const disabled = !state.ready || state.closing || state.switching || state.choose.disabled || !hasMultipleFlavors;
+      state.previousFlavor.disabled = disabled;
+      state.nextFlavor.disabled = disabled;
+      if (!hasMultipleFlavors) return;
+      const previousIndex = (state.currentIndex - 1 + state.cards.length) % state.cards.length;
+      const nextIndex = (state.currentIndex + 1) % state.cards.length;
+      state.previousFlavor.setAttribute("aria-label", `Ver sabor anterior: ${flavorName(state.cards[previousIndex])}`);
+      state.nextFlavor.setAttribute("aria-label", `Ver sabor siguiente: ${flavorName(state.cards[nextIndex])}`);
+    };
+
     const renderFlavor = (state, card) => {
       const nextName = flavorName(card);
       const nextMeta = flavorMeta(state.kind, nextName);
@@ -1046,6 +1217,7 @@
       state.overlay.setAttribute("aria-label", `${state.kind === "fonkies" ? "Fonkie" : "Fomb"} ${nextName}`);
       state.media.setAttribute("aria-label", `Cerrar detalles de ${nextName}`);
       state.liveStatus.textContent = `${nextName}, sabor ${state.currentIndex + 1} de ${state.cards.length}`;
+      syncFlavorNavigation(state);
       warmAdjacentFlavorImages(state);
     };
 
@@ -1078,6 +1250,7 @@
         return;
       }
       state.closing = true;
+      syncFlavorNavigation(state);
       state.overlay.classList.add("builder-flavor-flip-closing");
       if (
         immediate
@@ -1110,8 +1283,12 @@
         state.pendingDirections.push(direction);
         return;
       }
+      const navigationFocus = state.navigation?.contains(document.activeElement)
+        ? document.activeElement
+        : null;
       state.switching = true;
       state.overlay.classList.add("builder-flavor-switching");
+      syncFlavorNavigation(state);
       const nextIndex = (state.currentIndex + direction + state.cards.length) % state.cards.length;
       const nextCard = state.cards[nextIndex];
       await preloadFlavorImage(nextCard);
@@ -1120,35 +1297,43 @@
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const exitAngle = direction > 0 ? -89.8 : 89.8;
       const entryAngle = -exitAngle;
+      const exitFadeAngle = direction > 0 ? -81 : 81;
+      const entryFadeAngle = -exitFadeAngle;
       try {
         if (reduceMotion) {
           renderFlavor(state, nextCard);
         } else {
           state.flavorMotion = state.back.animate([
-            { transform: "perspective(1500px) rotateY(0deg) scale(1)" },
-            { transform: `perspective(1500px) rotateY(${exitAngle}deg) scale(.985)` }
+            { transform: "perspective(1500px) rotateY(0deg) scale(1)", opacity: 1, offset: 0 },
+            { transform: `perspective(1500px) rotateY(${exitFadeAngle}deg) scale(.987)`, opacity: 1, offset: .82 },
+            { transform: `perspective(1500px) rotateY(${exitAngle}deg) scale(.985)`, opacity: 0, offset: 1 }
           ], {
             duration: flavorSwitchDuration * .46,
             easing: "cubic-bezier(.55,.05,.85,.45)",
-            fill: "forwards"
+            fill: "both"
           });
           await state.flavorMotion.finished;
           if (active !== state || state.closing) return;
           renderFlavor(state, nextCard);
-          state.flavorMotion.cancel();
           state.back.style.transform = `perspective(1500px) rotateY(${entryAngle}deg) scale(.985)`;
+          state.back.style.opacity = "0";
+          state.flavorMotion.cancel();
           state.flavorMotion = state.back.animate([
-            { transform: `perspective(1500px) rotateY(${entryAngle}deg) scale(.985)` },
-            { transform: "perspective(1500px) rotateY(0deg) scale(1)" }
+            { transform: `perspective(1500px) rotateY(${entryAngle}deg) scale(.985)`, opacity: 0, offset: 0 },
+            { transform: `perspective(1500px) rotateY(${entryFadeAngle}deg) scale(.987)`, opacity: 1, offset: .18 },
+            { transform: "perspective(1500px) rotateY(0deg) scale(1)", opacity: 1, offset: 1 }
           ], {
             duration: flavorSwitchDuration * .54,
             easing: "cubic-bezier(.15,.75,.25,1)",
-            fill: "forwards"
+            fill: "both"
           });
           await state.flavorMotion.finished;
+          state.back.style.transform = "perspective(1500px) rotateY(0deg) scale(1)";
+          state.back.style.opacity = "1";
           state.flavorMotion.cancel();
           state.flavorMotion = null;
           state.back.style.removeProperty("transform");
+          state.back.style.removeProperty("opacity");
         }
       } catch (_error) {
         if (active !== state) return;
@@ -1157,6 +1342,7 @@
         state.flavorMotion?.cancel();
         state.flavorMotion = null;
         state.back.style.removeProperty("transform");
+        state.back.style.removeProperty("opacity");
         state.overlay.classList.remove("builder-flavor-switching");
         state.switching = false;
         if (state.pendingClose) {
@@ -1165,6 +1351,8 @@
           close(immediate);
           return;
         }
+        syncFlavorNavigation(state);
+        if (navigationFocus?.isConnected) navigationFocus.focus({ preventScroll: true });
         const pendingDirection = state.pendingDirections.shift();
         if (pendingDirection) switchFlavor(pendingDirection);
       }
@@ -1206,17 +1394,21 @@
       const edgeScale = startScale + ((1 - startScale) * 0.66);
       const startTransform = `perspective(1800px) translate3d(${startX}px, ${startY}px, 0) scale(${startScale}) rotateX(0deg) rotateY(0deg) rotateZ(0deg)`;
       const liftTransform = `perspective(1800px) translate3d(${startX * 0.84}px, ${startY * 0.84}px, 26px) scale(${liftScale}) rotateX(1.2deg) rotateY(-12deg) rotateZ(-0.4deg)`;
+      const frontFadeTransform = `perspective(1800px) translate3d(${startX * 0.38}px, ${startY * 0.38}px, 82px) scale(${edgeScale}) rotateX(2.7deg) rotateY(81deg) rotateZ(-1deg)`;
       const frontEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScale}) rotateX(2.8deg) rotateY(89.8deg) rotateZ(-1.1deg)`;
       const backEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScale}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
+      const backFadeTransform = `perspective(1800px) translate3d(${startX * 0.3}px, ${startY * 0.3}px, 78px) scale(${edgeScale}) rotateX(2.5deg) rotateY(-81deg) rotateZ(-.9deg)`;
       const settleTransform = `perspective(1800px) translate3d(${startX * 0.04}px, ${startY * 0.04}px, 14px) scale(.97, .97) rotateX(.35deg) rotateY(7deg) rotateZ(.18deg)`;
       const targetTransform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
       const keyframes = [
-        { transform: startTransform, offset: 0 },
-        { transform: liftTransform, offset: 0.16 },
-        { transform: frontEdgeTransform, easing: "steps(1,end)", offset: 0.499 },
-        { transform: backEdgeTransform, offset: 0.501 },
-        { transform: settleTransform, offset: 0.84 },
-        { transform: targetTransform, offset: 1 }
+        { transform: startTransform, opacity: 1, offset: 0 },
+        { transform: liftTransform, opacity: 1, offset: 0.16 },
+        { transform: frontFadeTransform, opacity: 1, offset: 0.455 },
+        { transform: frontEdgeTransform, opacity: 0, offset: 0.495 },
+        { transform: backEdgeTransform, opacity: 0, offset: 0.505 },
+        { transform: backFadeTransform, opacity: 1, offset: 0.545 },
+        { transform: settleTransform, opacity: 1, offset: 0.84 },
+        { transform: targetTransform, opacity: 1, offset: 1 }
       ];
 
       const overlay = document.createElement("section");
@@ -1256,6 +1448,30 @@
       media.setAttribute("aria-label", `Cerrar detalles de ${name}`);
       const backImage = image.cloneNode(true);
       media.append(backImage);
+      const navigation = document.createElement("div");
+      navigation.className = "builder-flavor-nav";
+      navigation.hidden = true;
+      navigation.setAttribute("role", "group");
+      navigation.setAttribute("aria-label", "Cambiar sabor");
+      const previousFlavor = document.createElement("button");
+      previousFlavor.type = "button";
+      previousFlavor.className = "builder-flavor-nav-button builder-flavor-nav-button--previous";
+      previousFlavor.disabled = true;
+      previousFlavor.setAttribute("aria-label", "Ver sabor anterior");
+      const previousArrow = document.createElement("span");
+      previousArrow.setAttribute("aria-hidden", "true");
+      previousArrow.textContent = "‹";
+      previousFlavor.append(previousArrow);
+      const nextFlavor = document.createElement("button");
+      nextFlavor.type = "button";
+      nextFlavor.className = "builder-flavor-nav-button builder-flavor-nav-button--next";
+      nextFlavor.disabled = true;
+      nextFlavor.setAttribute("aria-label", "Ver sabor siguiente");
+      const nextArrow = document.createElement("span");
+      nextArrow.setAttribute("aria-hidden", "true");
+      nextArrow.textContent = "›";
+      nextFlavor.append(nextArrow);
+      navigation.append(previousFlavor, nextFlavor);
       const details = document.createElement("div");
       details.className = "builder-flavor-expanded-details";
       const eyebrow = document.createElement("span");
@@ -1272,7 +1488,7 @@
       liveStatus.className = "sr-only";
       liveStatus.setAttribute("aria-live", "polite");
       details.append(eyebrow, heading, ingredients, choose);
-      back.append(media, details, liveStatus);
+      back.append(media, navigation, details, liveStatus);
       inner.append(front, back);
       overlay.append(inner);
       document.body.append(overlay);
@@ -1319,6 +1535,9 @@
         heading,
         ingredients,
         choose,
+        navigation,
+        previousFlavor,
+        nextFlavor,
         liveStatus,
         motion,
         faceMotions,
@@ -1330,7 +1549,8 @@
         pendingClose: null,
         pendingDirections: [],
         ready: reduceMotion,
-        suppressMediaClickUntil: 0
+        suppressMediaClickUntil: 0,
+        suppressFlavorNavigationClickUntil: 0
       };
       const track = source.closest(".fonkie-gallery-track, .builder-gallery-track");
       state.cards = track ? $$(".fonkie-gallery-card, .builder-gallery-card", track) : [source];
@@ -1352,6 +1572,22 @@
         }
         close();
       });
+      previousFlavor.addEventListener("click", event => {
+        event.stopPropagation();
+        if (performance.now() < state.suppressFlavorNavigationClickUntil) {
+          event.preventDefault();
+          return;
+        }
+        switchFlavor(-1);
+      });
+      nextFlavor.addEventListener("click", event => {
+        event.stopPropagation();
+        if (performance.now() < state.suppressFlavorNavigationClickUntil) {
+          event.preventDefault();
+          return;
+        }
+        switchFlavor(1);
+      });
       choose.addEventListener("click", () => {
         if (state.switching || state.closing) return;
         const plus = matchingPlusButton(state.source, state.kind, state.currentName);
@@ -1359,6 +1595,7 @@
         if (!plus || !row || choose.disabled) return;
         const originalLabel = choose.textContent;
         choose.disabled = true;
+        syncFlavorNavigation(state);
         choose.textContent = "Comprobando disponibilidad…";
         row.addEventListener("fontana:flavor-change", event => {
           if (active !== state) return;
@@ -1367,6 +1604,7 @@
             return;
           }
           choose.disabled = false;
+          syncFlavorNavigation(state);
           choose.textContent = originalLabel;
         }, { once: true });
         plus.click();
@@ -1382,28 +1620,33 @@
           && Math.abs(dx) > Math.abs(dy) * 1.2
           && elapsed <= 1000;
         try {
-          if (media.hasPointerCapture?.(pointer.id)) media.releasePointerCapture(pointer.id);
+          if (pointer.target.hasPointerCapture?.(pointer.id)) pointer.target.releasePointerCapture(pointer.id);
         } catch (_error) {}
         pointer = null;
         if (!horizontal) return;
         event.preventDefault();
         state.suppressMediaClickUntil = performance.now() + 450;
+        state.suppressFlavorNavigationClickUntil = performance.now() + 450;
         switchFlavor(dx < 0 ? 1 : -1);
       };
-      media.addEventListener("pointerdown", event => {
+      const startPointer = event => {
         if (!state.ready || state.closing || event.button !== 0) return;
         pointer = {
           id: event.pointerId,
+          target: event.currentTarget,
           x: event.clientX,
           y: event.clientY,
           time: performance.now()
         };
         try {
-          media.setPointerCapture(event.pointerId);
+          event.currentTarget.setPointerCapture(event.pointerId);
         } catch (_error) {}
+      };
+      [media, previousFlavor, nextFlavor].forEach(target => {
+        target.addEventListener("pointerdown", startPointer);
+        target.addEventListener("pointerup", finishPointer);
+        target.addEventListener("pointercancel", () => { pointer = null; });
       });
-      media.addEventListener("pointerup", finishPointer);
-      media.addEventListener("pointercancel", () => { pointer = null; });
       overlay.addEventListener("keydown", event => {
         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
         event.preventDefault();
@@ -1412,12 +1655,14 @@
       overlay.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight");
       if (reduceMotion) {
         back.setAttribute("aria-hidden", "false");
+        syncFlavorNavigation(state);
         back.focus({ preventScroll: true });
       } else {
         motion.finished.then(() => {
           if (active !== state || state.closing) return;
           state.ready = true;
           back.setAttribute("aria-hidden", "false");
+          syncFlavorNavigation(state);
           back.focus({ preventScroll: true });
         }).catch(() => {});
       }
@@ -2745,6 +2990,7 @@
   pendingProductOpens.clear();
   setupFonkieBuilder();
   setupFombBuilder();
+  setupInfiniteFlavorGalleries();
   setupBuilderFlavorCardFlips();
   setupFitDialog();
   setupHeroLeafMotion();

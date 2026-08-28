@@ -87,8 +87,8 @@ async function swipeExpandedFlavor(page, direction) {
   await media.evaluate((element, swipeDirection) => {
     const box = element.getBoundingClientRect();
     const y = box.top + (box.height * .48);
-    const startX = swipeDirection === "left" ? box.right - 34 : box.left + 34;
-    const endX = swipeDirection === "left" ? box.left + 34 : box.right - 34;
+    const startX = swipeDirection === "left" ? box.left + (box.width * .78) : box.left + (box.width * .22);
+    const endX = swipeDirection === "left" ? box.left + (box.width * .22) : box.left + (box.width * .78);
     const eventOptions = (type, x, buttons) => ({
       pointerId: 41,
       pointerType: "touch",
@@ -384,7 +384,6 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     await page.getByRole("button", { name: item.filter }).click();
     const source = page.locator(item.card).first();
     await source.scrollIntoViewIfNeeded();
-    const compactBox = await source.boundingBox();
     const baseline = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
     await source.click();
     await expect(source).toHaveAttribute("aria-expanded", "true");
@@ -407,11 +406,11 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     const physicalTurn = await overlay.evaluate(element => ({
       outerTransform: getComputedStyle(element).transform,
       innerTransform: getComputedStyle(element.querySelector(".builder-flavor-flip-inner")).transform,
-      width: element.getBoundingClientRect().width
+      opacity: Number.parseFloat(getComputedStyle(element).opacity)
     }));
     expect(physicalTurn.outerTransform).not.toBe("none");
     expect(physicalTurn.innerTransform).toBe("none");
-    expect(physicalTurn.width).toBeLessThan(compactBox.width * 0.5);
+    expect(physicalTurn.opacity).toBeLessThanOrEqual(.03);
     await page.screenshot({ path: testInfo.outputPath(item.screenshot), fullPage: false });
     await resumePhysicalCardTurn(overlay);
     await page.waitForTimeout(520);
@@ -446,12 +445,12 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     const physicalReturn = await overlay.evaluate(element => ({
       outerTransform: getComputedStyle(element).transform,
       innerTransform: getComputedStyle(element.querySelector(".builder-flavor-flip-inner")).transform,
-      width: element.getBoundingClientRect().width,
+      opacity: Number.parseFloat(getComputedStyle(element).opacity),
       backdropOpacity: Number.parseFloat(getComputedStyle(document.querySelector(".builder-flavor-flip-backdrop")).opacity)
     }));
     expect(physicalReturn.outerTransform).not.toBe("none");
     expect(physicalReturn.innerTransform).toBe("none");
-    expect(physicalReturn.width).toBeLessThan(compactBox.width * 0.5);
+    expect(physicalReturn.opacity).toBeLessThanOrEqual(.03);
     expect(physicalReturn.backdropOpacity).toBeGreaterThan(0.7);
     await resumePhysicalCardTurn(overlay);
     await expect(overlay).toHaveCount(0, { timeout: 1300 });
@@ -680,10 +679,93 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     await source.click();
     const overlay = page.locator(".builder-flavor-flip-card");
     await expect(overlay).toBeVisible();
-    await page.waitForTimeout(920);
-    const initialBox = await overlay.boundingBox();
 
-    await swipeExpandedFlavor(page, "left");
+    const previousFlavor = overlay.locator(".builder-flavor-nav-button--previous");
+    const nextFlavor = overlay.locator(".builder-flavor-nav-button--next");
+    await expect(previousFlavor).toBeVisible();
+    await expect(nextFlavor).toBeVisible();
+    await expect(previousFlavor).toBeEnabled();
+    await expect(nextFlavor).toBeEnabled();
+    await expect(previousFlavor).toHaveText("‹");
+    await expect(nextFlavor).toHaveText("›");
+    const initialBox = await overlay.boundingBox();
+    await expect(previousFlavor).toHaveAttribute("aria-label", new RegExp(names.at(-1)));
+    await expect(nextFlavor).toHaveAttribute("aria-label", new RegExp(names[1]));
+    const navigationLayout = await overlay.evaluate(element => {
+      const media = element.querySelector(".builder-flavor-expanded-media").getBoundingClientRect();
+      const buttons = [...element.querySelectorAll(".builder-flavor-nav-button")].map(button => {
+        const hitbox = button.getBoundingClientRect();
+        const span = button.querySelector("span");
+        const visual = span.getBoundingClientRect();
+        const accent = getComputedStyle(span, "::after");
+        return {
+          hitbox,
+          visual,
+          background: getComputedStyle(button).backgroundColor,
+          visualBackground: getComputedStyle(span).backgroundColor,
+          accentColor: accent.backgroundColor,
+          accentWidth: accent.width,
+          edgeDistance: button.classList.contains("builder-flavor-nav-button--previous")
+            ? visual.left - media.left
+            : media.right - visual.right
+        };
+      });
+      return {
+        media,
+        buttons: buttons.map(({ hitbox, visual, background, visualBackground, accentColor, accentWidth, edgeDistance }) => ({
+          width: hitbox.width,
+          height: hitbox.height,
+          visualWidth: visual.width,
+          visualHeight: visual.height,
+          background,
+          visualBackground,
+          accentColor,
+          accentWidth,
+          edgeDistance,
+          inside: hitbox.left >= media.left && hitbox.right <= media.right
+            && hitbox.top >= media.top && hitbox.bottom <= media.bottom
+        }))
+      };
+    });
+    for (const button of navigationLayout.buttons) {
+      expect(button.width).toBeGreaterThanOrEqual(44);
+      expect(button.height).toBeGreaterThanOrEqual(51.5);
+      expect(button.visualWidth).toBeGreaterThanOrEqual(21.5);
+      expect(button.visualWidth).toBeLessThanOrEqual(22.5);
+      expect(button.visualHeight).toBeGreaterThanOrEqual(41.5);
+      expect(button.visualHeight).toBeLessThanOrEqual(42.5);
+      expect(button.background).toBe("rgba(0, 0, 0, 0)");
+      expect(button.visualBackground).toBe("rgba(79, 22, 81, 0.88)");
+      expect(button.accentColor).toBe("rgb(184, 205, 105)");
+      expect(Number.parseFloat(button.accentWidth)).toBeCloseTo(2, 1);
+      expect(Math.abs(button.edgeDistance)).toBeLessThanOrEqual(.5);
+      expect(button.inside).toBe(true);
+    }
+
+    await nextFlavor.click();
+    const switchingFace = overlay.locator(".builder-flavor-flip-back");
+    await expect.poll(() => switchingFace.evaluate(element => element.getAnimations()
+      .filter(animation => animation.effect?.target === element)
+      .some(animation => {
+        const keyframes = animation.effect.getKeyframes();
+        return keyframes.some(frame => Number.parseFloat(frame.opacity) === 0
+          && /rotateY\([+-]?89\.8deg\)/.test(frame.transform || ""));
+      }))).toBe(true);
+    await expect(overlay.locator("h3")).toHaveText(names[1], { timeout: 900 });
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+    await previousFlavor.click();
+    await expect(overlay.locator("h3")).toHaveText(names[0], { timeout: 900 });
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+
+    const nextHitbox = await nextFlavor.boundingBox();
+    await page.mouse.move(nextHitbox.x + (nextHitbox.width / 2), nextHitbox.y + (nextHitbox.height / 2));
+    await page.mouse.down();
+    await page.mouse.move(
+      navigationLayout.media.left + (navigationLayout.media.width * .3),
+      nextHitbox.y + (nextHitbox.height / 2),
+      { steps: 6 }
+    );
+    await page.mouse.up();
     await expect.poll(() => overlay.locator(".builder-flavor-flip-back").evaluate(element => element.getAnimations()
       .filter(animation => animation.playState === "running" && animation.effect?.target === element)
       .length)).toBeGreaterThan(0);
@@ -732,6 +814,29 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
   await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[0], { timeout: 900 });
   await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
   const desktopMedia = desktopOverlay.locator(".builder-flavor-expanded-media");
+  const desktopPreviousFlavor = desktopOverlay.locator(".builder-flavor-nav-button--previous");
+  const desktopNextFlavor = desktopOverlay.locator(".builder-flavor-nav-button--next");
+  await expect(desktopPreviousFlavor).toBeVisible();
+  await expect(desktopNextFlavor).toBeVisible();
+  const desktopArrowVisuals = await desktopOverlay.locator(".builder-flavor-nav-button span").evaluateAll(elements => elements.map(element => {
+    const box = element.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  }));
+  for (const visual of desktopArrowVisuals) {
+    expect(visual.width).toBeGreaterThanOrEqual(21.5);
+    expect(visual.width).toBeLessThanOrEqual(22.5);
+    expect(visual.height).toBeGreaterThanOrEqual(41.5);
+    expect(visual.height).toBeLessThanOrEqual(42.5);
+  }
+  await desktopPreviousFlavor.focus();
+  await desktopPreviousFlavor.press("Enter");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[desktopNames.length - 1], { timeout: 900 });
+  await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+  await expect(desktopPreviousFlavor).toBeFocused();
+  await desktopNextFlavor.press("Enter");
+  await expect(desktopOverlay.locator("h3")).toHaveText(desktopNames[0], { timeout: 900 });
+  await expect(desktopOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 900 });
+  await expect(desktopNextFlavor).toBeFocused();
   const mediaBox = await desktopMedia.boundingBox();
   await page.mouse.move(mediaBox.x + (mediaBox.width * .82), mediaBox.y + (mediaBox.height * .5));
   await page.mouse.down();
@@ -936,8 +1041,14 @@ test("Fonkies y Fomb respetan movimiento reducido sin animaciones residuales", a
     await expect(overlay).toBeVisible();
     expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
     await expect(overlay.locator(".builder-flavor-flip-back")).toBeVisible();
-    await swipeExpandedFlavor(page, "left");
+    const nextFlavor = overlay.locator(".builder-flavor-nav-button--next");
+    await nextFlavor.focus();
+    await nextFlavor.press("Enter");
     await expect(overlay.locator("h3")).toHaveText(names[1]);
+    await expect(nextFlavor).toBeFocused();
+    expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+    await swipeExpandedFlavor(page, "right");
+    await expect(overlay.locator("h3")).toHaveText(names[0]);
     expect(await overlay.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
     await expect(overlay).toHaveCount(1);
     await page.keyboard.press("Escape");
@@ -1050,9 +1161,9 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   await expect(page.locator("#addFonkieBox")).toBeDisabled();
   await expect(page.locator("#fonkieValidation")).toHaveText("Mínimo 4 galletas para armar tu caja.");
   await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"]')).toHaveCount(1);
-  await expect(page.locator('img[src="assets/fonkie-white-chocolate-chips-fontana-pro.jpg"]')).toHaveCount(1);
+  await expect(page.locator('.fonkie-gallery-card img[src="assets/fonkie-white-chocolate-chips-fontana-pro.jpg"]')).toHaveCount(1);
   await expect(page.locator('.fonkie-flavor[data-flavor="Chips Ahoy Fit"]')).toHaveCount(1);
-  await expect(page.locator('img[src="assets/fonkie-chips-ahoy-fit-fontana-pro.jpg"]')).toHaveCount(1);
+  await expect(page.locator('.fonkie-gallery-card img[src="assets/fonkie-chips-ahoy-fit-fontana-pro.jpg"]')).toHaveCount(1);
   const fonkieGalleryCard = page.locator(".fonkie-gallery-card").first();
   const fonkieGalleryImage = fonkieGalleryCard.locator("img");
   await expect(fonkieGalleryImage).toHaveCSS("object-position", "50% 50%");
@@ -1495,7 +1606,7 @@ test("cada producto muestra solo sus sellos alimentarios confirmados", async ({ 
 test("Fomb calcula automáticamente los bombones extra desde la selección", async ({ page }) => {
   await openPreview(page);
   await expect(page.locator(".fomb-builder")).toHaveCount(1);
-  await expect(page.locator('img[src="assets/fomb-raffaello-fontana-pro.jpg"]')).toHaveCount(1);
+  await expect(page.locator('.builder-gallery-card img[src="assets/fomb-raffaello-fontana-pro.jpg"]')).toHaveCount(1);
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   await openFlavorChoice(page, ".fomb-builder");
   await expect(page.locator(".fomb-flavors")).toBeVisible();
@@ -1575,6 +1686,139 @@ test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el produc
     await expect(track).toBeVisible();
     await track.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(item.screenshot), fullPage: false });
+  }
+});
+
+test("las galerías compactas de Fonkies y Fomb continúan en un bucle infinito", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+
+  const galleries = [
+    { filter: "Fonkies · Galletas", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card" },
+    { filter: "Fomb · Bombones", track: ".builder-gallery-track", card: ".builder-gallery-card" }
+  ];
+
+  for (const item of galleries) {
+    await page.getByRole("button", { name: item.filter }).click();
+    const track = page.locator(item.track);
+    const cards = track.locator(item.card);
+    const clones = track.locator(":scope > .flavor-gallery-loop-card");
+    await expect(track).toHaveAttribute("data-gallery-loop", "true");
+    await expect(clones).toHaveCount(2);
+    expect(await cards.count()).toBeGreaterThan(1);
+    await expect(track.getByRole("button", { name: /Ver detalles de/ })).toHaveCount(await cards.count());
+    const cloneAccessibility = await clones.evaluateAll(elements => elements.map(element => ({
+      ariaHidden: element.getAttribute("aria-hidden"),
+      inert: element.hasAttribute("inert"),
+      role: element.getAttribute("role"),
+      tabIndex: element.getAttribute("tabindex"),
+      focusableDescendants: element.querySelectorAll('[tabindex],button,a[href],input,select,textarea').length
+    })));
+    expect(cloneAccessibility).toEqual([
+      { ariaHidden: "true", inert: true, role: null, tabIndex: null, focusableDescendants: 0 },
+      { ariaHidden: "true", inert: true, role: null, tabIndex: null, focusableDescendants: 0 }
+    ]);
+
+    await track.scrollIntoViewIfNeeded();
+    const baseline = await page.evaluate(() => ({ y: scrollY }));
+    const trackTop = await track.evaluate(element => element.getBoundingClientRect().top);
+    const centeredReal = () => track.evaluate((element, cardSelector) => {
+      const trackBox = element.getBoundingClientRect();
+      const center = trackBox.left + (trackBox.width / 2);
+      const children = [...element.children];
+      const closest = children.reduce((best, child) => {
+        const box = child.getBoundingClientRect();
+        const distance = Math.abs((box.left + (box.width / 2)) - center);
+        return !best || distance < best.distance ? { child, distance } : best;
+      }, null);
+      const realCards = [...element.querySelectorAll(cardSelector)];
+      return {
+        isReal: closest?.child.matches(cardSelector) || false,
+        realIndex: realCards.indexOf(closest?.child),
+        distance: closest?.distance ?? Number.POSITIVE_INFINITY,
+        scrollLeft: element.scrollLeft,
+        width: element.clientWidth
+      };
+    }, item.card);
+
+    await expect.poll(async () => (await centeredReal()).realIndex).toBe(0);
+    await expect.poll(async () => (await centeredReal()).distance).toBeLessThanOrEqual(1);
+
+    const moveToClone = async position => {
+      await track.evaluate((element, targetPosition) => {
+        const clones = element.querySelectorAll(":scope > .flavor-gallery-loop-card");
+        const clone = targetPosition === "trailing" ? clones[1] : clones[0];
+        const trackBox = element.getBoundingClientRect();
+        const cloneBox = clone.getBoundingClientRect();
+        element.scrollLeft += cloneBox.left - trackBox.left;
+        element.dispatchEvent(new Event("scrollend"));
+      }, position);
+    };
+
+    await moveToClone("trailing");
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
+    }).toBe(true);
+
+    await moveToClone("leading");
+    const lastIndex = (await cards.count()) - 1;
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
+    }).toBe(true);
+
+    await track.evaluate(element => {
+      element.dispatchEvent(new PointerEvent("pointerdown", {
+        pointerId: 73,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons: 1,
+        bubbles: true
+      }));
+      element.dispatchEvent(new Event("touchstart", { bubbles: true }));
+      const trailingClone = element.querySelectorAll(":scope > .flavor-gallery-loop-card")[1];
+      const trackBox = element.getBoundingClientRect();
+      const cloneBox = trailingClone.getBoundingClientRect();
+      element.scrollLeft += cloneBox.left - trackBox.left;
+      element.dispatchEvent(new PointerEvent("pointercancel", {
+        pointerId: 73,
+        pointerType: "touch",
+        isPrimary: true,
+        bubbles: true
+      }));
+      element.dispatchEvent(new Event("scrollend"));
+    });
+    await page.waitForTimeout(220);
+    expect((await centeredReal()).isReal).toBe(false);
+    await track.evaluate(element => element.dispatchEvent(new Event("touchend", { bubbles: true })));
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === 0 && centered.distance <= 1;
+    }).toBe(true);
+
+    await moveToClone("leading");
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
+    }).toBe(true);
+
+    await page.setViewportSize({ width: 430, height: 844 });
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
+    }).toBe(true);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(async () => {
+      const centered = await centeredReal();
+      return centered.isReal && centered.realIndex === lastIndex && centered.distance <= 1;
+    }).toBe(true);
+
+    const after = await page.evaluate(() => ({ y: scrollY }));
+    const afterTrackTop = await track.evaluate(element => element.getBoundingClientRect().top);
+    expect(Math.abs(after.y - baseline.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterTrackTop - trackTop)).toBeLessThanOrEqual(1);
   }
 });
 
