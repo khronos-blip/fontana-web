@@ -171,7 +171,41 @@
         localStorage.removeItem(storageKey);
         return [];
       }
-      return stored;
+      let changed = false;
+      const normalized = [];
+      for (const storedItem of stored) {
+        const item = {...storedItem, inventory:{...(storedItem.inventory || {})}};
+        if (item.inventory.kind === "fomb") {
+          const selectedTotal = (item.inventory.flavors || []).reduce(
+            (sum, flavor) => sum + Math.max(0, Number(flavor.quantity ?? flavor.qty ?? 0)),
+            0
+          );
+          const pricing = resolveFombPricing(selectedTotal);
+          if (pricing && selectedTotal >= pricing.size) {
+            const canonicalId = String(item.id || "").replace(
+              /^fomb-box-\d+-\d+-/,
+              `fomb-box-${pricing.size}-${pricing.extras}-`
+            );
+            if (canonicalId && canonicalId !== item.id) {
+              item.id = canonicalId;
+              changed = true;
+            }
+            if (Number(item.price) !== pricing.price
+              || Number(item.inventory.boxSize) !== pricing.size
+              || Number(item.inventory.extraCount) !== pricing.extras) changed = true;
+            item.price = pricing.price;
+            item.inventory.boxSize = pricing.size;
+            item.inventory.extraCount = pricing.extras;
+          }
+        }
+        const existing = item.id ? normalized.find(candidate => candidate.id === item.id) : null;
+        if (existing) {
+          existing.qty = Number(existing.qty || 0) + Number(item.qty || 0);
+          changed = true;
+        } else normalized.push(item);
+      }
+      if (changed) localStorage.setItem(storageKey, JSON.stringify(normalized));
+      return normalized;
     } catch {
       return [];
     }
@@ -2402,6 +2436,38 @@
     return base + Math.max(0, total - minimum) * Number(pricing.extraPrice ?? 3.5);
   }
 
+  function resolveFombPricing(total, preferredSize = 0) {
+    const configured = adminState?.builders?.fomb || {};
+    const rawSizes = Array.isArray(configured.sizes) && configured.sizes.length
+      ? configured.sizes
+      : [{quantity:4,price:15},{quantity:12,price:30}];
+    const sizeMap = new Map();
+    rawSizes.forEach(size => {
+      const quantity = Math.max(0, Math.floor(Number(size.quantity)));
+      const price = Number(size.price);
+      if (quantity > 0 && Number.isFinite(price) && price >= 0) sizeMap.set(quantity, {quantity,price});
+    });
+    const sizes = [...sizeMap.values()].sort((left, right) => left.quantity - right.quantity);
+    if (!sizes.length) return null;
+    const selectedTotal = Math.max(0, Math.floor(Number(total) || 0));
+    const requested = sizes.find(size => size.quantity === Number(preferredSize));
+    const eligible = sizes.filter(size => size.quantity <= selectedTotal);
+    const size = requested && selectedTotal < requested.quantity
+      ? requested
+      : eligible[eligible.length - 1] || sizes[0];
+    const extras = Math.max(0, selectedTotal - size.quantity);
+    const configuredExtraPrice = Number(configured.extraPrice ?? 3.5);
+    const extraPrice = Number.isFinite(configuredExtraPrice) && configuredExtraPrice >= 0
+      ? configuredExtraPrice
+      : 3.5;
+    return {
+      size:size.quantity,
+      extras,
+      extraPrice,
+      price:size.price + extras * extraPrice
+    };
+  }
+
   function setupFonkieBuilder() {
     const builder = $(".fonkie-builder");
     if (!builder) return;
@@ -2519,6 +2585,7 @@
     const temporaryUnavailable = builder.dataset.temporarilyUnavailable === "true";
     const unavailable = temporaryUnavailable || (builder.dataset.soldOut === "true" && !preorderAllowed);
     const rows = $$(".fomb-flavor", builder);
+    let preferredSize = Number(sizeInputs.find(input => input.checked)?.value || 4);
     $("#fombIngredients div").textContent = builder.dataset.ingredients;
     const builderIntro = $(".builder-head p", builder);
     if (builderIntro) builderIntro.textContent = "Elige el tamaño, los sabores y las cantidades. Cada bombón que supere el tamaño elegido se suma automáticamente como extra. Con stock: entrega inmediata. Sin stock: Pre-Order de 2 días hábiles.";
@@ -2532,14 +2599,12 @@
     }
 
     function selection() {
-      const size = Number(sizeInputs.find(input => input.checked)?.value || 4);
-      const selectedInput = sizeInputs.find(input => input.checked);
-      const basePrice = Number(selectedInput?.dataset.price || (size === 12 ? 30 : 15));
-      const extraPrice = Number(adminState?.builders?.fomb?.extraPrice ?? 3.5);
       const flavors = selectedFlavors();
       const selectedTotal = flavors.reduce((sum, item) => sum + item.qty, 0);
-      const extras = Math.max(0, selectedTotal - size);
-      return { size, extras, extraPrice, price: basePrice + extras * extraPrice, flavors, selectedTotal };
+      const pricing = resolveFombPricing(selectedTotal, preferredSize);
+      if (!pricing) return { size:4, extras:0, extraPrice:3.5, price:0, flavors, selectedTotal };
+      sizeInputs.forEach(input => { input.checked = Number(input.value) === pricing.size; });
+      return { ...pricing, flavors, selectedTotal };
     }
 
     function updateBuilder() {
@@ -2550,7 +2615,7 @@
       const remaining = current.size - current.selectedTotal;
       if (remaining > 0) {
         $("#fombRule").textContent = `Selecciona al menos ${current.size} bombones para tu caja.`;
-        $("#fombValidation").textContent = `Faltan ${remaining} ${remaining === 1 ? "bombón" : "bombones"} por elegir.`;
+        $("#fombValidation").textContent = `${remaining === 1 ? "Falta" : "Faltan"} ${remaining} ${remaining === 1 ? "bombón" : "bombones"} por elegir.`;
       } else {
         const type = current.flavors.length === 1 ? "Caja de un solo sabor" : "Caja mixta";
         const extraCopy = current.extras ? ` · ${current.size} + ${current.extras} ${current.extras === 1 ? "bombón extra" : "bombones extra"} a ${money(current.extraPrice)} c/u` : "";
@@ -2562,7 +2627,10 @@
       if (unavailable) $("#fombValidation").textContent = temporaryUnavailable ? "Temporalmente no disponible." : "Producto agotado temporalmente. Consulta por WhatsApp.";
     }
 
-    sizeInputs.forEach(input => input.addEventListener("change", updateBuilder));
+    sizeInputs.forEach(input => input.addEventListener("change", () => {
+      if (input.checked) preferredSize = Number(input.value);
+      updateBuilder();
+    }));
 
     $$(".fomb-flavor .fonkie-stepper button", builder).forEach(button => button.addEventListener("click", async () => {
       const row = button.closest(".fomb-flavor");

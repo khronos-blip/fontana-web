@@ -5,6 +5,8 @@ import {
   verifyRegistrationResponse
 } from "@simplewebauthn/server";
 
+import { fombPricingMatchesRequest, resolveFombPricing } from "./pricing.mjs";
+
 const SESSION_COOKIE = "fontana_admin_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const PASSKEY_CHALLENGE_TTL_SECONDS = 5 * 60;
@@ -336,7 +338,11 @@ function resolveReservationCart(state, requestedItems, operations) {
     if (!operations.electricityEnabled && requiresElectricity) throw new Error("temporarily_unavailable");
     const requestedFlavors = Array.isArray(requested.flavors) ? requested.flavors : [];
     const flavors = requestedFlavors.map(item => ({name:String(item.name || ""),quantity:parsePositiveInteger(item.quantity)}));
-    if (!flavors.length || flavors.some(item => !item.quantity || !(builder.flavors || []).some(flavor => flavor.name === item.name))) throw new Error("invalid_option");
+    const uniqueFlavorNames = new Set(flavors.map(item => item.name));
+    if (!flavors.length
+      || flavors.length > (builder.flavors || []).length
+      || uniqueFlavorNames.size !== flavors.length
+      || flavors.some(item => !item.quantity || !(builder.flavors || []).some(flavor => flavor.name === item.name))) throw new Error("invalid_option");
     const preorderAllowed = automaticPreorderForBuilder(kind) || builder.allowPreorder === true;
     const resolvedFlavors = flavors.map(selected => {
       const flavor = builder.flavors.find(item => item.name === selected.name);
@@ -348,22 +354,25 @@ function resolveReservationCart(state, requestedItems, operations) {
     const preorder = resolvedFlavors.some(item => item.preorder);
     const selectedTotal = flavors.reduce((sum,item) => sum + item.quantity, 0);
     let unitPriceCents;
+    let boxSize = 0;
+    let extraCount = 0;
     if (kind === "fonkies") {
       const minimum = Math.max(1, Number(builder.minimumQuantity || 4));
       if (selectedTotal < minimum) throw new Error("invalid_quantity");
       const base = resolvedFlavors.length === 1 ? Number(builder.singlePrice || 15) : Number(builder.mixedPrice || 17);
       unitPriceCents = Math.round((base + Math.max(0, selectedTotal - minimum) * Number(builder.extraPrice || 3.5)) * 100);
     } else {
-      const boxSize = parsePositiveInteger(requested.boxSize, 200);
-      const extraCount = Math.max(0, Math.floor(Number(requested.extraCount || 0)));
-      const configuredSize = (builder.sizes || []).find(size => Number(size.quantity) === boxSize);
-      if (!configuredSize || selectedTotal !== boxSize + extraCount || extraCount > 100) throw new Error("invalid_quantity");
-      unitPriceCents = Math.round((Number(configuredSize.price) + extraCount * Number(builder.extraPrice || 3.5)) * 100);
+      const pricing = resolveFombPricing(builder, selectedTotal);
+      if (!pricing || pricing.extraCount > 100) throw new Error("invalid_quantity");
+      boxSize = pricing.boxSize;
+      extraCount = pricing.extraCount;
+      unitPriceCents = pricing.unitPriceCents;
+      if (!fombPricingMatchesRequest(pricing, requested)) throw new Error("pricing_changed");
     }
     const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
     const name = `${kind === "fonkies" ? "Caja de Fonkies" : "Caja de Fomb"} · ${selectedTotal} unidades`;
     const optionSummary = resolvedFlavors.map(item => `${item.quantity} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", ");
-    snapshotItems.push({kind,productId,name,quantity,unitPriceCents,optionSummary,flavors:resolvedFlavors,boxSize:Number(requested.boxSize || 0),extraCount:Number(requested.extraCount || 0),preorder});
+    snapshotItems.push({kind,productId,name,quantity,unitPriceCents,optionSummary,flavors:resolvedFlavors,boxSize,extraCount,preorder});
     for (const selected of resolvedFlavors.filter(item => !item.preorder)) {
       const definition = definitionMap.get(`builder:${kind}:${stockSlug(selected.name)}`);
       if (!definition) throw new Error("invalid_option");
@@ -467,7 +476,14 @@ async function reserveOrder(request, env) {
   let cart;
   const publicState = applyPublicAvailability(state, inventory, operations);
   try { cart = resolveReservationCart(publicState, body.items, operations); }
-  catch (error) { return json({error:error.message === "temporarily_unavailable" ? "La producción de uno de los productos del carrito está temporalmente pausada. Retíralo para continuar; no lo eliminamos automáticamente." : "El carrito cambió o contiene una opción no disponible. Actualiza la página e inténtalo de nuevo.",code:error.message},409); }
+  catch (error) {
+    const errorMessage = error.message === "temporarily_unavailable"
+      ? "La producción de uno de los productos del carrito está temporalmente pausada. Retíralo para continuar; no lo eliminamos automáticamente."
+      : error.message === "pricing_changed"
+        ? "Actualizamos el precio de tu caja Fomb. Recarga la página para corregir el carrito antes de reservar."
+        : "El carrito cambió o contiene una opción no disponible. Actualiza la página e inténtalo de nuevo.";
+    return json({error:errorMessage,code:error.message},409);
+  }
   const trackedDemands = cart.demands.filter(item => inventory.get(item.definition.sku)?.trackStock);
   const clientHash = await sha256(`${request.headers.get("CF-Connecting-IP") || "local"}:${request.headers.get("User-Agent") || ""}`);
   const active = await env.DB.prepare("SELECT COUNT(*) AS count FROM stock_orders WHERE client_hash = ? AND status = 'reserved' AND expires_at > ?").bind(clientHash,Math.floor(Date.now()/1000)).first();

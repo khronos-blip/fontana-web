@@ -1541,6 +1541,10 @@ test("Fonkies calcula cajas iguales, mixtas y extras", async ({ page }) => {
   await page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"] [data-delta="-1"]').click();
   await expect(page.locator("#fonkieTotal")).toContainText("17,00");
   await expect(page.locator("#addFonkieBox")).toBeEnabled();
+  for (let index = 0; index < 8; index += 1) await firstPlus.click();
+  await expect(page.locator("#fonkieCount")).toContainText("12 Fonkies");
+  await expect(page.locator("#fonkieTotal")).toContainText("45,00");
+  await expect(page.locator("#fonkiePriceRule")).toContainText("8 extras");
 });
 
 test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
@@ -2037,11 +2041,125 @@ test("Fomb calcula automáticamente los bombones extra desde la selección", asy
   await expect(page.locator(".cart-item").last()).toContainText("USD 18,50");
   await page.locator("#closeCart").click();
 
-  await page.locator(".fomb-builder .choice-panel").first().locator("summary").click();
+  let selectedTotal = 5;
+  const advanceTo = async target => {
+    while (selectedTotal < target) {
+      await pistachoPlus.click();
+      selectedTotal += 1;
+      await expect(pistachoCount).toHaveText(String(selectedTotal - 1));
+    }
+  };
+  for (const tier of [
+    { total:6, price:"22,00", extras:"4 + 2 bombones extra" },
+    { total:8, price:"29,00", extras:"4 + 4 bombones extra" },
+    { total:11, price:"39,50", extras:"4 + 7 bombones extra" }
+  ]) {
+    await advanceTo(tier.total);
+    await expect(page.locator("#fombTotal")).toContainText(tier.price);
+    await expect(page.locator("#fombRule")).toContainText(tier.extras);
+    await expect(page.locator('input[name="fombSize"][value="4"]')).toBeChecked();
+  }
+
+  await advanceTo(12);
+  await expect(page.locator("#fombTotal")).toContainText("30,00");
+  await expect(page.locator('input[name="fombSize"][value="12"]')).toBeChecked();
+  await expect(page.locator("#fombRule")).not.toContainText("extra");
+  await expect(page.locator("#addFombBox")).toBeEnabled();
+  await page.locator("#addFombBox").click();
+  const twelveBox = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+    .find(item => item.name.includes("Caja de 12 Fomb")));
+  expect(twelveBox).toMatchObject({ price:30, inventory:{kind:"fomb",boxSize:12,extraCount:0} });
+
+  await advanceTo(13);
+  await expect(page.locator("#fombTotal")).toContainText("33,50");
+  await expect(page.locator("#fombRule")).toContainText("12 + 1 bombón extra");
+  await expect(page.locator('input[name="fombSize"][value="12"]')).toBeChecked();
+  await page.locator("#addFombBox").click();
+  const thirteenBox = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+    .find(item => item.name.includes("Caja de 13 Fomb")));
+  expect(thirteenBox).toMatchObject({ price:33.5, inventory:{kind:"fomb",boxSize:12,extraCount:1} });
+  await page.locator("#cartButton").click();
+  const thirteenCartItem = page.locator(".cart-item").filter({ hasText:"Caja de 13 Fomb" });
+  await expect(thirteenCartItem).toContainText("USD 33,50");
+  await expect(thirteenCartItem.locator(".cart-choices")).toContainText("12 Pistacho, 1 Dubai");
+  await page.locator("#closeCart").click();
+
+  const pistachoMinus = page.locator('.fomb-flavor[data-flavor="Pistacho"] [data-delta="-1"]');
+  await pistachoMinus.click();
+  await pistachoMinus.click();
+  selectedTotal = 11;
+  await expect(pistachoCount).toHaveText("10");
+  await expect(page.locator("#fombTotal")).toContainText("39,50");
+  await expect(page.locator("#fombRule")).toContainText("4 + 7 bombones extra");
+  await expect(page.locator('input[name="fombSize"][value="4"]')).toBeChecked();
+
+  const sizePanel = page.locator(".fomb-builder .choice-panel").filter({ has:page.locator('input[name="fombSize"]') });
+  if (!(await sizePanel.getAttribute("open"))) await sizePanel.locator("summary").click();
   await page.locator('input[name="fombSize"][value="12"]').check();
   await expect(page.locator("#fombTotal")).toContainText("30,00");
-  await expect(page.locator("#fombValidation")).toContainText("Faltan 7 bombones");
+  await expect(page.locator("#fombValidation")).toContainText("Falta 1 bombón");
   await expect(page.locator("#addFombBox")).toBeDisabled();
+  await page.locator('input[name="fombSize"][value="4"]').check();
+  await expect(page.locator("#fombTotal")).toContainText("39,50");
+  await expect(page.locator("#addFombBox")).toBeEnabled();
+});
+
+test("Fomb corrige una caja de 12 guardada con el tramo anterior y conserva WhatsApp", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("fontana-cart-v1", JSON.stringify([{
+      id:"fomb-box-4-8-12-0-0-0",
+      productId:"fomb-box",
+      name:"Caja de 12 Fomb · Un sabor",
+      price:43,
+      image:"assets/fomb-pistachio-fontana-pro.jpg",
+      ingredients:"Pistacho y chocolate blanco vegano",
+      choices:"12 Pistacho",
+      inventory:{kind:"fomb",flavors:[{name:"Pistacho",qty:12,preorder:false}],boxSize:4,extraCount:8,preorder:false},
+      qty:1
+    }]));
+  });
+  await openPreview(page);
+
+  const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")[0]);
+  expect(migrated).toMatchObject({
+    id:"fomb-box-12-0-12-0-0-0",
+    price:30,
+    inventory:{kind:"fomb",boxSize:12,extraCount:0}
+  });
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item")).toContainText("Caja de 12 Fomb · Un sabor");
+  await expect(page.locator(".cart-item")).toContainText("USD 30,00");
+  await page.locator("#closeCart").click();
+
+  await fillCheckout(page);
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  const message = await page.evaluate(() => window.__copiedOrder);
+  expect(message).toContain("Caja de 12 Fomb · Un sabor");
+  expect(message).toContain("USD 30,00");
+  expect(message).toContain("*Total estimado: USD 30,00*");
+});
+
+test("el servidor aplica automáticamente el tramo Fomb alcanzado", async () => {
+  const { fombPricingMatchesRequest, resolveFombPricing } = await import("../backend/src/pricing.mjs");
+  const builder = {sizes:[{quantity:4,price:15},{quantity:12,price:30}],extraPrice:3.5};
+  const expectations = [
+    [4, {boxSize:4,extraCount:0,unitPriceCents:1500}],
+    [6, {boxSize:4,extraCount:2,unitPriceCents:2200}],
+    [8, {boxSize:4,extraCount:4,unitPriceCents:2900}],
+    [11, {boxSize:4,extraCount:7,unitPriceCents:3950}],
+    [12, {boxSize:12,extraCount:0,unitPriceCents:3000}],
+    [13, {boxSize:12,extraCount:1,unitPriceCents:3350}],
+    [20, {boxSize:12,extraCount:8,unitPriceCents:5800}]
+  ];
+  expectations.forEach(([total, expected]) => expect(resolveFombPricing(builder, total)).toEqual(expected));
+  expect(resolveFombPricing(builder, 3)).toBeNull();
+  const twelvePricing = resolveFombPricing(builder, 12);
+  expect(fombPricingMatchesRequest(twelvePricing, {boxSize:12,extraCount:0})).toBe(true);
+  expect(fombPricingMatchesRequest(twelvePricing, {boxSize:4,extraCount:8})).toBe(false);
+  expect(fombPricingMatchesRequest(twelvePricing, {})).toBe(true);
+  const workerSource = readFileSync("backend/src/worker.js", "utf8");
+  expect(workerSource).toContain("fombPricingMatchesRequest(pricing, requested)");
+  expect(workerSource).toContain('throw new Error("pricing_changed")');
 });
 
 test("las galerías de Fonkies y Fomb ocupan todo el marco y mantienen el producto centrado", async ({ page }, testInfo) => {
