@@ -1845,6 +1845,8 @@
     const cleanup = state => {
       const closingBackdropMotion = state.backdropMotion;
       state.backdropMotion = null;
+      state.layoutController?.abort();
+      cancelAnimationFrame(state.layoutFrame || 0);
       resetFlavorWheelGesture(state);
       cancelAnimations(state);
       state.quantityBuilder?.removeEventListener("fontana:flavor-change", state.quantityChangeHandler);
@@ -1915,13 +1917,14 @@
         return;
       }
       if (!state.swipeCueUsed) state.swipeCueUsed = true;
+      const switchEpoch = ++state.flavorSwitchEpoch;
       state.switching = true;
       state.overlay.classList.add("builder-flavor-switching");
       syncFlavorCue(state);
       const nextIndex = (state.currentIndex + direction + state.cards.length) % state.cards.length;
       const nextCard = state.cards[nextIndex];
       await preloadFlavorImage(nextCard);
-      if (active !== state || state.closing) return;
+      if (active !== state || state.closing || switchEpoch !== state.flavorSwitchEpoch) return;
 
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const exitAngle = direction > 0 ? -89.8 : 89.8;
@@ -1942,7 +1945,7 @@
             fill: "both"
           });
           await state.flavorMotion.finished;
-          if (active !== state || state.closing) return;
+          if (active !== state || state.closing || switchEpoch !== state.flavorSwitchEpoch) return;
           renderFlavor(state, nextCard);
           state.back.style.transform = `perspective(1500px) rotateY(${entryAngle}deg) scale(.985)`;
           state.back.style.opacity = "0";
@@ -1957,6 +1960,7 @@
             fill: "both"
           });
           await state.flavorMotion.finished;
+          if (active !== state || state.closing || switchEpoch !== state.flavorSwitchEpoch) return;
           state.back.style.transform = "perspective(1500px) rotateY(0deg) scale(1)";
           state.back.style.opacity = "1";
           state.flavorMotion.cancel();
@@ -1965,9 +1969,9 @@
           state.back.style.removeProperty("opacity");
         }
       } catch (_error) {
-        if (active !== state) return;
+        if (active !== state || switchEpoch !== state.flavorSwitchEpoch) return;
       } finally {
-        if (active !== state) return;
+        if (active !== state || switchEpoch !== state.flavorSwitchEpoch) return;
         state.flavorMotion?.cancel();
         state.flavorMotion = null;
         state.back.style.removeProperty("transform");
@@ -1992,6 +1996,252 @@
       }
     };
 
+    const expandedFlavorStockDetails = (kind, card) => {
+      const builderElement = card.closest(".fonkie-builder, .fomb-builder");
+      const builderMeta = adminState?.builders?.[kind] || {};
+      const meta = flavorMeta(kind, flavorName(card)) || {};
+      return builderFlavorStockDetails(meta, {
+        status: builderElement?.dataset.soldOut === "true" ? "sold-out" : builderMeta.status,
+        temporarilyUnavailable: builderElement?.dataset.temporarilyUnavailable === "true"
+          || builderMeta.temporarilyUnavailable === true
+      });
+    };
+
+    const measureExpandedFlavorDetails = (kind, cards, width, layout) => {
+      const probe = document.createElement("div");
+      probe.className = `builder-flavor-flip-card builder-flavor-measure builder-flavor-layout-${layout}`;
+      Object.assign(probe.style, {
+        position: "fixed",
+        left: "-10000px",
+        top: "0",
+        width: `${Math.max(1, width)}px`,
+        height: "auto",
+        visibility: "hidden",
+        pointerEvents: "none",
+        transform: "none"
+      });
+      const details = document.createElement("div");
+      details.className = "builder-flavor-expanded-details";
+      Object.assign(details.style, {
+        width: "100%",
+        height: "auto",
+        minHeight: "0",
+        overflow: "visible"
+      });
+      const eyebrow = document.createElement("span");
+      eyebrow.textContent = kind === "fonkies" ? "Fonkie · Galleta" : "Fomb · Bombón";
+      const heading = document.createElement("h3");
+      const availability = document.createElement("span");
+      availability.className = "builder-flavor-expanded-availability";
+      const ingredients = document.createElement("p");
+      const actions = document.createElement("div");
+      actions.className = "builder-flavor-expanded-actions";
+      actions.innerHTML = `
+        <span class="builder-flavor-quantity-copy"><b>Cantidad</b><small>de este sabor</small></span>
+        <span class="builder-flavor-quantity" aria-hidden="true"><i class="builder-flavor-quantity-button">−</i><output class="builder-flavor-quantity-output">0</output><i class="builder-flavor-quantity-button">+</i></span>
+        <span class="builder-flavor-done">Listo</span>
+      `;
+      details.append(eyebrow, heading, availability, ingredients, actions);
+      probe.append(details);
+      document.body.append(probe);
+
+      let requiredHeight = 0;
+      cards.forEach(card => {
+        const name = flavorName(card);
+        const meta = flavorMeta(kind, name);
+        const stock = expandedFlavorStockDetails(kind, card);
+        heading.textContent = name;
+        ingredients.textContent = meta?.ingredients?.trim()
+          || "Ingredientes pendientes de confirmar con Fontana.";
+        availability.textContent = stock.label;
+        availability.dataset.stockState = stock.state;
+        requiredHeight = Math.max(requiredHeight, details.scrollHeight);
+      });
+      probe.remove();
+      return Math.ceil(requiredHeight) + 2;
+    };
+
+    const resolveExpandedFlavorGeometry = (source, kind, cards) => {
+      const sourceRect = source.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const viewportWidth = viewport?.width || window.innerWidth;
+      const viewportHeight = viewport?.height || window.innerHeight;
+      const viewportLeft = viewport?.offsetLeft || 0;
+      const viewportTop = viewport?.offsetTop || 0;
+      const mobile = viewportWidth <= 640;
+      const measurementCache = new Map();
+      const measureDetails = (width, layout) => {
+        const roundedWidth = Math.floor(width * 2) / 2;
+        const key = `${layout}:${roundedWidth}`;
+        if (!measurementCache.has(key)) {
+          measurementCache.set(
+            key,
+            measureExpandedFlavorDetails(kind, cards, roundedWidth, layout)
+          );
+        }
+        return measurementCache.get(key);
+      };
+      const horizontalMargin = mobile ? 10 : 48;
+      const verticalMargin = mobile ? 20 : 48;
+      const availableWidth = Math.max(180, viewportWidth - (horizontalMargin * 2));
+      const availableHeight = Math.max(180, viewportHeight - (verticalMargin * 2));
+      const desiredMedia = Math.min(
+        availableWidth,
+        mobile
+          ? Math.max(sourceRect.width * 1.04, 280)
+          : Math.min(620, Math.max(sourceRect.width * 1.28, 420))
+      );
+
+      let stackMedia = Math.min(desiredMedia, availableWidth, availableHeight - 120);
+      let stackDetails = 0;
+      for (let pass = 0; pass < 6; pass += 1) {
+        stackDetails = measureDetails(stackMedia, "stack");
+        const nextMedia = Math.max(120, Math.min(
+          desiredMedia,
+          availableWidth,
+          availableHeight - stackDetails
+        ));
+        if (Math.abs(nextMedia - stackMedia) < 1) break;
+        stackMedia = nextMedia;
+      }
+      stackDetails = measureDetails(stackMedia, "stack");
+      const stackFits = stackMedia + stackDetails <= availableHeight + 1;
+      const stackKeepsUsefulImage = stackMedia >= Math.min(280, desiredMedia * .72);
+      const preferSide = viewportWidth > viewportHeight
+        && (viewportHeight < 700 || !stackKeepsUsefulImage);
+
+      let geometry = null;
+      if (stackFits && !preferSide) {
+        geometry = {
+          layout: "stack",
+          mediaSize: stackMedia,
+          detailsWidth: stackMedia,
+          detailsHeight: stackDetails,
+          width: stackMedia,
+          height: stackMedia + stackDetails
+        };
+      } else {
+        const largestMedia = Math.min(desiredMedia, availableHeight);
+        const smallestMedia = Math.min(largestMedia, mobile ? 160 : 190);
+        const baseDetailsWidth = mobile ? 240 : 280;
+        for (let mediaSize = largestMedia; mediaSize >= smallestMedia && !geometry; mediaSize -= 8) {
+          const maximumDetailsWidth = availableWidth - mediaSize;
+          if (maximumDetailsWidth < 240) continue;
+          const firstDetailsWidth = Math.min(baseDetailsWidth, maximumDetailsWidth);
+          const detailsWidths = [];
+          for (
+            let detailsWidth = firstDetailsWidth;
+            detailsWidth <= maximumDetailsWidth + 1;
+            detailsWidth += 12
+          ) detailsWidths.push(detailsWidth);
+          if (Math.abs((detailsWidths[detailsWidths.length - 1] || 0) - maximumDetailsWidth) >= 1) {
+            detailsWidths.push(maximumDetailsWidth);
+          }
+          for (const detailsWidth of detailsWidths) {
+            const measuredHeight = measureDetails(detailsWidth, "side");
+            const dialogHeight = Math.max(mediaSize, measuredHeight);
+            if (dialogHeight > availableHeight + 1) continue;
+            geometry = {
+              layout: "side",
+              mediaSize,
+              detailsWidth,
+              detailsHeight: dialogHeight,
+              width: mediaSize + detailsWidth,
+              height: dialogHeight
+            };
+            break;
+          }
+        }
+      }
+
+      if (!geometry) {
+        const initialDetailsWidth = Math.max(210, Math.min(availableWidth * .55, availableWidth - 120));
+        const mediaSize = Math.max(120, Math.min(availableHeight, availableWidth - initialDetailsWidth));
+        const detailsWidth = availableWidth - mediaSize;
+        const measuredHeight = measureDetails(detailsWidth, "side");
+        const dialogHeight = Math.min(availableHeight, Math.max(mediaSize, measuredHeight));
+        geometry = {
+          layout: "side",
+          mediaSize,
+          detailsWidth,
+          detailsHeight: dialogHeight,
+          width: availableWidth,
+          height: dialogHeight
+        };
+      }
+
+      geometry.left = viewportLeft + ((viewportWidth - geometry.width) / 2);
+      geometry.top = viewportTop + ((viewportHeight - geometry.height) / 2);
+      return geometry;
+    };
+
+    const applyExpandedFlavorGeometry = (state, geometry) => {
+      const layoutChanged = state.geometry && state.geometry.layout !== geometry.layout;
+      state.geometry = geometry;
+      state.overlay.classList.toggle("builder-flavor-layout-stack", geometry.layout === "stack");
+      state.overlay.classList.toggle("builder-flavor-layout-side", geometry.layout === "side");
+      state.overlay.classList.add("builder-flavor-fixed-details");
+      Object.assign(state.overlay.style, {
+        left: `${geometry.left}px`,
+        top: `${geometry.top}px`,
+        width: `${geometry.width}px`,
+        height: `${geometry.height}px`,
+        transformOrigin: `${geometry.mediaSize / 2}px ${geometry.mediaSize / 2}px`
+      });
+      state.overlay.style.setProperty("--builder-media-size", `${geometry.mediaSize}px`);
+      state.overlay.style.setProperty("--builder-details-width", `${geometry.detailsWidth}px`);
+      state.overlay.style.setProperty("--builder-details-height", `${geometry.detailsHeight}px`);
+      state.overlay.style.setProperty("--builder-dialog-height", `${geometry.height}px`);
+      if (layoutChanged) state.details.scrollTo({ left: 0, top: 0, behavior: "instant" });
+    };
+
+    const sameExpandedFlavorGeometry = (first, second) => {
+      if (!first || !second || first.layout !== second.layout) return false;
+      return ["mediaSize", "detailsWidth", "detailsHeight", "width", "height", "left", "top"]
+        .every(key => Math.abs(first[key] - second[key]) < 1);
+    };
+
+    const settleExpandedFlavorAfterLayoutChange = state => {
+      const focusWasInside = state.overlay.contains(document.activeElement);
+      state.flavorSwitchEpoch += 1;
+      cancelAnimations(state);
+      state.motion = null;
+      state.faceMotions = [];
+      state.flavorMotion = null;
+      state.pendingDirections = [];
+      state.pendingWheelOffset = 0;
+      state.switching = false;
+      state.overlay.classList.remove("builder-flavor-switching");
+      state.overlay.style.transform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
+      state.overlay.style.opacity = "1";
+      state.front.style.visibility = "hidden";
+      state.back.style.visibility = "visible";
+      state.back.style.removeProperty("transform");
+      state.back.style.removeProperty("opacity");
+      state.back.setAttribute("aria-hidden", "false");
+      state.ready = true;
+      state.details.scrollTo({ left: 0, top: 0, behavior: "instant" });
+      syncFlavorCue(state);
+      if (!focusWasInside) state.back.focus({ preventScroll: true });
+      if (state.pendingClose && !state.quantityBusy) {
+        const immediate = state.pendingClose === "immediate";
+        state.pendingClose = null;
+        close(immediate);
+      }
+    };
+
+    const scheduleExpandedFlavorGeometryRefresh = state => {
+      cancelAnimationFrame(state.layoutFrame || 0);
+      state.layoutFrame = requestAnimationFrame(() => {
+        state.layoutFrame = 0;
+        if (active !== state || state.closing) return;
+        const geometry = resolveExpandedFlavorGeometry(state.source, state.kind, state.cards);
+        if (sameExpandedFlavorGeometry(state.geometry, geometry)) return;
+        applyExpandedFlavorGeometry(state, geometry);
+        settleExpandedFlavorAfterLayoutChange(state);
+      });
+    };
+
     const open = source => {
       if (
         active
@@ -2004,40 +2254,16 @@
       const meta = flavorMeta(kind, name);
       const image = $("img", source);
       if (!image) return;
-
-      const mobile = window.matchMedia("(max-width: 640px)").matches;
-      const viewportHeight = window.visualViewport?.height || window.innerHeight;
-      const portraitMobile = mobile && viewportHeight >= window.innerWidth;
-      // Keep the full flavor copy and quantity controls visible without turning
-      // the lower panel into a nested scroller on wider portrait phones.
-      const mobileDetailsHeight = 230;
-      const mobileHeightLimit = viewportHeight - (portraitMobile ? 40 : 72);
-      const mobileBaseWidth = Math.min(window.innerWidth - 20, Math.max(rect.width * 1.04, 320));
-      const mobileWidthLimit = portraitMobile
-        ? Math.max(280, mobileHeightLimit - mobileDetailsHeight)
-        : mobileBaseWidth;
-      const desktopHeightLimit = viewportHeight - 96;
-      const desktopDetailsHeight = Math.min(230, Math.max(160, desktopHeightLimit * 0.28));
-      const targetWidth = mobile
-        ? Math.min(mobileBaseWidth, mobileWidthLimit)
-        : Math.min(
-          window.innerWidth - 96,
-          desktopHeightLimit - desktopDetailsHeight,
-          Math.max(rect.width * 1.28, 420)
-        );
-      const fixedMobileDetails = portraitMobile
-        && mobileHeightLimit >= targetWidth + mobileDetailsHeight;
-      const targetHeight = mobile
-        ? Math.min(
-          mobileHeightLimit,
-          Math.max(rect.height * 1.5, 580, portraitMobile ? targetWidth + mobileDetailsHeight : 0)
-        )
-        : targetWidth + desktopDetailsHeight;
-      const targetX = (window.innerWidth - targetWidth) / 2;
-      const targetY = (viewportHeight - targetHeight) / 2;
-      const startX = rect.left + (rect.width / 2) - (targetX + (targetWidth / 2));
-      const startY = rect.top + (rect.height / 2) - (targetY + (targetWidth / 2));
-      const startScale = rect.width / targetWidth;
+      const track = source.closest(".fonkie-gallery-track, .builder-gallery-track");
+      const flavorCards = track ? $$(".fonkie-gallery-card, .builder-gallery-card", track) : [source];
+      const geometry = resolveExpandedFlavorGeometry(source, kind, flavorCards);
+      const targetWidth = geometry.width;
+      const targetHeight = geometry.height;
+      const targetX = geometry.left;
+      const targetY = geometry.top;
+      const startX = rect.left + (rect.width / 2) - (targetX + (geometry.mediaSize / 2));
+      const startY = rect.top + (rect.height / 2) - (targetY + (geometry.mediaSize / 2));
+      const startScale = rect.width / geometry.mediaSize;
       const liftScale = startScale + ((1 - startScale) * 0.28);
       const edgeScale = startScale + ((1 - startScale) * 0.66);
       const startTransform = `perspective(1800px) translate3d(${startX}px, ${startY}px, 0) scale(${startScale}) rotateX(0deg) rotateY(0deg) rotateZ(0deg)`;
@@ -2060,8 +2286,7 @@
       ];
 
       const overlay = document.createElement("section");
-      overlay.className = "builder-flavor-flip-card";
-      if (fixedMobileDetails) overlay.classList.add("builder-flavor-fixed-details");
+      overlay.className = `builder-flavor-flip-card builder-flavor-fixed-details builder-flavor-layout-${geometry.layout}`;
       overlay.setAttribute("role", "dialog");
       overlay.setAttribute("aria-modal", "true");
       overlay.setAttribute("aria-label", `${kind === "fonkies" ? "Fonkie" : "Fomb"} ${name}`);
@@ -2070,10 +2295,13 @@
         top: `${targetY}px`,
         width: `${targetWidth}px`,
         height: `${targetHeight}px`,
-        transformOrigin: `${targetWidth / 2}px ${targetWidth / 2}px`,
+        transformOrigin: `${geometry.mediaSize / 2}px ${geometry.mediaSize / 2}px`,
         transform: startTransform
       });
-      overlay.style.setProperty("--builder-media-size", `${targetWidth}px`);
+      overlay.style.setProperty("--builder-media-size", `${geometry.mediaSize}px`);
+      overlay.style.setProperty("--builder-details-width", `${geometry.detailsWidth}px`);
+      overlay.style.setProperty("--builder-details-height", `${geometry.detailsHeight}px`);
+      overlay.style.setProperty("--builder-dialog-height", `${geometry.height}px`);
       const inner = document.createElement("div");
       inner.className = "builder-flavor-flip-inner";
       const front = document.createElement("div");
@@ -2220,12 +2448,13 @@
           fill: "forwards"
         });
       }
+      const layoutController = new AbortController();
       const state = {
         source,
         currentSource: source,
         currentName: name,
         currentIndex: 0,
-        cards: [],
+        cards: flavorCards,
         kind,
         overlay,
         front,
@@ -2235,6 +2464,7 @@
         heading,
         availability,
         ingredients,
+        details,
         quantityActions,
         quantityGroup,
         quantityDecrease,
@@ -2249,6 +2479,10 @@
         faceMotions,
         backdropMotion: null,
         flavorMotion: null,
+        flavorSwitchEpoch: 0,
+        geometry,
+        layoutController,
+        layoutFrame: 0,
         scrollState: lockModalPageScroll(),
         closing: false,
         switching: false,
@@ -2265,8 +2499,6 @@
         quantityChangeHandler: null,
         quantityBusy: source.closest(".fonkie-builder, .fomb-builder")?.dataset.quantityPending === "true"
       };
-      const track = source.closest(".fonkie-gallery-track, .builder-gallery-track");
-      state.cards = track ? $$(".fonkie-gallery-card, .builder-gallery-card", track) : [source];
       state.currentIndex = Math.max(0, state.cards.indexOf(source));
       state.quantityChangeHandler = event => {
         if (active !== state) return;
@@ -2290,6 +2522,15 @@
       state.quantityBuilder?.addEventListener("fontana:flavor-change", state.quantityChangeHandler);
       active = state;
       renderFlavor(state, source);
+      const refreshGeometry = () => scheduleExpandedFlavorGeometryRefresh(state);
+      window.addEventListener("resize", refreshGeometry, { signal: layoutController.signal });
+      window.addEventListener("orientationchange", refreshGeometry, { signal: layoutController.signal });
+      window.visualViewport?.addEventListener("resize", refreshGeometry, { signal: layoutController.signal });
+      window.visualViewport?.addEventListener("scroll", refreshGeometry, { signal: layoutController.signal });
+      document.fonts?.addEventListener?.("loadingdone", refreshGeometry, { signal: layoutController.signal });
+      document.fonts?.ready.then(() => {
+        if (active === state && !state.closing) scheduleExpandedFlavorGeometryRefresh(state);
+      }).catch(() => {});
       source.style.visibility = "hidden";
       source.setAttribute("aria-expanded", "true");
       backdrop.hidden = false;

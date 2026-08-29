@@ -14,6 +14,12 @@ function fingerprint(contents) {
   return createHash("sha256").update(contents).digest("hex").slice(0, 12);
 }
 
+function compactInlineStyles(html) {
+  return html.replace(/<style>([\s\S]*?)<\/style>/g, (_match, styles) => (
+    `<style>${styles.replace(/\s+/g, " ").trim()}</style>`
+  ));
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
@@ -308,7 +314,7 @@ let html = sourceHtml
   .replaceAll("https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg", `${site.origin}${site.defaultSocialImage}`)
   .replace('<meta property="og:image:width" content="1448">', '<meta property="og:image:width" content="1200">')
   .replace('<meta property="og:image:height" content="1086">', '<meta property="og:image:height" content="630">');
-html = enhanceHomepageImages(html);
+html = compactInlineStyles(enhanceHomepageImages(html));
 await writeFile(`${outputDirectory}/index.html`, html);
 
 let adminHtml = await readFile("admin/index.html", "utf8");

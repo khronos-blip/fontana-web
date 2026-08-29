@@ -106,65 +106,172 @@ async function swipeExpandedFlavor(page, direction, targetSelector = ".builder-f
   }, direction);
 }
 
-async function expectExpandedFlavorLayoutFits(overlay, { fixed = false } = {}) {
+async function expectExpandedFlavorLayoutFits(overlay, { fixed = false, layout: expectedLayout = null } = {}) {
   const layout = await overlay.evaluate(element => {
     const box = element.getBoundingClientRect();
     const media = element.querySelector(".builder-flavor-expanded-media")?.getBoundingClientRect();
     const detailsElement = element.querySelector(".builder-flavor-expanded-details");
     const details = detailsElement?.getBoundingClientRect();
+    const backElement = element.querySelector(".builder-flavor-flip-back");
+    const back = backElement?.getBoundingClientRect();
     const cue = element.querySelector(".builder-flavor-swipe-cue")?.getBoundingClientRect();
     const dock = element.querySelector(".builder-flavor-swipe-dock")?.getBoundingClientRect();
     const actions = element.querySelector(".builder-flavor-expanded-actions")?.getBoundingClientRect();
+    const quantityCopy = element.querySelector(".builder-flavor-quantity-copy")?.getBoundingClientRect();
+    const quantity = element.querySelector(".builder-flavor-quantity")?.getBoundingClientRect();
+    const quantityOutput = element.querySelector(".builder-flavor-quantity-output")?.getBoundingClientRect();
+    const quantityButtons = [...element.querySelectorAll(".builder-flavor-quantity-button")]
+      .map(control => control.getBoundingClientRect());
     const done = element.querySelector(".builder-flavor-done")?.getBoundingClientRect();
+    const visibleControls = [...element.querySelectorAll('button,[role="slider"]')]
+      .filter(control => control.getClientRects().length && !control.hidden)
+      .map(control => control.getBoundingClientRect());
+    const viewportLeft = window.visualViewport?.offsetLeft || 0;
     const viewportTop = window.visualViewport?.offsetTop || 0;
+    const viewportRight = viewportLeft + (window.visualViewport?.width || window.innerWidth);
     const viewportBottom = viewportTop + (window.visualViewport?.height || window.innerHeight);
+    const inside = (child, parent, tolerance = 1) => Boolean(child && parent
+      && child.top >= parent.top - tolerance
+      && child.bottom <= parent.bottom + tolerance
+      && child.left >= parent.left - tolerance
+      && child.right <= parent.right + tolerance);
+    const intersection = (first, second) => {
+      if (!first || !second) return 0;
+      return Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left))
+        * Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top));
+    };
+    const actionParts = [quantityCopy, quantity, done].filter(Boolean);
+    const actionPartsDoNotOverlap = actionParts.every((part, index) => (
+      actionParts.slice(index + 1).every(other => intersection(part, other) <= 1)
+    ));
+    const mediaDetailsHorizontalOverlap = media && details
+      ? Math.max(0, Math.min(media.right, details.right) - Math.max(media.left, details.left))
+      : 0;
+    const mediaDetailsVerticalOverlap = media && details
+      ? Math.max(0, Math.min(media.bottom, details.bottom) - Math.max(media.top, details.top))
+      : 0;
     return {
-      overlayInsideViewport: box.top >= viewportTop - 1 && box.bottom <= viewportBottom + 1,
+      overlayInsideViewport: box.left >= viewportLeft - 1
+        && box.right <= viewportRight + 1
+        && box.top >= viewportTop - 1
+        && box.bottom <= viewportBottom + 1,
+      mainPanelsInsideOverlay: Boolean(back && media && details
+        && inside(back, box)
+        && inside(media, back)
+        && inside(details, back)),
+      internalPanelsDoNotScroll: [element, backElement, detailsElement]
+        .filter(Boolean)
+        .every(panel => panel.scrollHeight <= panel.clientHeight + 1
+          && panel.scrollWidth <= panel.clientWidth + 1),
+      panelMetrics: [element, backElement, detailsElement].filter(Boolean).map(panel => ({
+        className: panel.className,
+        clientWidth: panel.clientWidth,
+        scrollWidth: panel.scrollWidth,
+        clientHeight: panel.clientHeight,
+        scrollHeight: panel.scrollHeight
+      })),
       detailsHeight: details?.height || 0,
       detailsClientHeight: detailsElement?.clientHeight || 0,
       detailsScrollHeight: detailsElement?.scrollHeight || 0,
+      detailsClientWidth: detailsElement?.clientWidth || 0,
+      detailsScrollWidth: detailsElement?.scrollWidth || 0,
       detailsScrollTop: detailsElement?.scrollTop || 0,
+      detailsScrollLeft: detailsElement?.scrollLeft || 0,
       detailsOverflowY: detailsElement ? getComputedStyle(detailsElement).overflowY : "",
       detailsChildrenInside: Boolean(details && detailsElement
-        && [...detailsElement.children].every(child => {
-          const childBox = child.getBoundingClientRect();
-          return childBox.top >= details.top - 1
-            && childBox.bottom <= details.bottom + 1
-            && childBox.left >= details.left - 1
-            && childBox.right <= details.right + 1;
-        })),
+        && [...detailsElement.children]
+          .filter(child => child.getClientRects().length)
+          .every(child => inside(child.getBoundingClientRect(), details))),
+      layout: mediaDetailsHorizontalOverlap <= 1 && mediaDetailsVerticalOverlap > 1
+        ? "lateral"
+        : mediaDetailsVerticalOverlap <= 1 && mediaDetailsHorizontalOverlap > 1
+          ? "stacked"
+          : "overlapping",
       cueInsideMedia: Boolean(media && cue
-        && cue.top >= media.top - 1
-        && cue.bottom <= media.bottom + 1),
-      dockInsideMedia: Boolean(media && dock
-        && dock.top >= media.top - 1
-        && dock.bottom <= media.bottom + 1),
+        && inside(cue, media)),
+      dockInsideMedia: Boolean(media && dock && inside(dock, media)),
       cueBeforeDetails: Boolean(cue && details && cue.bottom <= details.top + 1),
       dockBeforeDetails: Boolean(dock && details && dock.bottom <= details.top + 1),
-      actionsInsideDetails: Boolean(actions && details
-        && actions.top >= details.top - 1
-        && actions.bottom <= details.bottom + 1),
-      doneInsideOverlay: Boolean(done
-        && done.left >= box.left - 1
-        && done.right <= box.right + 1
-        && done.bottom <= box.bottom + 1),
+      actionsInsideDetails: Boolean(actions && details && inside(actions, details)),
+      actionPartsInside: Boolean(actions && details
+        && actionParts.length === 3
+        && actionParts.every(part => inside(part, actions) && inside(part, details))),
+      actionPartsVisible: actionParts.length === 3
+        && actionParts.every(part => part.width > 1 && part.height > 1),
+      actionPartsDoNotOverlap,
+      quantityOutputInside: Boolean(quantityOutput && quantity && inside(quantityOutput, quantity)),
+      quantityButtonsInside: Boolean(quantity && quantityButtons.length === 2
+        && quantityButtons.every(control => inside(control, quantity))),
+      quantityButtonsAreTouchSized: quantityButtons.length === 2
+        && quantityButtons.every(control => control.width >= 44 && control.height >= 44),
+      allControlsInsideOverlay: visibleControls.length === 5
+        && visibleControls.every(control => inside(control, box)),
+      allControlsAreTouchSized: visibleControls.length === 5
+        && visibleControls.every(control => control.width >= 44 && control.height >= 44),
+      doneInsideOverlay: Boolean(done && inside(done, box)),
       pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth
     };
   });
   expect(layout.overlayInsideViewport).toBe(true);
+  expect(layout.mainPanelsInsideOverlay).toBe(true);
+  expect(layout.internalPanelsDoNotScroll, JSON.stringify(layout.panelMetrics)).toBe(true);
   expect(layout.detailsHeight).toBeGreaterThan(0);
   expect(layout.detailsScrollTop).toBeLessThanOrEqual(1);
+  expect(layout.detailsScrollLeft).toBeLessThanOrEqual(1);
   expect(layout.detailsScrollHeight).toBeLessThanOrEqual(layout.detailsClientHeight + 1);
-  if (fixed) expect(layout.detailsOverflowY).toBe("hidden");
+  expect(layout.detailsScrollWidth).toBeLessThanOrEqual(layout.detailsClientWidth + 1);
+  if (fixed) expect(["hidden", "clip"]).toContain(layout.detailsOverflowY);
+  if (expectedLayout) expect(layout.layout).toBe(expectedLayout);
   expect(layout.detailsChildrenInside).toBe(true);
   expect(layout.cueInsideMedia).toBe(true);
   expect(layout.dockInsideMedia).toBe(true);
-  expect(layout.cueBeforeDetails).toBe(true);
-  expect(layout.dockBeforeDetails).toBe(true);
+  if (layout.layout === "stacked") {
+    expect(layout.cueBeforeDetails).toBe(true);
+    expect(layout.dockBeforeDetails).toBe(true);
+  }
   expect(layout.actionsInsideDetails).toBe(true);
+  expect(layout.actionPartsInside).toBe(true);
+  expect(layout.actionPartsVisible).toBe(true);
+  expect(layout.actionPartsDoNotOverlap).toBe(true);
+  expect(layout.quantityOutputInside).toBe(true);
+  expect(layout.quantityButtonsInside).toBe(true);
+  expect(layout.quantityButtonsAreTouchSized).toBe(true);
+  expect(layout.allControlsInsideOverlay).toBe(true);
+  expect(layout.allControlsAreTouchSized).toBe(true);
   expect(layout.doneInsideOverlay).toBe(true);
   expect(layout.pageFits).toBe(true);
   return layout;
+}
+
+async function waitForExpandedFlavorLayout(overlay, expectedLayout) {
+  await expect.poll(() => overlay.evaluate((element, expected) => {
+    const box = element.getBoundingClientRect();
+    const media = element.querySelector(".builder-flavor-expanded-media")?.getBoundingClientRect();
+    const details = element.querySelector(".builder-flavor-expanded-details")?.getBoundingClientRect();
+    if (!media || !details) return false;
+    const horizontalOverlap = Math.max(
+      0,
+      Math.min(media.right, details.right) - Math.max(media.left, details.left)
+    );
+    const verticalOverlap = Math.max(
+      0,
+      Math.min(media.bottom, details.bottom) - Math.max(media.top, details.top)
+    );
+    const layout = horizontalOverlap <= 1 && verticalOverlap > 1
+      ? "lateral"
+      : verticalOverlap <= 1 && horizontalOverlap > 1
+        ? "stacked"
+        : "overlapping";
+    const viewportLeft = window.visualViewport?.offsetLeft || 0;
+    const viewportTop = window.visualViewport?.offsetTop || 0;
+    const viewportRight = viewportLeft + (window.visualViewport?.width || window.innerWidth);
+    const viewportBottom = viewportTop + (window.visualViewport?.height || window.innerHeight);
+    return layout === expected
+      && box.left >= viewportLeft - 1
+      && box.right <= viewportRight + 1
+      && box.top >= viewportTop - 1
+      && box.bottom <= viewportBottom + 1;
+  }, expectedLayout)).toBe(true);
 }
 
 async function fillCheckout(page, { allergies = false, birthdayCandle = false } = {}) {
@@ -1584,20 +1691,35 @@ test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en es
   }
 });
 
-test("el panel ampliado de todos los sabores queda fijo y completo en móviles", async ({ page }) => {
-  test.setTimeout(90_000);
+test("el panel ampliado de todos los sabores queda fijo y completo en pantallas relevantes", async ({ page }) => {
+  test.setTimeout(180_000);
   const layoutState = createExpandedFlavorLayoutState();
   await installExpandedFlavorLayoutCatalog(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const viewport of [
-    { width: 430, height: 932 },
-    { width: 390, height: 740 },
-    { width: 375, height: 667 },
-    { width: 320, height: 568 },
-    { width: 640, height: 844 }
+  for (const viewportCase of [
+    { width: 430, height: 932, layout: "stacked" },
+    { width: 390, height: 740, layout: "stacked" },
+    { width: 375, height: 667, layout: "stacked" },
+    { width: 320, height: 568, layout: "stacked" },
+    { width: 640, height: 844, layout: "stacked" },
+    // The first pixel after the mobile breakpoint used to fall back to a
+    // shorter, internally scrollable details row.
+    { width: 641, height: 844, layout: "stacked" },
+    // Short landscape phones and short desktop windows need the lateral
+    // composition so neither the copy nor the 44 px controls are clipped.
+    { width: 568, height: 320, layout: "lateral" },
+    { width: 640, height: 360, layout: "lateral" },
+    { width: 641, height: 360, layout: "lateral" },
+    { width: 667, height: 375, layout: "lateral" },
+    { width: 844, height: 390, layout: "lateral" },
+    { width: 768, height: 600, layout: "lateral" },
+    { width: 1024, height: 600, layout: "lateral" },
+    { width: 1366, height: 650, layout: "lateral" }
   ]) {
+    const { layout: expectedLayout, ...viewport } = viewportCase;
     await page.setViewportSize(viewport);
     await openPreview(page);
+    await page.evaluate(() => document.fonts?.ready);
 
     for (const builderCase of [
       {
@@ -1622,12 +1744,15 @@ test("el panel ampliado de todos los sabores queda fijo y completo en móviles",
 
       for (let index = 0; index < builderCase.names.length; index += 1) {
         await expect(overlay.locator("h3")).toHaveText(builderCase.names[index]);
-        await expectExpandedFlavorLayoutFits(overlay, { fixed: true });
-        const forcedScrollTop = await details.evaluate(element => {
-          element.scrollTop = 50;
-          return element.scrollTop;
+        await expectExpandedFlavorLayoutFits(overlay, {
+          fixed: true,
+          layout: expectedLayout
         });
-        expect(forcedScrollTop).toBe(0);
+        const forcedScroll = await details.evaluate(element => {
+          element.scrollTo({ left: 50, top: 50, behavior: "instant" });
+          return { left: element.scrollLeft, top: element.scrollTop };
+        });
+        expect(forcedScroll).toEqual({ left: 0, top: 0 });
         const actionHeights = await overlay.locator(".builder-flavor-expanded-actions button").evaluateAll(buttons => (
           buttons.map(button => button.getBoundingClientRect().height)
         ));
@@ -1637,31 +1762,49 @@ test("el panel ampliado de todos los sabores queda fijo y completo en móviles",
 
       const detailsBox = await details.boundingBox();
       expect(detailsBox).not.toBeNull();
+      const documentScrollBeforeWheel = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
       await page.mouse.move(detailsBox.x + (detailsBox.width / 2), detailsBox.y + (detailsBox.height / 2));
       await page.mouse.wheel(0, 300);
       await page.waitForTimeout(30);
       await expect.poll(() => details.evaluate(element => element.scrollTop)).toBe(0);
+      expect(await page.evaluate(() => ({ x: scrollX, y: scrollY }))).toEqual(documentScrollBeforeWheel);
       await overlay.locator(".builder-flavor-done").click();
       await expect(overlay).toHaveCount(0);
     }
   }
 });
 
-test("el panel fijo tolera las métricas de texto ampliadas de Safari móvil", async ({ page }) => {
+test("el panel fijo tolera texto ampliado en un móvil de 320 por 568", async ({ page }) => {
   await installExpandedFlavorLayoutCatalog(page);
-  await page.setViewportSize({ width: 430, height: 932 });
+  await page.setViewportSize({ width: 320, height: 568 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openPreview(page);
+  await page.evaluate(() => document.fonts?.ready);
   await page.locator("html").evaluate(element => { element.style.fontSize = "18px"; });
 
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await page.locator(".fonkie-gallery-card").first().evaluate(element => element.click());
   let overlay = page.locator(".builder-flavor-flip-card");
-  for (let index = 0; index < 5; index += 1) {
+  for (let index = 0; index < 2; index += 1) {
     await overlay.locator(".builder-flavor-swipe-cue").press("ArrowRight");
   }
-  await expect(overlay.locator("h3")).toHaveText("Almond Caramel");
-  await expectExpandedFlavorLayoutFits(overlay, { fixed: true });
+  await expect(overlay.locator("h3")).toHaveText("Pistacho con Chocolate Blanco");
+  await expectExpandedFlavorLayoutFits(overlay, { fixed: true, layout: "stacked" });
+  for (let index = 0; index < 2; index += 1) {
+    await overlay.locator(".builder-flavor-swipe-cue").press("ArrowRight");
+  }
+  await expect(overlay.locator("h3")).toHaveText("Nutella Fit");
+  await expectExpandedFlavorLayoutFits(overlay, { fixed: true, layout: "stacked" });
+
+  const details = overlay.locator(".builder-flavor-expanded-details");
+  const done = overlay.locator(".builder-flavor-done");
+  await done.focus();
+  await page.keyboard.press("Tab");
+  await expect(overlay.locator(".builder-flavor-expanded-media")).toBeFocused();
+  await expect.poll(() => details.evaluate(element => element.scrollTop)).toBe(0);
+  await page.keyboard.press("Shift+Tab");
+  await expect(done).toBeFocused();
+  await expectExpandedFlavorLayoutFits(overlay, { fixed: true, layout: "stacked" });
   await overlay.locator(".builder-flavor-done").click();
   await expect(overlay).toHaveCount(0);
 
@@ -1670,8 +1813,77 @@ test("el panel fijo tolera las métricas de texto ampliadas de Safari móvil", a
   overlay = page.locator(".builder-flavor-flip-card");
   await overlay.locator(".builder-flavor-swipe-cue").press("ArrowRight");
   await expect(overlay.locator("h3")).toHaveText("Dubai");
-  await expectExpandedFlavorLayoutFits(overlay, { fixed: true });
+  await expectExpandedFlavorLayoutFits(overlay, { fixed: true, layout: "stacked" });
   await overlay.locator(".builder-flavor-done").click();
+  await expect(overlay).toHaveCount(0);
+});
+
+test("el panel abierto se recompone al rotar entre retrato y paisaje", async ({ page }) => {
+  await installExpandedFlavorLayoutCatalog(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  for (const builderCase of [
+    {
+      filter: "Fonkies · Galletas",
+      card: ".fonkie-gallery-card",
+      targetName: "Pistacho con Chocolate Blanco",
+      steps: 2
+    },
+    {
+      filter: "Fomb · Bombones",
+      card: ".builder-gallery-card",
+      targetName: "Dubai",
+      steps: 1
+    }
+  ]) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openPreview(page);
+    await page.evaluate(() => document.fonts?.ready);
+    await page.getByRole("button", { name: builderCase.filter }).click();
+    await page.locator(builderCase.card).first().evaluate(element => element.click());
+
+    const overlay = page.locator(".builder-flavor-flip-card");
+    const swipeCue = overlay.locator(".builder-flavor-swipe-cue");
+    await expect(overlay).toBeVisible();
+    for (let index = 0; index < builderCase.steps; index += 1) {
+      await swipeCue.press("ArrowRight");
+    }
+    await expect(overlay.locator("h3")).toHaveText(builderCase.targetName);
+    await expectExpandedFlavorLayoutFits(overlay, { fixed: true, layout: "stacked" });
+
+    await page.setViewportSize({ width: 844, height: 390 });
+    await waitForExpandedFlavorLayout(overlay, "lateral");
+    await expect(overlay).toHaveCount(1);
+    await expect(overlay.locator("h3")).toHaveText(builderCase.targetName);
+    await expectExpandedFlavorLayoutFits(overlay, { fixed: true, layout: "lateral" });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForExpandedFlavorLayout(overlay, "stacked");
+    await expect(overlay).toHaveCount(1);
+    await expect(overlay.locator("h3")).toHaveText(builderCase.targetName);
+    await expectExpandedFlavorLayoutFits(overlay, { fixed: true, layout: "stacked" });
+
+    await overlay.locator(".builder-flavor-done").click();
+    await expect(overlay).toHaveCount(0);
+  }
+});
+
+test("un cambio de orientación durante la apertura conserva el foco dentro del diálogo", async ({ page }) => {
+  await installExpandedFlavorLayoutCatalog(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await page.evaluate(() => document.fonts?.ready);
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await page.locator(".fonkie-gallery-card").first().evaluate(element => element.click());
+
+  const overlay = page.locator(".builder-flavor-flip-card");
+  await expect(overlay).toBeVisible();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await waitForExpandedFlavorLayout(overlay, "lateral");
+  await expect.poll(() => overlay.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await expectExpandedFlavorLayoutFits(overlay, { fixed: true, layout: "lateral" });
+
+  await page.keyboard.press("Escape");
   await expect(overlay).toHaveCount(0);
 });
 
