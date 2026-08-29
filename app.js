@@ -1324,6 +1324,9 @@
       const { signal } = controller;
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
       const modulo = value => ((value % cards.length) + cards.length) % cards.length;
+      // A compact-gallery gesture always reveals the adjacent flavor. Distance
+      // controls the drag preview, never how many cards the gesture can skip.
+      const clampGestureOffset = value => Math.max(-1, Math.min(1, value));
       const circularOffset = (index, value) => {
         let offset = modulo(index - value);
         if (offset > cards.length / 2) offset -= cards.length;
@@ -1342,6 +1345,11 @@
       let pendingFocusIndex = null;
 
       const setState = state => { track.dataset.galleryState = state; };
+      const resetWheelGesture = () => {
+        window.clearTimeout(wheelTimer);
+        wheelTimer = 0;
+        wheel = null;
+      };
       const trackWidth = () => track.getBoundingClientRect().width || track.clientWidth || 1;
       const render = () => {
         cards.forEach((card, index) => {
@@ -1399,10 +1407,8 @@
         pendingFocusIndex = null;
         return target;
       };
-      const animateTo = (target, focusIndex = null) => {
-        window.clearTimeout(wheelTimer);
-        wheelTimer = 0;
-        wheel = null;
+      const animateTo = (target, focusIndex = null, { preserveWheelGesture = false } = {}) => {
+        if (!preserveWheelGesture) resetWheelGesture();
         cancelAnimationFrame(motionFrame);
         motionFrame = 0;
         motion = null;
@@ -1444,9 +1450,7 @@
         // A new, intentional contact must never inherit the ghost-click guard
         // from the gesture that came before it.
         suppressClickUntil = 0;
-        window.clearTimeout(wheelTimer);
-        wheelTimer = 0;
-        wheel = null;
+        resetWheelGesture();
         const interruptedTarget = cancelMotion();
         pointer = {
           id: event.pointerId,
@@ -1468,7 +1472,7 @@
           if (Math.abs(dy) >= Math.abs(dx)) {
             pointer.axis = "vertical";
             if (pointer.interrupted) {
-              animateTo(Math.round(position));
+              animateTo(pointer.baseTarget);
               pointer.interrupted = false;
             }
             return;
@@ -1479,7 +1483,7 @@
           try { track.setPointerCapture(event.pointerId); } catch (_error) {}
         }
         event.preventDefault();
-        position = pointer.startPosition - (dx / pointer.width);
+        position = pointer.startPosition + clampGestureOffset(-(dx / pointer.width));
         render();
       };
       const finishPointer = (event, cancelled = false) => {
@@ -1492,7 +1496,7 @@
         if (activePointer.axis !== "horizontal") {
           if (activePointer.interrupted) {
             suppressClickUntil = performance.now() + 500;
-            animateTo(Math.round(position));
+            animateTo(activePointer.baseTarget);
           } else if (!motion) {
             setState("idle");
           }
@@ -1500,18 +1504,17 @@
         }
         suppressClickUntil = performance.now() + 500;
         if (cancelled) {
-          animateTo(Math.round(position));
+          animateTo(activePointer.baseTarget);
           return;
         }
         const dx = event.clientX - activePointer.startX;
         const distance = Math.abs(position - activePointer.startPosition);
         if (Math.abs(dx) < 18 || distance < .08) {
-          animateTo(activePointer.interrupted ? Math.round(position) : activePointer.baseTarget);
+          animateTo(activePointer.baseTarget);
           return;
         }
         const direction = dx < 0 ? 1 : -1;
-        const steps = Math.max(1, Math.round(distance));
-        animateTo(activePointer.baseTarget + (direction * steps));
+        animateTo(activePointer.baseTarget + direction);
       };
 
       track.addEventListener("pointerdown", beginPointer, { signal });
@@ -1528,6 +1531,8 @@
       }, { signal });
 
       track.addEventListener("wheel", event => {
+        // Trackpad pinch-to-zoom is exposed as a ctrl+wheel gesture in browsers.
+        if (event.ctrlKey) return;
         const width = trackWidth();
         const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE
           ? 16
@@ -1539,26 +1544,76 @@
         const dy = event.deltaY * unit;
         if (Math.abs(dx) < 1 || Math.abs(dx) <= Math.abs(dy) * .9) return;
         event.preventDefault();
-        if (!wheel) {
+        const now = performance.now();
+        const magnitude = Math.abs(dx);
+        const direction = Math.sign(dx);
+        const currentGesture = wheel;
+        const rested = !currentGesture || now - currentGesture.lastEventAt > 90;
+        const reversed = currentGesture && direction !== currentGesture.direction;
+        const renewedImpulse = currentGesture?.committed
+          && currentGesture.decayed
+          && now - currentGesture.committedAt >= 60
+          && now - currentGesture.lastEventAt >= 40
+          && magnitude >= 12
+          && magnitude >= currentGesture.lastMagnitude * 1.35
+          && magnitude >= currentGesture.postPeakMin * 1.6;
+        if (rested || reversed || renewedImpulse) {
+          resetWheelGesture();
           const interruptedTarget = cancelMotion();
-          wheel = { startPosition: position, baseTarget: interruptedTarget };
+          wheel = {
+            startPosition: position,
+            baseTarget: interruptedTarget,
+            totalX: 0,
+            committed: false,
+            direction,
+            lastEventAt: now,
+            lastMagnitude: magnitude,
+            committedAt: 0,
+            peakMagnitude: magnitude,
+            postPeakMin: Number.POSITIVE_INFINITY,
+            decayed: false
+          };
           setState("dragging");
         }
-        position += dx / width;
-        render();
+
+        const activeWheel = wheel;
+        activeWheel.lastEventAt = now;
+        if (!activeWheel.committed) {
+          activeWheel.totalX += dx;
+          activeWheel.lastMagnitude = magnitude;
+          activeWheel.peakMagnitude = Math.max(activeWheel.peakMagnitude, magnitude);
+          position = activeWheel.startPosition
+            + clampGestureOffset(activeWheel.totalX / width);
+          render();
+          if (Math.abs(activeWheel.totalX) >= width * .04) {
+            activeWheel.committed = true;
+            activeWheel.committedAt = now;
+            activeWheel.postPeakMin = Number.POSITIVE_INFINITY;
+            activeWheel.decayed = false;
+            animateTo(
+              activeWheel.baseTarget + Math.sign(activeWheel.totalX),
+              null,
+              { preserveWheelGesture: true }
+            );
+          }
+        } else {
+          if (magnitude > activeWheel.peakMagnitude) {
+            activeWheel.peakMagnitude = magnitude;
+            activeWheel.postPeakMin = Number.POSITIVE_INFINITY;
+            activeWheel.decayed = false;
+          } else {
+            activeWheel.postPeakMin = Math.min(activeWheel.postPeakMin, magnitude);
+            activeWheel.decayed ||= magnitude <= activeWheel.peakMagnitude * .55;
+          }
+          activeWheel.lastMagnitude = magnitude;
+        }
         suppressClickUntil = performance.now() + 350;
         window.clearTimeout(wheelTimer);
         wheelTimer = window.setTimeout(() => {
-          const activeWheel = wheel;
-          wheel = null;
-          if (!activeWheel) return;
-          const moved = position - activeWheel.startPosition;
-          if (Math.abs(moved) < .04) animateTo(activeWheel.baseTarget);
-          else {
-            const steps = Math.max(1, Math.round(Math.abs(moved)));
-            animateTo(activeWheel.baseTarget + (Math.sign(moved) * steps));
-          }
-        }, 110);
+          if (wheel !== activeWheel) return;
+          resetWheelGesture();
+          if (!activeWheel.committed) animateTo(activeWheel.baseTarget);
+        }, 90);
       }, { passive: false, signal });
 
       track.addEventListener("click", event => {
@@ -1584,12 +1639,18 @@
       }, { signal });
       const settleAbandonedInteraction = () => {
         if (!pointer && !wheel && !motion) return;
-        const target = pointer || wheel ? Math.round(position) : motion.target;
+        let target = motion?.target ?? intendedTarget;
+        if (pointer) {
+          const moved = position - pointer.startPosition;
+          target = pointer.axis === "horizontal" && Math.abs(moved) >= .08
+            ? pointer.baseTarget + Math.sign(moved)
+            : pointer.baseTarget;
+        } else if (wheel) {
+          target = wheel.committed ? target : wheel.baseTarget;
+        }
         const pointerId = pointer?.id;
         pointer = null;
-        wheel = null;
-        window.clearTimeout(wheelTimer);
-        wheelTimer = 0;
+        resetWheelGesture();
         if (pointerId !== undefined) {
           try {
             if (track.hasPointerCapture?.(pointerId)) track.releasePointerCapture(pointerId);

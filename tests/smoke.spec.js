@@ -3537,6 +3537,7 @@ test("el carrusel compacto móvil responde a contacto táctil real en Fonkies y 
       startY = .5,
       endY = .5,
       steps = 8,
+      stepDelayMs = 18,
       finish = "touchEnd"
     } = {}) => {
       await track.scrollIntoViewIfNeeded();
@@ -3561,7 +3562,7 @@ test("el carrusel compacto móvil responde a contacto táctil real en Fonkies y 
           type: "touchMove",
           touchPoints: [point(step / steps)]
         });
-        await page.waitForTimeout(18);
+        if (stepDelayMs) await page.waitForTimeout(stepDelayMs);
       }
       await cdp.send("Input.dispatchTouchEvent", {
         type: finish,
@@ -3615,7 +3616,7 @@ test("el carrusel compacto móvil responde a contacto táctil real en Fonkies y 
           }, { capture: true }));
       });
 
-      await touchGesture(track);
+      await touchGesture(track, { startX: .78, endX: .66, steps: 2, stepDelayMs: 4 });
       await expectCenteredCurrentCard(track, item.card, 1);
       await expect(overlay).toHaveCount(0);
 
@@ -3626,6 +3627,11 @@ test("el carrusel compacto móvil responde a contacto táctil real en Fonkies y 
       expect(audit.some(event => event.type === "lostpointercapture"
         && event.trusted
         && event.lostFromChild)).toBe(true);
+
+      await touchGesture(track, { startX: .88, endX: .08, steps: 12, stepDelayMs: 24 });
+      await expectCenteredCurrentCard(track, item.card, 2);
+      await touchGesture(track, { startX: .18, endX: .82, steps: 2, stepDelayMs: 4 });
+      await expectCenteredCurrentCard(track, item.card, 1);
 
       const current = cards.nth(1);
       const expectedFlavor = (await current.getAttribute("data-flavor")
@@ -3677,7 +3683,7 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
   const modulo = (value, total) => ((value % total) + total) % total;
   let nextPointerId = 200;
 
-  const dispatchGesture = (track, cardSelector, direction) => track.evaluate((element, options) => {
+  const dispatchGesture = (track, cardSelector, direction, settings = {}) => track.evaluate(async (element, options) => {
     const box = element.getBoundingClientRect();
     const vertical = options.direction === "vertical";
     const startX = vertical
@@ -3685,7 +3691,7 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
       : box.left + (box.width * (options.direction === "forward" ? .78 : .22));
     const endX = vertical
       ? startX + 4
-      : box.left + (box.width * (options.direction === "forward" ? .22 : .78));
+      : startX + (box.width * options.travel * (options.direction === "forward" ? -1 : 1));
     const startY = box.top + (box.height * (vertical ? .34 : .5));
     const endY = vertical ? box.top + (box.height * .72) : startY;
     const eventOptions = (x, y, buttons) => ({
@@ -3700,25 +3706,51 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
       cancelable: true
     });
     const before = Number.parseInt(element.dataset.galleryIndex || "-1", 10);
-    element.dispatchEvent(new PointerEvent("pointerdown", eventOptions(startX, startY, 1)));
-    element.dispatchEvent(new PointerEvent(
-      "pointermove",
-      eventOptions((startX + endX) / 2, (startY + endY) / 2, 1)
-    ));
-    element.dispatchEvent(new PointerEvent("pointermove", eventOptions(endX, endY, 1)));
-    element.dispatchEvent(new PointerEvent("pointerup", eventOptions(endX, endY, 0)));
     const cards = [...element.querySelectorAll(options.cardSelector)];
+    const visitedNearest = [];
+    const sampleNearest = () => {
+      const trackBox = element.getBoundingClientRect();
+      const center = trackBox.left + (trackBox.width / 2);
+      let nearestIndex = -1;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      cards.forEach((card, index) => {
+        const cardBox = card.getBoundingClientRect();
+        const distance = Math.abs((cardBox.left + (cardBox.width / 2)) - center);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      });
+      if (visitedNearest.at(-1) !== nearestIndex) visitedNearest.push(nearestIndex);
+    };
+    element.dispatchEvent(new PointerEvent("pointerdown", eventOptions(startX, startY, 1)));
+    sampleNearest();
+    for (let step = 1; step <= options.steps; step += 1) {
+      const progress = step / options.steps;
+      element.dispatchEvent(new PointerEvent("pointermove", eventOptions(
+        startX + ((endX - startX) * progress),
+        startY + ((endY - startY) * progress),
+        1
+      )));
+      sampleNearest();
+      if (options.delayMs) await new Promise(resolve => setTimeout(resolve, options.delayMs));
+    }
+    element.dispatchEvent(new PointerEvent("pointerup", eventOptions(endX, endY, 0)));
     return {
       before,
       after: Number.parseInt(element.dataset.galleryIndex || "-1", 10),
       state: element.dataset.galleryState,
       scrollLeft: element.scrollLeft,
-      currentCount: cards.filter(card => card.getAttribute("aria-current") === "true").length
+      currentCount: cards.filter(card => card.getAttribute("aria-current") === "true").length,
+      visitedNearest
     };
   }, {
     direction,
     pointerId: nextPointerId++,
-    cardSelector
+    cardSelector,
+    travel: settings.travel ?? .56,
+    steps: settings.steps ?? 2,
+    delayMs: settings.delayMs ?? 0
   });
 
   const expectRestingIndex = async (track, cardSelector, expectedIndex) => {
@@ -3793,12 +3825,12 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
     return { signatures, states, scrollPositions };
   };
 
-  const dispatchWheelBurst = (track, direction, count = 1) => track.evaluate((element, options) => {
+  const dispatchWheelBurst = (track, direction, count = 1, magnitude = .72) => track.evaluate((element, options) => {
     const width = element.getBoundingClientRect().width;
     const results = [];
     for (let turn = 0; turn < options.count; turn += 1) {
       const wheel = new WheelEvent("wheel", {
-        deltaX: width * .72 * options.direction,
+        deltaX: width * options.magnitude * options.direction,
         deltaY: 0,
         deltaMode: WheelEvent.DOM_DELTA_PIXEL,
         bubbles: true,
@@ -3807,7 +3839,30 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
       results.push({ prevented: !element.dispatchEvent(wheel), scrollLeft: element.scrollLeft });
     }
     return { results, state: element.dataset.galleryState };
-  }, { direction, count });
+  }, { direction, count, magnitude });
+
+  const dispatchWheelTimeline = (track, samples) => track.evaluate(async (element, timeline) => {
+    const results = [];
+    for (const sample of timeline) {
+      const wheel = new WheelEvent("wheel", {
+        deltaX: sample.deltaX,
+        deltaY: 0,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        bubbles: true,
+        cancelable: true
+      });
+      results.push({
+        prevented: !element.dispatchEvent(wheel),
+        state: element.dataset.galleryState,
+        index: element.dataset.galleryIndex,
+        scrollLeft: element.scrollLeft
+      });
+      if (sample.waitAfter) {
+        await new Promise(resolve => setTimeout(resolve, sample.waitAfter));
+      }
+    }
+    return results;
+  }, samples);
 
   const galleries = [
     { filter: "Fonkies · Galletas", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card" },
@@ -3835,6 +3890,24 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
     await expectRestingIndex(track, item.card, 0);
 
     let expectedIndex = 0;
+    const distanceAndSpeedCases = [
+      { direction: "forward", travel: .12, steps: 2, delayMs: 0 },
+      { direction: "forward", travel: 3.25, steps: 10, delayMs: 0 },
+      { direction: "reverse", travel: .14, steps: 8, delayMs: 18 },
+      { direction: "reverse", travel: 2.75, steps: 12, delayMs: 18 }
+    ];
+    for (const gesture of distanceAndSpeedCases) {
+      const before = expectedIndex;
+      const delta = gesture.direction === "forward" ? 1 : -1;
+      expectedIndex = modulo(expectedIndex + delta, cardCount);
+      const result = await dispatchGesture(track, item.card, gesture.direction, gesture);
+      expect(result.before).toBe(before);
+      expect(result.after).toBe(expectedIndex);
+      expect(result.visitedNearest.every(index => index === before || index === expectedIndex)).toBe(true);
+      await expectRestingIndex(track, item.card, expectedIndex);
+    }
+    expect(expectedIndex).toBe(0);
+
     for (const direction of ["forward", "reverse"]) {
       const delta = direction === "forward" ? 1 : -1;
       for (let turn = 0; turn < 67; turn += 1) {
@@ -3908,15 +3981,121 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
     }));
     await expectRestingIndex(track, item.card, expectedIndex);
 
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await track.scrollIntoViewIfNeeded();
+    const desktopTrackBox = await track.boundingBox();
+    expect(desktopTrackBox).toBeTruthy();
+    await page.mouse.move(
+      desktopTrackBox.x + (desktopTrackBox.width / 2),
+      desktopTrackBox.y + (desktopTrackBox.height / 2)
+    );
+    await page.mouse.wheel(desktopTrackBox.width * 3.4, 0);
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await page.mouse.wheel(desktopTrackBox.width * -3.4, 0);
+    expectedIndex = modulo(expectedIndex - 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await cards.nth(expectedIndex).focus();
+
+    const inertiaOnly = await dispatchWheelTimeline(track, [
+      { deltaX: 90, waitAfter: 8 },
+      { deltaX: 72, waitAfter: 8 },
+      { deltaX: 58, waitAfter: 8 },
+      { deltaX: 46, waitAfter: 8 },
+      { deltaX: 36, waitAfter: 8 },
+      { deltaX: 28, waitAfter: 8 },
+      { deltaX: 20, waitAfter: 8 },
+      { deltaX: 14, waitAfter: 8 },
+      { deltaX: 10 }
+    ]);
+    expect(inertiaOnly[0].state).toBe("settling");
+    expect(inertiaOnly.every(sample => sample.prevented && sample.scrollLeft === 0)).toBe(true);
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await page.waitForTimeout(300);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    // A long physical Mac-style gesture can accelerate in several waves before
+    // decaying. That complete event train is still one gesture and one card.
+    const macLongGesture = await dispatchWheelTimeline(track, [
+      56, 66, 126, 120, 134, 145, 139, 142, 152, 126, 208, 67, 135, 127, 58
+    ].map((deltaX, index, values) => ({
+      deltaX,
+      waitAfter: index === values.length - 1 ? 0 : 17
+    })));
+    expect(macLongGesture[0].state).toBe("settling");
+    expect(macLongGesture.every(sample => sample.prevented && sample.scrollLeft === 0)).toBe(true);
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await page.waitForTimeout(300);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    const inertialBounce = await dispatchWheelTimeline(track, [
+      { deltaX: 72, waitAfter: 8 },
+      { deltaX: 28, waitAfter: 64 },
+      { deltaX: 40, waitAfter: 8 },
+      { deltaX: 20, waitAfter: 8 },
+      { deltaX: 10 }
+    ]);
+    expect(inertialBounce[0].state).toBe("settling");
+    expect(inertialBounce.every(sample => sample.prevented)).toBe(true);
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await page.waitForTimeout(300);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    const renewedImpulses = await dispatchWheelTimeline(track, [
+      { deltaX: 72, waitAfter: 8 },
+      { deltaX: 28, waitAfter: 64 },
+      { deltaX: 76, waitAfter: 8 },
+      { deltaX: 28 }
+    ]);
+    expect(renewedImpulses[0].state).toBe("settling");
+    expect(renewedImpulses[1].state).toBe("settling");
+    expect(renewedImpulses.every(sample => sample.prevented)).toBe(true);
+    expectedIndex = modulo(expectedIndex + 2, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await page.waitForTimeout(300);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    const reversedImpulse = await dispatchWheelTimeline(track, [
+      { deltaX: 72, waitAfter: 32 },
+      { deltaX: -72 }
+    ]);
+    expect(reversedImpulse[0].state).toBe("settling");
+    expect(reversedImpulse.every(sample => sample.prevented)).toBe(true);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await page.waitForTimeout(300);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    await expectRestingIndex(track, item.card, expectedIndex);
+
     const wheelCount = 13;
-    const wheelSteps = Math.round(wheelCount * .72);
     await cards.nth(expectedIndex).focus();
     const wheelBurst = await dispatchWheelBurst(track, 1, wheelCount);
-    expect(wheelBurst.state).toBe("dragging");
     expect(wheelBurst.results.every(result => result.prevented && result.scrollLeft === 0)).toBe(true);
-    expectedIndex = modulo(expectedIndex + wheelSteps, cardCount);
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
     await expectRestingIndex(track, item.card, expectedIndex);
     await expect(cards.nth(expectedIndex)).toBeFocused();
+    const reverseWheelBurst = await dispatchWheelBurst(track, -1, wheelCount);
+    expect(reverseWheelBurst.results.every(result => result.prevented && result.scrollLeft === 0)).toBe(true);
+    expectedIndex = modulo(expectedIndex - 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    const shortWheelGesture = await dispatchWheelBurst(track, 1, 1, .08);
+    expect(shortWheelGesture.results.every(result => result.prevented && result.scrollLeft === 0)).toBe(true);
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
+    await dispatchWheelBurst(track, -1, 1, .08);
+    expectedIndex = modulo(expectedIndex - 1, cardCount);
+    await expectRestingIndex(track, item.card, expectedIndex);
 
     const verticalWheel = await track.evaluate(element => {
       const before = element.dataset.galleryIndex;
@@ -3936,15 +4115,36 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
     expect(verticalWheel.propagated).toBe(true);
     expect(verticalWheel.after).toBe(verticalWheel.before);
 
-    // A keyboard command between two trackpad bursts must discard the first
-    // wheel session instead of reusing its stale origin on the next gesture.
+    const pinchWheel = await track.evaluate(element => {
+      const before = element.dataset.galleryIndex;
+      const event = new WheelEvent("wheel", {
+        deltaX: 120,
+        deltaY: 0,
+        ctrlKey: true,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        bubbles: true,
+        cancelable: true
+      });
+      return {
+        propagated: element.dispatchEvent(event),
+        before,
+        after: element.dataset.galleryIndex
+      };
+    });
+    expect(pinchWheel.propagated).toBe(true);
+    await page.waitForTimeout(140);
+    expect(pinchWheel.after).toBe(pinchWheel.before);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
+    // A keyboard command between two trackpad gestures keeps all three
+    // deliberate steps without reusing a stale wheel-session origin.
     await page.emulateMedia({ reducedMotion: "no-preference" });
     current = cards.nth(expectedIndex);
     await current.focus();
     await dispatchWheelBurst(track, 1);
     await current.press("ArrowRight");
     await dispatchWheelBurst(track, 1);
-    expectedIndex = modulo(expectedIndex + 2, cardCount);
+    expectedIndex = modulo(expectedIndex + 3, cardCount);
     await expectRestingIndex(track, item.card, expectedIndex);
     await page.emulateMedia({ reducedMotion: "reduce" });
 
@@ -3993,7 +4193,7 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
       const box = element.getBoundingClientRect();
       const y = box.top + (box.height * .5);
       const startX = box.left + (box.width * .72);
-      const movedX = box.left + (box.width * .44);
+      const movedX = box.left + (box.width * .08);
       const options = (type, x, buttons) => ({
         pointerId,
         pointerType: "touch",
