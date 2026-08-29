@@ -1411,7 +1411,9 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
 });
 
 test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rueda", async ({ page }) => {
-  test.setTimeout(35_000);
+  test.setTimeout(55_000);
+  const browserErrors = [];
+  page.on("pageerror", error => browserErrors.push(error.message));
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openPreview(page);
@@ -1430,10 +1432,16 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
       });
       const dispatched = element.dispatchEvent(event);
       results.push({ defaultPrevented: event.defaultPrevented, dispatched });
-      if (input.gap) await new Promise(resolve => setTimeout(resolve, input.gap));
+      const waitAfter = sample.waitAfter ?? input.gap;
+      if (waitAfter) await new Promise(resolve => setTimeout(resolve, waitAfter));
     }
     return results;
   }, { samples, gap });
+  const rapidWheelSamples = [52, 56, 60, 64, 68, 72].flatMap((peak, index, peaks) => [
+    { deltaX: peak, waitAfter: 8 },
+    { deltaX: 28, waitAfter: index === peaks.length - 1 ? 0 : 64 }
+  ]);
+  const rapidStepCount = rapidWheelSamples.length / 2;
 
   for (const item of [
     { filter: "Fonkies · Galletas", card: ".fonkie-gallery-card" },
@@ -1458,21 +1466,23 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
     await page.mouse.wheel(72, 0);
     await expect(heading).toHaveText(names[1], { timeout: 1000 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 1000 });
-    await page.waitForTimeout(210);
+    await page.waitForTimeout(120);
 
     const inertialBurst = await dispatchWheelBurst(overlay, [
-      { deltaX: -10 },
-      { deltaX: -12 },
-      { deltaX: -16 },
-      { deltaX: -14 },
-      { deltaX: -10 },
-      { deltaX: -8 },
+      { deltaX: -60, waitAfter: 10 },
+      { deltaX: -48, waitAfter: 10 },
+      { deltaX: -36, waitAfter: 10 },
+      { deltaX: -28, waitAfter: 10 },
+      { deltaX: -20, waitAfter: 10 },
+      { deltaX: -12, waitAfter: 10 },
+      { deltaX: -8, waitAfter: 64 },
+      { deltaX: -10, waitAfter: 10 },
       { deltaX: -4 }
-    ], 12);
+    ]);
     expect(inertialBurst.every(result => result.defaultPrevented && !result.dispatched)).toBe(true);
     await expect(heading).toHaveText(names[0], { timeout: 1000 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 1000 });
-    await page.waitForTimeout(210);
+    await page.waitForTimeout(120);
 
     const belowThreshold = await dispatchWheelBurst(overlay, [
       { deltaX: 8 },
@@ -1480,7 +1490,7 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
       { deltaX: 8 }
     ], 12);
     expect(belowThreshold.every(result => result.defaultPrevented && !result.dispatched)).toBe(true);
-    await page.waitForTimeout(210);
+    await page.waitForTimeout(120);
     await expect(heading).toHaveText(names[0]);
 
     const vertical = await dispatchWheelBurst(overlay, [{ deltaY: 80 }]);
@@ -1489,7 +1499,7 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
     expect(verticalDiagonal).toEqual([{ defaultPrevented: false, dispatched: true }]);
     const pinch = await dispatchWheelBurst(overlay, [{ deltaX: 80, ctrlKey: true }]);
     expect(pinch).toEqual([{ defaultPrevented: false, dispatched: true }]);
-    await page.waitForTimeout(210);
+    await page.waitForTimeout(120);
     await expect(heading).toHaveText(names[0]);
 
     await page.keyboard.down("Shift");
@@ -1497,7 +1507,7 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
     await page.keyboard.up("Shift");
     await expect(heading).toHaveText(names[1], { timeout: 1000 });
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 1000 });
-    await page.waitForTimeout(210);
+    await page.waitForTimeout(120);
 
     const shiftedLineWheel = await dispatchWheelBurst(overlay, [{
       deltaY: -4,
@@ -1509,48 +1519,83 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
     await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 1000 });
     await expect(overlay.locator(".builder-flavor-swipe-cue")).toHaveAttribute("aria-valuenow", "1");
     await expect(overlay).toHaveCount(1);
+    await page.waitForTimeout(120);
+
+    const reversedImpulse = await dispatchWheelBurst(overlay, [
+      { deltaX: 52, waitAfter: 8 },
+      { deltaX: 28, waitAfter: 8 },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        deltaX: -5,
+        waitAfter: index === 11 ? 0 : 4
+      }))
+    ]);
+    expect(reversedImpulse.every(result => result.defaultPrevented && !result.dispatched)).toBe(true);
+    await expect(heading).toHaveText(names[0], { timeout: 1200 });
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 1200 });
+    await page.waitForTimeout(120);
+
+    const rapidImpulses = await dispatchWheelBurst(overlay, rapidWheelSamples);
+    expect(rapidImpulses.every(result => result.defaultPrevented && !result.dispatched)).toBe(true);
+    const rapidIndex = rapidStepCount % names.length;
+    await expect(heading).toHaveText(names[rapidIndex], { timeout: 2200 });
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 1800 });
+    await expect(overlay.locator(".builder-flavor-swipe-cue")).toHaveAttribute(
+      "aria-valuenow",
+      String(rapidIndex + 1)
+    );
+    await page.waitForTimeout(260);
+    await expect(heading).toHaveText(names[rapidIndex]);
 
     await page.keyboard.press("Escape");
     await expect(overlay).toHaveCount(0, { timeout: 1000 });
   }
 
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
-  const animatedSource = page.locator(".fonkie-gallery-card").first();
-  await animatedSource.scrollIntoViewIfNeeded();
-  const baselineY = await page.evaluate(() => scrollY);
-  await animatedSource.click();
-  const animatedOverlay = page.locator(".builder-flavor-flip-card");
-  const animatedHeading = animatedOverlay.locator("h3");
-  const animatedNames = await page.locator(".fonkie-gallery-card").evaluateAll(elements => elements.map(element => element.dataset.flavor
-    || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
-  await expect(animatedOverlay).toBeVisible();
+  for (const item of [
+    { filter: "Fonkies · Galletas", card: ".fonkie-gallery-card" },
+    { filter: "Fomb · Bombones", card: ".builder-gallery-card" }
+  ]) {
+    await page.getByRole("button", { name: item.filter }).click();
+    const cards = page.locator(item.card);
+    const animatedSource = cards.first();
+    const animatedNames = await cards.evaluateAll(elements => elements.map(element => element.dataset.flavor
+      || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
+    await animatedSource.scrollIntoViewIfNeeded();
+    const baselineY = await page.evaluate(() => scrollY);
+    await animatedSource.click();
+    const animatedOverlay = page.locator(".builder-flavor-flip-card");
+    const animatedHeading = animatedOverlay.locator("h3");
+    await expect(animatedOverlay).toBeVisible();
 
-  const openingWheel = await dispatchWheelBurst(animatedOverlay, [{ deltaX: 72 }]);
-  expect(openingWheel).toEqual([{ defaultPrevented: true, dispatched: false }]);
-  await expect(animatedOverlay.locator(".builder-flavor-swipe-cue")).toBeVisible({ timeout: 1200 });
-  await expect(animatedHeading).toHaveText(animatedNames[0]);
+    const openingWheel = await dispatchWheelBurst(animatedOverlay, [{ deltaX: 72 }]);
+    expect(openingWheel).toEqual([{ defaultPrevented: true, dispatched: false }]);
+    await expect(animatedOverlay.locator(".builder-flavor-swipe-cue")).toBeVisible({ timeout: 1200 });
+    await expect(animatedHeading).toHaveText(animatedNames[0]);
 
-  await dispatchWheelBurst(animatedOverlay, [{ deltaX: 72 }]);
-  await page.waitForTimeout(210);
-  await dispatchWheelBurst(animatedOverlay, [{ deltaX: 72 }]);
-  await expect(animatedHeading).toHaveText(animatedNames[2], { timeout: 2000 });
-  await expect(animatedOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 2000 });
-  await page.waitForTimeout(210);
+    await dispatchWheelBurst(animatedOverlay, rapidWheelSamples);
+    const rapidIndex = rapidStepCount % animatedNames.length;
+    await expect(animatedHeading).toHaveText(animatedNames[rapidIndex], { timeout: 2800 });
+    await expect(animatedOverlay).not.toHaveClass(/builder-flavor-switching/, { timeout: 2400 });
+    await page.waitForTimeout(260);
+    await expect(animatedHeading).toHaveText(animatedNames[rapidIndex]);
 
-  await animatedOverlay.evaluate(element => {
-    element.dispatchEvent(new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      deltaX: -72
-    }));
-    element.querySelector(".builder-flavor-expanded-media").click();
-  });
-  await expect(animatedOverlay).toHaveCount(0, { timeout: 2200 });
-  await expect(animatedSource).toHaveAttribute("aria-expanded", "false");
-  await expect(animatedSource).toBeFocused();
-  await expectModalPageUnlocked(page);
-  expect(Math.abs((await page.evaluate(() => scrollY)) - baselineY)).toBeLessThanOrEqual(1);
+    await dispatchWheelBurst(animatedOverlay, rapidWheelSamples.map(sample => ({
+      ...sample,
+      deltaX: -sample.deltaX
+    })));
+    await expect(animatedOverlay).toHaveClass(/builder-flavor-switching/);
+    await animatedOverlay.evaluate(element => {
+      element.querySelector(".builder-flavor-expanded-media")?.click();
+    });
+    await expect(animatedOverlay).toHaveCount(0, { timeout: 2200 });
+    await page.waitForTimeout(420);
+    await expect(page.locator(".builder-flavor-flip-card")).toHaveCount(0);
+    await expect(animatedSource).toHaveAttribute("aria-expanded", "false");
+    await expect(animatedSource).toBeFocused();
+    await expectModalPageUnlocked(page);
+    expect(Math.abs((await page.evaluate(() => scrollY)) - baselineY)).toBeLessThanOrEqual(1);
+  }
+  expect(browserErrors).toEqual([]);
 });
 
 test("el cierre anticipado sigue el recorrido de la tarjeta sin dejar la página bloqueada", async ({ page }) => {

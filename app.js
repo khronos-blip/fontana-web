@@ -1797,11 +1797,15 @@
       const state = active;
       if (!state || state.closing) return;
       if (state.quantityBusy) {
+        resetFlavorWheelGesture(state);
+        state.pendingWheelOffset = 0;
         state.pendingClose = immediate ? "immediate" : "animated";
         return;
       }
       if (state.switching) {
+        resetFlavorWheelGesture(state);
         state.pendingDirections = [];
+        state.pendingWheelOffset = 0;
         state.pendingClose = immediate ? "immediate" : "animated";
         return;
       }
@@ -1832,11 +1836,18 @@
       ]).then(() => cleanup(state)).catch(() => cleanup(state));
     };
 
-    const switchFlavor = async direction => {
+    const switchFlavor = async (direction, { wheel = false } = {}) => {
       const state = active;
       if (!state || state.closing || !state.ready || state.quantityBusy || state.cards.length < 2) return;
       if (state.switching) {
-        state.pendingDirections.push(direction);
+        if (wheel) {
+          // Keep the requested destination, not a long animation queue. Rapid
+          // trackpad impulses therefore reach the right flavor without leaving
+          // several ghost flips running after the fingers have stopped.
+          state.pendingWheelOffset += direction;
+        } else {
+          state.pendingDirections.push(direction);
+        }
         return;
       }
       if (!state.swipeCueUsed) state.swipeCueUsed = true;
@@ -1907,7 +1918,13 @@
         }
         syncFlavorCue(state);
         const pendingDirection = state.pendingDirections.shift();
-        if (pendingDirection) switchFlavor(pendingDirection);
+        if (pendingDirection) {
+          switchFlavor(pendingDirection);
+          return;
+        }
+        const pendingWheelOffset = state.pendingWheelOffset % state.cards.length;
+        state.pendingWheelOffset = 0;
+        if (pendingWheelOffset) switchFlavor(pendingWheelOffset, { wheel: true });
       }
     };
 
@@ -2173,6 +2190,7 @@
         switching: false,
         pendingClose: null,
         pendingDirections: [],
+        pendingWheelOffset: 0,
         ready: reduceMotion,
         suppressMediaClickUntil: 0,
         swipeCueUsed: false,
@@ -2300,31 +2318,55 @@
           || state.quantityBusy
         ) return;
         const now = performance.now();
-        if (
-          !state.flavorWheelGesture
-          || now - state.flavorWheelGesture.lastEventAt > 180
-        ) {
+        const magnitude = Math.abs(horizontalDelta);
+        const direction = Math.sign(horizontalDelta);
+        const currentGesture = state.flavorWheelGesture;
+        const rested = !currentGesture || now - currentGesture.lastEventAt > 90;
+        const reversed = currentGesture && direction !== currentGesture.direction;
+        const renewedImpulse = currentGesture?.committed
+          && currentGesture.decayed
+          && now - currentGesture.committedAt >= 60
+          && magnitude >= 12
+          && magnitude >= currentGesture.lastMagnitude * 1.35
+          && magnitude >= currentGesture.postCommitMin * 1.6;
+        if (rested || reversed || renewedImpulse) {
           resetFlavorWheelGesture(state);
           state.flavorWheelGesture = {
             totalX: 0,
             committed: false,
-            lastEventAt: now
+            direction,
+            lastEventAt: now,
+            lastMagnitude: magnitude,
+            committedAt: 0,
+            postCommitMin: Number.POSITIVE_INFINITY,
+            decayed: false
           };
         }
 
         const gesture = state.flavorWheelGesture;
         gesture.lastEventAt = now;
-        gesture.totalX += horizontalDelta;
-        const threshold = Math.min(56, Math.max(28, width * .08));
-        if (!gesture.committed && Math.abs(gesture.totalX) >= threshold) {
-          gesture.committed = true;
-          switchFlavor(Math.sign(gesture.totalX));
+        if (!gesture.committed) {
+          const previousMagnitude = gesture.lastMagnitude;
+          gesture.totalX += horizontalDelta;
+          gesture.lastMagnitude = magnitude;
+          const threshold = Math.min(56, Math.max(28, width * .08));
+          if (Math.abs(gesture.totalX) >= threshold) {
+            gesture.committed = true;
+            gesture.committedAt = now;
+            gesture.postCommitMin = magnitude;
+            gesture.decayed = magnitude <= previousMagnitude * .9;
+            switchFlavor(Math.sign(gesture.totalX), { wheel: true });
+          }
+        } else {
+          gesture.decayed ||= magnitude <= gesture.lastMagnitude * .9;
+          gesture.postCommitMin = Math.min(gesture.postCommitMin, magnitude);
+          gesture.lastMagnitude = magnitude;
         }
 
         window.clearTimeout(state.flavorWheelTimer);
         state.flavorWheelTimer = window.setTimeout(() => {
           resetFlavorWheelGesture(state);
-        }, 180);
+        }, 90);
       }, { passive: false });
       overlay.addEventListener("keydown", event => {
         const horizontalShortcut = event.key === "ArrowLeft" || event.key === "ArrowRight";
