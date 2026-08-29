@@ -36,8 +36,11 @@
   const backToCart = $("#backToCart");
   const storageKey = "fontana-cart-v1";
   let cart = readCart();
-  let stockValidationPending = false;
   const productAddQueues = new Map();
+  const quantityQueueIdleResolvers = [];
+  const quantityCommitTasks = new Set();
+  let stockQuantityMutationTail = Promise.resolve();
+  let quantityMutationVersion = 0;
   const automaticPreorderCategories = new Set(["salado"]);
   const optimizedAssetPaths = new Map([
     ["assets/pistacho-fontana-v4.png", "assets/pistacho-fontana-v4.webp"],
@@ -1725,9 +1728,8 @@
         "aria-label",
         `${quantity} ${state.currentName} ${quantity === 1 ? "seleccionado" : "seleccionados"} para tu caja`
       );
-      state.quantityDecrease.disabled = state.quantityBusy || !controls?.decrease || quantity <= 0;
-      state.quantityIncrease.disabled = state.quantityBusy
-        || state.flavorUnavailable
+      state.quantityDecrease.disabled = !controls?.decrease || quantity <= 0;
+      state.quantityIncrease.disabled = state.flavorUnavailable
         || !controls?.increase
         || controls.increase.disabled;
       state.quantityGroup.classList.toggle("builder-flavor-quantity--busy", state.quantityBusy);
@@ -1784,6 +1786,7 @@
       state.backdropMotion = null;
       resetFlavorWheelGesture(state);
       cancelAnimations(state);
+      state.quantityBuilder?.removeEventListener("fontana:flavor-change", state.quantityChangeHandler);
       state.source.style.removeProperty("visibility");
       state.source.setAttribute("aria-expanded", "false");
       state.overlay.remove();
@@ -2197,11 +2200,33 @@
         flavorWheelGesture: null,
         flavorWheelTimer: 0,
         flavorUnavailable: false,
-        quantityBusy: false
+        quantityBuilder: source.closest(".fonkie-builder, .fomb-builder"),
+        quantityChangeHandler: null,
+        quantityBusy: source.closest(".fonkie-builder, .fomb-builder")?.dataset.quantityPending === "true"
       };
       const track = source.closest(".fonkie-gallery-track, .builder-gallery-track");
       state.cards = track ? $$(".fonkie-gallery-card, .builder-gallery-card", track) : [source];
       state.currentIndex = Math.max(0, state.cards.indexOf(source));
+      state.quantityChangeHandler = event => {
+        if (active !== state) return;
+        const focusedControl = document.activeElement;
+        state.quantityBusy = Boolean(event.detail?.pending);
+        syncExpandedFlavorQuantity(state);
+        syncFlavorCue(state);
+        if (focusedControl === state.quantityDecrease && state.quantityDecrease.disabled) {
+          state.quantityIncrease.focus({ preventScroll: true });
+        } else if (focusedControl === state.quantityIncrease && state.quantityIncrease.disabled) {
+          [state.quantityDecrease, state.done, state.swipeCue, state.media]
+            .find(control => control?.isConnected && !control.disabled && !control.hidden)
+            ?.focus({ preventScroll: true });
+        }
+        if (!state.quantityBusy && state.pendingClose) {
+          const immediate = state.pendingClose === "immediate";
+          state.pendingClose = null;
+          close(immediate);
+        }
+      };
+      state.quantityBuilder?.addEventListener("fontana:flavor-change", state.quantityChangeHandler);
       active = state;
       renderFlavor(state, source);
       source.style.visibility = "hidden";
@@ -2219,41 +2244,15 @@
         }
         close();
       });
-      const changeExpandedFlavorQuantity = (delta, requestedControl) => {
-        if (state.switching || state.closing || state.quantityBusy) return;
+      const changeExpandedFlavorQuantity = delta => {
+        if (state.switching || state.closing) return;
         const controls = matchingFlavorControls(state.source, state.kind, state.currentName);
         const button = delta > 0 ? controls?.increase : controls?.decrease;
         if (!controls?.row || !button || button.disabled || (delta > 0 && state.flavorUnavailable)) return;
-        const requestedFlavor = state.currentName;
-        state.quantityBusy = true;
-        syncExpandedFlavorQuantity(state);
-        syncFlavorCue(state);
-        controls.row.addEventListener("fontana:flavor-change", () => {
-          if (active !== state) return;
-          state.quantityBusy = false;
-          if (state.currentName === requestedFlavor) {
-            syncExpandedFlavorQuantity(state);
-          }
-          syncFlavorCue(state);
-          if (state.pendingClose) {
-            const immediate = state.pendingClose === "immediate";
-            state.pendingClose = null;
-            close(immediate);
-            return;
-          }
-          const focusTarget = [
-            requestedControl,
-            delta < 0 ? state.quantityIncrease : state.quantityDecrease,
-            state.done,
-            state.swipeCue,
-            state.media
-          ].find(control => control?.isConnected && !control.disabled && !control.hidden);
-          focusTarget?.focus({ preventScroll: true });
-        }, { once: true });
         button.click();
       };
-      quantityDecrease.addEventListener("click", () => changeExpandedFlavorQuantity(-1, quantityDecrease));
-      quantityIncrease.addEventListener("click", () => changeExpandedFlavorQuantity(1, quantityIncrease));
+      quantityDecrease.addEventListener("click", () => changeExpandedFlavorQuantity(-1));
+      quantityIncrease.addEventListener("click", () => changeExpandedFlavorQuantity(1));
       done.addEventListener("click", () => close());
 
       let pointer = null;
@@ -2674,11 +2673,60 @@
     return {quantity:low,error:fullValidation.error};
   }
 
+  function serializeStockQuantityMutation(task) {
+    const execution = stockQuantityMutationTail.then(task, task);
+    stockQuantityMutationTail = execution.catch(() => {});
+    return execution;
+  }
+
+  function trackQuantityCommit(task) {
+    const tracked = Promise.resolve(task);
+    quantityCommitTasks.add(tracked);
+    const cleanup = () => quantityCommitTasks.delete(tracked);
+    tracked.then(cleanup, cleanup);
+    return tracked;
+  }
+
+  function quantityQueuesBusy() {
+    return [...productAddQueues.values()].some(queue => queue.pending > 0 || queue.inFlight > 0 || queue.processing);
+  }
+
+  function resolveQuantityQueuesIdle() {
+    if (quantityQueuesBusy()) return;
+    const resolvers = quantityQueueIdleResolvers.splice(0);
+    resolvers.forEach(resolve => resolve());
+  }
+
+  async function flushQuantityQueues() {
+    if (!quantityQueuesBusy()) return;
+    const waiting = new Promise(resolve => quantityQueueIdleResolvers.push(resolve));
+    for (const [id, queue] of productAddQueues) {
+      if (!queue.pending || queue.processing) continue;
+      window.clearTimeout(queue.timer);
+      queue.timer = 0;
+      processProductQueue(id);
+    }
+    await waiting;
+  }
+
+  async function flushQuantityWork() {
+    while (true) {
+      await flushQuantityQueues();
+      const commits = [...quantityCommitTasks];
+      if (commits.length) await Promise.allSettled(commits);
+      const mutationTail = stockQuantityMutationTail;
+      await mutationTail;
+      if (!quantityQueuesBusy() && !quantityCommitTasks.size && mutationTail === stockQuantityMutationTail) return;
+    }
+  }
+
   function displayedProductQuantity(selection) {
     if (!selection || selection.error) return 0;
     const committed = Number(cart.find(item => item.id === selection.id)?.qty || 0);
     const queue = productAddQueues.get(selection.id);
-    return committed + Number(queue?.pending || 0) + Math.max(0, Number(queue?.inFlight || 0) - Number(queue?.cancelInFlight || 0));
+    return committed
+      + Number(queue?.pending || 0)
+      + Math.max(0, Number(queue?.inFlight || 0) - Number(queue?.cancelInFlight || 0));
   }
 
   function syncProductQuantityControls() {
@@ -2719,25 +2767,34 @@
       queue.inFlight = requested;
       queue.cancelInFlight = 0;
       syncProductQuantityControls();
-      const result = await maximumValidAddition(queue.item, requested);
-      const accepted = Math.max(0, Math.min(result.quantity, requested - queue.cancelInFlight));
-      queue.inFlight = 0;
-      queue.cancelInFlight = 0;
-      if (accepted) {
-        addItemQuantity(queue.item, accepted);
-        save();
-        say(accepted === 1 ? "Añadido a tu pedido 💜" : `${accepted} unidades añadidas a tu pedido 💜`);
+      renderCart();
+      const outcome = await serializeStockQuantityMutation(async () => {
+        const result = await maximumValidAddition(queue.item, requested);
+        const accepted = Math.max(0, Math.min(result.quantity, requested - queue.cancelInFlight));
+        queue.inFlight = 0;
+        queue.cancelInFlight = 0;
+        if (accepted) {
+          addItemQuantity(queue.item, accepted);
+          save();
+        }
+        return { accepted, result };
+      });
+      if (outcome.accepted) {
+        say(outcome.accepted === 1 ? "Añadido a tu pedido 💜" : `${outcome.accepted} unidades añadidas a tu pedido 💜`);
       }
-      if (accepted < requested && result.error) say(stockLimitNotice(result.error, queue.item.name));
+      if (outcome.accepted < requested && outcome.result.error) say(stockLimitNotice(outcome.result.error, queue.item.name));
     }
     queue.processing = false;
     if (!queue.pending && !queue.inFlight) productAddQueues.delete(id);
     syncProductQuantityControls();
+    renderCart();
+    resolveQuantityQueuesIdle();
   }
 
   function addProduct(card) {
     const selection = productSelection(card);
     if (selection.error) return say(selection.error);
+    quantityMutationVersion += 1;
     if (selection.preorder) {
       addItemQuantity(selection.item, 1);
       save();
@@ -2746,31 +2803,46 @@
     const queue = scheduleProductQueue(selection);
     queue.pending += 1;
     syncProductQuantityControls();
+    renderCart();
+  }
+
+  function subtractQueuedItem(id, requested = 1) {
+    const queue = productAddQueues.get(id);
+    const item = cart.find(entry => entry.id === id);
+    let remaining = Math.max(0, Math.trunc(Number(requested) || 0));
+    if (remaining > 0) quantityMutationVersion += 1;
+    if (queue?.pending > 0 && remaining > 0) {
+      const cancelled = Math.min(queue.pending, remaining);
+      queue.pending -= cancelled;
+      remaining -= cancelled;
+    }
+    if (queue && queue.inFlight > queue.cancelInFlight && remaining > 0) {
+      const cancelled = Math.min(queue.inFlight - queue.cancelInFlight, remaining);
+      queue.cancelInFlight += cancelled;
+      remaining -= cancelled;
+    }
+    let committedChanged = false;
+    if (item && remaining > 0) {
+      item.qty = Math.max(0, Number(item.qty || 0) - remaining);
+      committedChanged = true;
+      if (item.qty <= 0) cart = cart.filter(entry => entry.id !== id);
+    }
+    if (queue && !queue.pending && !queue.inFlight && !queue.processing) {
+      window.clearTimeout(queue.timer);
+      productAddQueues.delete(id);
+    }
+    if (committedChanged) save();
+    else {
+      syncProductQuantityControls();
+      renderCart();
+    }
+    resolveQuantityQueuesIdle();
   }
 
   function subtractProduct(card) {
     const selection = productSelection(card);
     if (selection.error) return;
-    const queue = productAddQueues.get(selection.id);
-    if (queue?.pending > 0) {
-      queue.pending -= 1;
-      if (!queue.pending && !queue.processing) {
-        clearTimeout(queue.timer);
-        productAddQueues.delete(selection.id);
-      }
-      syncProductQuantityControls();
-      return;
-    }
-    if (queue && queue.inFlight > queue.cancelInFlight) {
-      queue.cancelInFlight += 1;
-      syncProductQuantityControls();
-      return;
-    }
-    const item = cart.find(entry => entry.id === selection.id);
-    if (!item) return;
-    item.qty -= 1;
-    if (item.qty <= 0) cart = cart.filter(entry => entry.id !== selection.id);
-    save();
+    subtractQueuedItem(selection.id, 1);
   }
 
   function setupProductQuantityControls() {
@@ -2841,6 +2913,197 @@
     };
   }
 
+  function createBuilderQuantityController({ builder, rows, kind, preorderAllowed, updateBuilder }) {
+    const state = {
+      committed: new Map(rows.map(row => [
+        row,
+        Math.max(0, Number($("output", row)?.value || $("output", row)?.textContent || 0))
+      ])),
+      pending: [],
+      inFlight: [],
+      processing: false,
+      timer: 0,
+      idleResolvers: []
+    };
+
+    const isPreorder = row => preorderAllowed && row.dataset.soldOut === "true";
+    const activeOperations = operations => operations.filter(operation => !operation.cancelled);
+    const quantityFor = row => Math.max(0,
+      Number(state.committed.get(row) || 0)
+      + activeOperations(state.inFlight).filter(operation => operation.row === row).length
+      + activeOperations(state.pending).filter(operation => operation.row === row).length
+    );
+    const busy = () => state.processing || activeOperations(state.pending).length > 0 || activeOperations(state.inFlight).length > 0;
+
+    const resolveIdle = () => {
+      if (busy()) return;
+      const resolvers = state.idleResolvers.splice(0);
+      resolvers.forEach(resolve => resolve());
+    };
+
+    const render = ({ success = true, settled = false } = {}) => {
+      rows.forEach(row => {
+        const output = $("output", row);
+        const quantity = quantityFor(row);
+        if (output) {
+          output.value = String(quantity);
+          output.textContent = String(quantity);
+        }
+      });
+      const pending = busy();
+      builder.dataset.quantityPending = String(pending);
+      updateBuilder();
+      rows.forEach(row => row.dispatchEvent(new CustomEvent("fontana:flavor-change", {
+        bubbles: true,
+        detail: {
+          kind,
+          flavor: row.dataset.flavor,
+          quantity: quantityFor(row),
+          pending,
+          settled,
+          success
+        }
+      })));
+      resolveIdle();
+    };
+
+    const validationChecks = operations => rows
+      .filter(row => !isPreorder(row))
+      .map(row => ({
+        kind,
+        flavor: row.dataset.flavor,
+        quantity: Math.max(0,
+          Number(state.committed.get(row) || 0)
+          + operations.filter(operation => !operation.cancelled && operation.row === row).length
+        )
+      }))
+      .filter(check => check.quantity > 0);
+
+    const maximumValidOperations = async operations => {
+      const candidates = activeOperations(operations);
+      if (!candidates.length) return { quantity: 0 };
+      const fullValidation = await validateStock(validationChecks(candidates));
+      const remainingAfterFullValidation = activeOperations(candidates);
+      if (fullValidation.ok) return { quantity: remainingAfterFullValidation.length };
+      if (remainingAfterFullValidation.length !== candidates.length) {
+        return maximumValidOperations(remainingAfterFullValidation);
+      }
+      if (/No pudimos|momento|Inténtalo/i.test(fullValidation.error || "")) {
+        return { quantity: 0, error: fullValidation.error };
+      }
+      const remaining = remainingAfterFullValidation;
+      let low = 0;
+      let high = Math.max(0, remaining.length - 1);
+      while (low < high) {
+        const middle = Math.ceil((low + high) / 2);
+        const validation = await validateStock(validationChecks(remaining.slice(0, middle)));
+        const stillActive = activeOperations(remaining);
+        if (stillActive.length !== remaining.length) return maximumValidOperations(stillActive);
+        if (validation.ok) low = middle;
+        else high = middle - 1;
+      }
+      return { quantity: low, error: fullValidation.error };
+    };
+
+    const process = async () => {
+      if (state.processing) return;
+      window.clearTimeout(state.timer);
+      state.timer = 0;
+      state.processing = true;
+      render();
+      try {
+        while (activeOperations(state.pending).length) {
+          const batch = state.pending.splice(0);
+          state.inFlight = batch;
+          render();
+          const candidates = activeOperations(batch);
+          const result = await serializeStockQuantityMutation(() => maximumValidOperations(candidates));
+          const remaining = activeOperations(candidates);
+          const accepted = remaining.slice(0, Math.min(result.quantity, remaining.length));
+          accepted.forEach(operation => {
+            state.committed.set(operation.row, Number(state.committed.get(operation.row) || 0) + 1);
+          });
+          const rejected = remaining.length - accepted.length;
+          state.inFlight = [];
+          render({ success: rejected === 0 });
+          if (rejected > 0 && result.error) {
+            const firstRejected = remaining[accepted.length]?.row;
+            say(stockLimitNotice(result.error, firstRejected?.dataset.flavor || (kind === "fonkies" ? "las Fonkies" : "los Fomb")));
+          }
+        }
+      } finally {
+        state.inFlight = [];
+        state.processing = false;
+        render({ settled: true });
+      }
+    };
+
+    const schedule = () => {
+      if (state.processing) return;
+      window.clearTimeout(state.timer);
+      state.timer = window.setTimeout(process, 70);
+    };
+
+    const request = (row, delta) => {
+      const change = Number(delta);
+      if (!row || !Number.isFinite(change) || change === 0) return;
+      quantityMutationVersion += 1;
+      if (change > 0) {
+        if (isPreorder(row)) {
+          state.committed.set(row, Number(state.committed.get(row) || 0) + change);
+        } else {
+          for (let index = 0; index < change; index += 1) state.pending.push({ row, cancelled: false });
+          schedule();
+        }
+        render();
+        return;
+      }
+
+      let remaining = Math.min(-change, quantityFor(row));
+      while (remaining > 0) {
+        let pendingIndex = -1;
+        for (let index = state.pending.length - 1; index >= 0; index -= 1) {
+          if (!state.pending[index].cancelled && state.pending[index].row === row) {
+            pendingIndex = index;
+            break;
+          }
+        }
+        if (pendingIndex >= 0) {
+          state.pending.splice(pendingIndex, 1);
+          remaining -= 1;
+          continue;
+        }
+        const inFlight = [...state.inFlight].reverse().find(operation => !operation.cancelled && operation.row === row);
+        if (inFlight) {
+          inFlight.cancelled = true;
+          remaining -= 1;
+          continue;
+        }
+        const committed = Number(state.committed.get(row) || 0);
+        if (committed <= 0) break;
+        state.committed.set(row, committed - 1);
+        remaining -= 1;
+      }
+      if (!state.processing && !activeOperations(state.pending).length) {
+        window.clearTimeout(state.timer);
+        state.timer = 0;
+      }
+      render();
+    };
+
+    const whenIdle = () => {
+      if (!busy()) return Promise.resolve();
+      const waiting = new Promise(resolve => state.idleResolvers.push(resolve));
+      if (!state.processing) process();
+      return waiting;
+    };
+
+    const controller = { request, whenIdle, busy, sync: render };
+    builder._fontanaQuantityController = controller;
+    render({ settled: true });
+    return controller;
+  }
+
   function setupFonkieBuilder() {
     const builder = $(".fonkie-builder");
     if (!builder) return;
@@ -2893,66 +3156,62 @@
       }
     }
 
-    $$(".fonkie-stepper button", builder).forEach(button => button.addEventListener("click", async () => {
-      const row = button.closest(".fonkie-flavor");
-      const reportChange = success => row.dispatchEvent(new CustomEvent("fontana:flavor-change", { bubbles: true, detail: { success } }));
-      if (stockValidationPending) { reportChange(false); return; }
-      const output = $("output", row);
-      const previous = Number(output.value || output.textContent || 0);
-      const delta = Number(button.dataset.delta);
-      const next = Math.max(0, previous + delta);
-      const flavorPreorder = preorderAllowed && row.dataset.soldOut === "true";
-      if (delta > 0 && !flavorPreorder) {
-        stockValidationPending = true;
-        const draft = rows.filter(row => row.dataset.soldOut !== "true").map(row => ({
-          kind:"fonkies",flavor:row.dataset.flavor,
-          quantity:row === button.closest(".fonkie-flavor") ? next : Number($("output", row).value || $("output", row).textContent || 0)
-        }));
-        const validation = await validateStock(draft);
-        stockValidationPending = false;
-        if (!validation.ok) { say(stockLimitNotice(validation.error, row.dataset.flavor)); reportChange(false); return; }
-      }
-      output.value = String(next);
-      output.textContent = String(next);
-      updateBuilder();
-      reportChange(true);
+    const quantityController = createBuilderQuantityController({
+      builder,
+      rows,
+      kind: "fonkies",
+      preorderAllowed,
+      updateBuilder
+    });
+    $$(".fonkie-stepper button", builder).forEach(button => button.addEventListener("click", () => {
+      quantityController.request(button.closest(".fonkie-flavor"), Number(button.dataset.delta));
     }));
 
-    addButton.addEventListener("click", async () => {
-      const selected = selectedFlavors();
-      const total = selected.reduce((sum, item) => sum + item.qty, 0);
-      if (total < minimum) {
-        say(`Mínimo ${minimum} galletas para armar tu caja`);
-        return;
-      }
-      const preorder = selected.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
-      const availability = preorder ? "preorder" : selectedBuilderAvailability(selected);
-      const stocked = selected.filter(item => !item.preorder);
-      if (stocked.length) {
-        const validation = await validateStock(stocked.map(item => ({kind:"fonkies",flavor:item.name,quantity:item.qty})));
-        if (!validation.ok) { say(stockLimitNotice(validation.error, "la caja de Fonkies")); return; }
-      }
-      const price = fonkiePrice(total, selected.length);
-      const choices = [selected.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), builderAvailabilityCopy(availability)].filter(Boolean).join(" · ");
-      const id = `fonkie-box-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
-      const found = cart.find(item => item.id === id);
-      if (found) {
-        found.qty += 1;
-      } else {
-        cart.push({
-          id,
-          productId: "fonkie-box",
-          name: `${preorder ? "Pre-order · " : ""}Caja de ${total} Fonkies · ${selected.length === 1 ? "Un sabor" : "Mixta"}`,
-          price,
-          image: builder.dataset.image,
-          ingredients: productIngredients("fonkie-box"),
-          choices,
-          inventory: { kind:"fonkies", flavors:selected.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder,stockState:item.stockState})), preorder, availability },
-          qty: 1
+    addButton.addEventListener("click", () => {
+      quantityMutationVersion += 1;
+      trackQuantityCommit((async () => {
+        await quantityController.whenIdle();
+        const selected = selectedFlavors();
+        const total = selected.reduce((sum, item) => sum + item.qty, 0);
+        if (total < minimum) {
+          say(`Mínimo ${minimum} galletas para armar tu caja`);
+          return;
+        }
+        const preorder = selected.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
+        const availability = preorder ? "preorder" : selectedBuilderAvailability(selected);
+        const stocked = selected.filter(item => !item.preorder);
+        const quantities = new Map(selected.map(item => [item.name, item.qty]));
+        const price = fonkiePrice(total, selected.length);
+        const choices = [selected.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), builderAvailabilityCopy(availability)].filter(Boolean).join(" · ");
+        const id = `fonkie-box-${rows.map(row => Number(quantities.get(row.dataset.flavor) || 0)).join("-")}`;
+        await serializeStockQuantityMutation(async () => {
+          if (stocked.length) {
+            const validation = await validateStock(stocked.map(item => ({kind:"fonkies",flavor:item.name,quantity:item.qty})));
+            if (!validation.ok) {
+              say(stockLimitNotice(validation.error, "la caja de Fonkies"));
+              return;
+            }
+          }
+          const found = cart.find(item => item.id === id);
+          if (found) {
+            found.qty += 1;
+          } else {
+            cart.push({
+              id,
+              productId: "fonkie-box",
+              name: `${preorder ? "Pre-order · " : ""}Caja de ${total} Fonkies · ${selected.length === 1 ? "Un sabor" : "Mixta"}`,
+              price,
+              image: builder.dataset.image,
+              ingredients: productIngredients("fonkie-box"),
+              choices,
+              inventory: { kind:"fonkies", flavors:selected.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder,stockState:item.stockState})), preorder, availability },
+              qty: 1
+            });
+          }
+          save();
+          say("Caja de Fonkies añadida a tu pedido 💜");
         });
-      }
-      save();
-      say("Caja de Fonkies añadida a tu pedido 💜");
+      })());
     });
 
     updateBuilder();
@@ -3020,94 +3279,111 @@
       updateBuilder();
     }));
 
-    $$(".fomb-flavor .fonkie-stepper button", builder).forEach(button => button.addEventListener("click", async () => {
-      const row = button.closest(".fomb-flavor");
-      const reportChange = success => row.dispatchEvent(new CustomEvent("fontana:flavor-change", { bubbles: true, detail: { success } }));
-      if (stockValidationPending) { reportChange(false); return; }
-      const output = $("output", row);
-      const delta = Number(button.dataset.delta);
-      const previous = Number(output.value || output.textContent || 0);
-      const next = Math.max(0, previous + delta);
-      const flavorPreorder = preorderAllowed && row.dataset.soldOut === "true";
-      if (delta > 0 && !flavorPreorder) {
-        stockValidationPending = true;
-        const draft = rows.filter(row => row.dataset.soldOut !== "true").map(row => ({
-          kind:"fomb",flavor:row.dataset.flavor,
-          quantity:row === button.closest(".fomb-flavor") ? next : Number($("output", row).value || $("output", row).textContent || 0)
-        }));
-        const validation = await validateStock(draft);
-        stockValidationPending = false;
-        if (!validation.ok) { say(stockLimitNotice(validation.error, row.dataset.flavor)); reportChange(false); return; }
-      }
-      output.value = String(next);
-      output.textContent = String(next);
-      updateBuilder();
-      reportChange(true);
+    const quantityController = createBuilderQuantityController({
+      builder,
+      rows,
+      kind: "fomb",
+      preorderAllowed,
+      updateBuilder
+    });
+    $$(".fomb-flavor .fonkie-stepper button", builder).forEach(button => button.addEventListener("click", () => {
+      quantityController.request(button.closest(".fomb-flavor"), Number(button.dataset.delta));
     }));
 
-    addButton.addEventListener("click", async () => {
-      const current = selection();
-      if (current.selectedTotal < current.size) {
-        say(`Selecciona al menos ${current.size} bombones para armar tu caja`);
-        return;
-      }
-      const preorder = current.flavors.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
-      const availability = preorder ? "preorder" : current.availability;
-      const stocked = current.flavors.filter(item => !item.preorder);
-      if (stocked.length) {
-        const validation = await validateStock(stocked.map(item => ({kind:"fomb",flavor:item.name,quantity:item.qty})));
-        if (!validation.ok) { say(stockLimitNotice(validation.error, "la caja Fomb")); return; }
-      }
-      const choices = [current.flavors.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), builderAvailabilityCopy(availability)].filter(Boolean).join(" · ");
-      const id = `fomb-box-${current.size}-${current.extras}-${rows.map(row => Number($("output", row).value || 0)).join("-")}`;
-      const found = cart.find(item => item.id === id);
-      if (found) {
-        found.qty += 1;
-      } else {
-        cart.push({
-          id,
-          productId: "fomb-box",
-          name: `${preorder ? "Pre-order · " : ""}Caja de ${current.selectedTotal} Fomb · ${current.flavors.length === 1 ? "Un sabor" : "Mixta"}`,
-          price: current.price,
-          image: builder.dataset.image,
-          ingredients: builder.dataset.ingredients,
-          choices,
-          inventory: { kind:"fomb", flavors:current.flavors.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder,stockState:item.stockState})), boxSize:current.size, extraCount:current.extras, preorder, availability },
-          qty: 1
+    addButton.addEventListener("click", () => {
+      quantityMutationVersion += 1;
+      trackQuantityCommit((async () => {
+        await quantityController.whenIdle();
+        const current = selection();
+        if (current.selectedTotal < current.size) {
+          say(`Selecciona al menos ${current.size} bombones para armar tu caja`);
+          return;
+        }
+        const preorder = current.flavors.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
+        const availability = preorder ? "preorder" : current.availability;
+        const stocked = current.flavors.filter(item => !item.preorder);
+        const quantities = new Map(current.flavors.map(item => [item.name, item.qty]));
+        const choices = [current.flavors.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), builderAvailabilityCopy(availability)].filter(Boolean).join(" · ");
+        const id = `fomb-box-${current.size}-${current.extras}-${rows.map(row => Number(quantities.get(row.dataset.flavor) || 0)).join("-")}`;
+        await serializeStockQuantityMutation(async () => {
+          if (stocked.length) {
+            const validation = await validateStock(stocked.map(item => ({kind:"fomb",flavor:item.name,quantity:item.qty})));
+            if (!validation.ok) {
+              say(stockLimitNotice(validation.error, "la caja Fomb"));
+              return;
+            }
+          }
+          const found = cart.find(item => item.id === id);
+          if (found) {
+            found.qty += 1;
+          } else {
+            cart.push({
+              id,
+              productId: "fomb-box",
+              name: `${preorder ? "Pre-order · " : ""}Caja de ${current.selectedTotal} Fomb · ${current.flavors.length === 1 ? "Un sabor" : "Mixta"}`,
+              price: current.price,
+              image: builder.dataset.image,
+              ingredients: builder.dataset.ingredients,
+              choices,
+              inventory: { kind:"fomb", flavors:current.flavors.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder,stockState:item.stockState})), boxSize:current.size, extraCount:current.extras, preorder, availability },
+              qty: 1
+            });
+          }
+          save();
+          say("Caja Fomb añadida a tu pedido 💜");
         });
-      }
-      save();
-      say("Caja Fomb añadida a tu pedido 💜");
+      })());
     });
 
     updateBuilder();
   }
 
-  window.changeQty = async (id, delta) => {
-    if (stockValidationPending) return;
-    const item = cart.find(entry => entry.id === id);
+  function displayedCartQuantity(item) {
+    const queue = productAddQueues.get(item.id);
+    return Math.max(0,
+      Number(item.qty || 0)
+      + Number(queue?.pending || 0)
+      + Math.max(0, Number(queue?.inFlight || 0) - Number(queue?.cancelInFlight || 0))
+    );
+  }
+
+  window.changeQty = (id, delta) => {
+    const item = cart.find(entry => entry.id === id) || productAddQueues.get(id)?.item;
     if (!item) return;
-    const previous = item.qty;
-    item.qty += delta;
-    if (delta > 0 && !item.inventory?.preorder) {
-      stockValidationPending = true;
-      const validation = await validateStock();
-      stockValidationPending = false;
-      if (!validation.ok) { item.qty = previous; say(stockLimitNotice(validation.error, item.name)); renderCart(); return; }
+    const change = Math.trunc(Number(delta));
+    if (!Number.isFinite(change) || change === 0) return;
+    if (change > 0) {
+      quantityMutationVersion += 1;
+      if (item.inventory?.preorder) {
+        item.qty += change;
+        save();
+        return;
+      }
+      const queue = scheduleProductQueue({ id, item });
+      queue.pending += change;
+      syncProductQuantityControls();
+      renderCart();
+      return;
     }
-    if (item.qty <= 0) cart = cart.filter(entry => entry.id !== id);
-    save();
+    subtractQueuedItem(id, -change);
   };
 
   function renderCart() {
-    const count = cart.reduce((sum, item) => sum + item.qty, 0);
-    const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const visibleCart = cart.map(item => ({ item, quantity: displayedCartQuantity(item) }));
+    const visibleIds = new Set(visibleCart.map(entry => entry.item.id));
+    for (const [id, queue] of productAddQueues) {
+      if (visibleIds.has(id)) continue;
+      const quantity = displayedCartQuantity(queue.item);
+      if (quantity > 0) visibleCart.push({ item: queue.item, quantity });
+    }
+    const count = visibleCart.reduce((sum, entry) => sum + entry.quantity, 0);
+    const total = visibleCart.reduce((sum, entry) => sum + entry.item.price * entry.quantity, 0);
     $("#cartCount").textContent = count;
     $("#cartTotal").textContent = money(total);
-    const blocked = cart.some(isElectricityBlockedCartItem);
+    const blocked = visibleCart.some(entry => isElectricityBlockedCartItem(entry.item));
     $("#continueCheckout").disabled = blocked;
-    cartItems.innerHTML = cart.length
-      ? cart.map(item => `
+    cartItems.innerHTML = visibleCart.length
+      ? visibleCart.map(({ item, quantity }) => `
         <div class="cart-item${isElectricityBlockedCartItem(item) ? " cart-item-unavailable" : ""}">
           <img src="${item.image}" alt="">
           <div>
@@ -3117,11 +3393,11 @@
             ${isElectricityBlockedCartItem(item) ? `<small class="cart-unavailable-copy">Temporalmente no disponible. Elimínalo para continuar.</small>` : ""}
             <div class="qty">
               <button type="button" onclick="changeQty('${item.id}',-1)" aria-label="Restar">−</button>
-              <b>${item.qty}</b>
+              <b>${quantity}</b>
               <button type="button" onclick="changeQty('${item.id}',1)" aria-label="Sumar">+</button>
             </div>
           </div>
-          <button type="button" class="remove" onclick="changeQty('${item.id}',-${item.qty})" aria-label="Eliminar">×</button>
+          <button type="button" class="remove" onclick="changeQty('${item.id}',-${quantity})" aria-label="Eliminar">×</button>
         </div>`).join("")
       : `<div class="empty"><b>Tu pedido está vacío</b><span>Agrega una delicia del menú para comenzar.</span></div>`;
     syncProductQuantityControls();
@@ -3138,18 +3414,25 @@
   }
 
   async function showCheckoutStep() {
-    if (!cart.length) {
-      say("Primero agrega algo rico al pedido");
-      return;
-    }
-    if (cart.some(isElectricityBlockedCartItem)) {
-      say("Hay un producto temporalmente no disponible. No lo eliminamos: retíralo del carrito para continuar.");
-      return;
-    }
-    const validation = await validateStock();
-    if (!validation.ok) {
-      say(`${validation.error} Reduce el pedido para continuar.`);
-      return;
+    while (true) {
+      await flushQuantityWork();
+      if (!cart.length) {
+        say("Primero agrega algo rico al pedido");
+        return;
+      }
+      if (cart.some(isElectricityBlockedCartItem)) {
+        say("Hay un producto temporalmente no disponible. No lo eliminamos: retíralo del carrito para continuar.");
+        return;
+      }
+      const stableVersion = quantityMutationVersion;
+      const validation = await validateStock();
+      await flushQuantityWork();
+      if (stableVersion !== quantityMutationVersion) continue;
+      if (!validation.ok) {
+        say(`${validation.error} Reduce el pedido para continuar.`);
+        return;
+      }
+      break;
     }
     cartItems.hidden = true;
     cartFooter.hidden = true;

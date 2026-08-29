@@ -271,6 +271,157 @@ async function installBuilderAvailabilityCatalog(page) {
   }, createBuilderAvailabilityState());
 }
 
+async function installDelayedBuilderStockApi(page, delay = 350, maximumQuantity = Infinity) {
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  const activity = { started: 0, completed: 0, requests: [] };
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ state })
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", async route => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        }
+      });
+      return;
+    }
+    activity.started += 1;
+    const request = route.request().postDataJSON();
+    activity.requests.push(request);
+    await new Promise(resolve => setTimeout(resolve, delay));
+    const available = (request.checks || []).every(check => Number(check.quantity) <= maximumQuantity);
+    await route.fulfill({
+      status: available ? 200 : 409,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify(available
+        ? { ok: true }
+        : { error: `Solo quedan ${maximumQuantity} unidades disponibles.` })
+    });
+    activity.completed += 1;
+  });
+  return activity;
+}
+
+async function installGatedProductStockApi(page, maximumQuantity = 2) {
+  const product = {
+    id: "ballerine",
+    category: "cakes",
+    name: "Torta Ballerine",
+    price: 12,
+    image: "assets/ballerine-fontana-pro.jpg",
+    description: "Individual para 1–2 personas.",
+    ingredients: "Harina de almendra, monkfruit y huevo.",
+    weight: "180 G APROX.",
+    status: "available",
+    stockQuantity: maximumQuantity,
+    visible: true
+  };
+  const state = {
+    version: 2,
+    settings: { productionWithElectricity: true, stockTodayOpen: true },
+    operations: { verified: true, electricityEnabled: true },
+    products: [product],
+    builders: {}
+  };
+  const requests = [];
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ state })
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", async route => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        }
+      });
+      return;
+    }
+    const payload = route.request().postDataJSON();
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    requests.push({ payload, release });
+    await gate;
+    const totals = new Map();
+    for (const check of payload.checks || []) {
+      const key = [check.kind, check.productId || check.flavor, check.size || "", check.variant || ""].join(":");
+      totals.set(key, Number(totals.get(key) || 0) + Number(check.quantity || 0));
+    }
+    const available = [...totals.values()].every(quantity => quantity <= maximumQuantity);
+    await route.fulfill({
+      status: available ? 200 : 409,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify(available
+        ? { ok: true }
+        : { error: `Solo quedan ${maximumQuantity} unidades disponibles.` })
+    });
+  });
+  return { product, requests };
+}
+
+async function installGatedBuilderCommitApi(page) {
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  const gates = [];
+  let gateNextValidation = false;
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ state })
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", async route => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        }
+      });
+      return;
+    }
+    const payload = route.request().postDataJSON();
+    if (gateNextValidation) {
+      gateNextValidation = false;
+      let release;
+      const pending = new Promise(resolve => { release = resolve; });
+      gates.push({ payload, release });
+      await pending;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ ok: true })
+    });
+  });
+  return {
+    gates,
+    gateNext() { gateNextValidation = true; }
+  };
+}
+
 function createExpandedFlavorLayoutState() {
   const fonkieFlavors = [
     ["Chips de Chocolate Oscuro", "Harina de almendra, huevo, aceite de coco, chocolate vegano oscuro y monkfruit", "fonkie-dark-chocolate-chips-fontana-pro.jpg"],
@@ -437,6 +588,349 @@ test("el menú acumula clics rápidos, respeta el stock y permite restar desde l
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await desktopCard.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("controles-rapidos-producto-escritorio.png"), fullPage: false });
+});
+
+test("menú, carrito y checkout comparten una sola cola de stock para el mismo producto", async ({ page }) => {
+  const { product, requests } = await installGatedProductStockApi(page, 2);
+  await page.addInitScript(({ product }) => {
+    localStorage.setItem("fontana-cart-v1", JSON.stringify([{
+      id: `catalog-${product.id}`,
+      productId: product.id,
+      category: product.category,
+      name: product.name,
+      price: product.price,
+      image: product.image,
+      ingredients: product.ingredients,
+      inventory: { kind: "product", productId: product.id, size: "", variant: "", preorder: false },
+      qty: 1
+    }]));
+  }, { product });
+  await page.goto("http://fontana.localhost:8767/");
+
+  const card = page.locator('[data-product-id="ballerine"]');
+  const menuPlus = card.locator(".product-front .add");
+  await menuPlus.click();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0].payload.checks).toContainEqual(expect.objectContaining({
+    kind: "product",
+    productId: "ballerine",
+    quantity: 2
+  }));
+  await expect(page.locator("#cartCount")).toHaveText("2");
+  await expect(card.locator(".product-front .product-menu-qty")).toHaveText("2");
+
+  await page.locator("#cartButton").click();
+  const item = page.locator(".cart-item").filter({ hasText: product.name });
+  await expect(item.locator(".qty b")).toHaveText("2");
+  await item.getByRole("button", { name: "Sumar" }).click();
+  await expect(item.locator(".qty b")).toHaveText("3", { timeout: 180 });
+  await expect(page.locator("#cartCount")).toHaveText("3");
+  await expect(card.locator(".product-front .product-menu-qty")).toHaveText("3");
+
+  requests[0].release();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1].payload.checks).toContainEqual(expect.objectContaining({
+    kind: "product",
+    productId: "ballerine",
+    quantity: 3
+  }));
+  requests[1].release();
+  await expect(item.locator(".qty b")).toHaveText("2", { timeout: 3_000 });
+  await expect(page.locator("#cartCount")).toHaveText("2");
+  await expect(card.locator(".product-front .product-menu-qty")).toHaveText("2");
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1"))[0].qty)).toBe(2);
+
+  await page.locator("#closeCart").click();
+  await menuPlus.click();
+  await expect.poll(() => requests.length).toBe(3);
+  expect(requests[2].payload.checks).toContainEqual(expect.objectContaining({
+    kind: "product",
+    productId: "ballerine",
+    quantity: 3
+  }));
+  await expect(card.locator(".product-front .product-menu-qty")).toHaveText("3");
+  await page.locator("#cartButton").click();
+  await expect(item.locator(".qty b")).toHaveText("3");
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator("#checkoutForm")).toBeHidden();
+  expect(requests).toHaveLength(3);
+
+  requests[2].release();
+  await expect.poll(() => requests.length).toBe(4);
+  expect(requests[3].payload.checks).toContainEqual(expect.objectContaining({
+    kind: "product",
+    productId: "ballerine",
+    quantity: 2
+  }));
+  await expect(page.locator("#checkoutForm")).toBeHidden();
+  requests[3].release();
+  await expect(page.locator("#checkoutForm")).toBeVisible({ timeout: 3_000 });
+  await expect(page.locator("#cartCount")).toHaveText("2");
+  await expect(card.locator(".product-front .product-menu-qty")).toHaveText("2");
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1"))[0].qty)).toBe(2);
+});
+
+test("la ráfaga compacta de Fonkies y Fomb se refleja antes de validar y conserva los tramos", async ({ page }) => {
+  const activity = await installDelayedBuilderStockApi(page);
+  await page.goto("http://fontana.localhost:8767/");
+
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await openFlavorChoice(page, ".fonkie-builder");
+  const fonkieRow = page.locator('.fonkie-flavor[data-flavor="Fonkie con stock real"]');
+  await fonkieRow.locator('[data-delta="1"]').evaluate(button => {
+    for (let index = 0; index < 6; index += 1) button.click();
+  });
+  await expect(fonkieRow.locator("output")).toHaveText("6", { timeout: 180 });
+  await expect(page.locator("#fonkieTotal")).toContainText("REF 22,00");
+  await expect.poll(() => activity.started).toBeGreaterThan(0);
+  expect(activity.completed).toBe(0);
+  await expect.poll(() => activity.completed).toBeGreaterThan(0);
+  await expect(fonkieRow.locator("output")).toHaveText("6");
+  await fonkieRow.locator('[data-delta="-1"]').evaluate(button => {
+    button.click();
+    button.click();
+  });
+  await expect(fonkieRow.locator("output")).toHaveText("4", { timeout: 180 });
+  await expect(page.locator("#fonkieTotal")).toContainText("REF 15,00");
+
+  const completedBeforeFomb = activity.completed;
+  const startedBeforeFomb = activity.started;
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await openFlavorChoice(page, ".fomb-builder");
+  const fombRow = page.locator('.fomb-flavor[data-flavor="Fomb con cantidad cargada"]');
+  const fombPlus = fombRow.locator('[data-delta="1"]');
+  await fombPlus.evaluate(button => {
+    for (let index = 0; index < 12; index += 1) button.click();
+  });
+  await expect(fombRow.locator("output")).toHaveText("12", { timeout: 180 });
+  await expect(page.locator("#fombTotal")).toContainText("REF 30,00");
+  await expect(page.locator('input[name="fombSize"][value="12"]')).toBeChecked();
+  await expect.poll(() => activity.started).toBeGreaterThan(startedBeforeFomb);
+  expect(activity.completed).toBe(completedBeforeFomb);
+  await expect.poll(() => activity.completed).toBeGreaterThan(completedBeforeFomb);
+
+  const completedAtTwelve = activity.completed;
+  const startedAtTwelve = activity.started;
+  await fombPlus.evaluate(button => button.click());
+  await expect(fombRow.locator("output")).toHaveText("13", { timeout: 180 });
+  await expect(page.locator("#fombTotal")).toContainText("REF 33,50");
+  await expect(page.locator("#fombRule")).toContainText("12 + 1 bombón extra");
+  await expect.poll(() => activity.started).toBeGreaterThan(startedAtTwelve);
+  expect(activity.completed).toBe(completedAtTwelve);
+  await expect.poll(() => activity.completed).toBeGreaterThan(completedAtTwelve);
+  await expect(fombRow.locator("output")).toHaveText("13");
+  await fombRow.locator('[data-delta="-1"]').evaluate(button => {
+    button.click();
+    button.click();
+  });
+  await expect(fombRow.locator("output")).toHaveText("11", { timeout: 180 });
+  await expect(page.locator("#fombTotal")).toContainText("REF 39,50");
+  await expect(page.locator('input[name="fombSize"][value="4"]')).toBeChecked();
+});
+
+test("la ráfaga corregida durante el request conserva el máximo válido de Fonkies y Fomb", async ({ page }) => {
+  const activity = await installDelayedBuilderStockApi(page, 350, 3);
+  await page.goto("http://fontana.localhost:8767/");
+
+  for (const builderCase of [
+    {
+      filter: "Fonkies · Galletas",
+      builder: ".fonkie-builder",
+      row: '.fonkie-flavor[data-flavor="Fonkie con stock real"]',
+      kind: "fonkies"
+    },
+    {
+      filter: "Fomb · Bombones",
+      builder: ".fomb-builder",
+      row: '.fomb-flavor[data-flavor="Fomb con cantidad cargada"]',
+      kind: "fomb"
+    }
+  ]) {
+    await page.getByRole("button", { name: builderCase.filter }).click();
+    await openFlavorChoice(page, builderCase.builder);
+    const row = page.locator(builderCase.row);
+    const requestsBefore = activity.requests.length;
+    await row.locator('[data-delta="1"]').evaluate(button => {
+      for (let index = 0; index < 4; index += 1) button.click();
+    });
+    await expect(row.locator("output")).toHaveText("4", { timeout: 180 });
+    await expect.poll(() => activity.requests.length).toBeGreaterThan(requestsBefore);
+    expect(activity.requests.at(-1).checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: builderCase.kind, quantity: 4 })
+    ]));
+
+    await row.locator('[data-delta="-1"]').evaluate(button => button.click());
+    await expect(row.locator("output")).toHaveText("3", { timeout: 180 });
+    await expect(page.locator(builderCase.builder)).toHaveAttribute("data-quantity-pending", "false", { timeout: 3_000 });
+    await expect(row.locator("output")).toHaveText("3");
+    expect(activity.requests.slice(requestsBefore).some(request => request.checks.some(check => (
+      check.kind === builderCase.kind && Number(check.quantity) === 3
+    )))).toBe(true);
+  }
+});
+
+test("Agregar caja conserva su snapshot y checkout espera la validación en Fonkies y Fomb", async ({ page }) => {
+  const stockApi = await installGatedBuilderCommitApi(page);
+  const builderCases = [
+    {
+      filter: "Fonkies · Galletas",
+      builder: ".fonkie-builder",
+      row: '.fonkie-flavor[data-flavor="Fonkie con stock real"]',
+      flavor: "Fonkie con stock real",
+      kind: "fonkies",
+      add: "#addFonkieBox",
+      total: "#fonkieTotal",
+      changedPrice: "REF 18,50",
+      id: "fonkie-box-4-0-0",
+      inventory: { kind: "fonkies", preorder: false }
+    },
+    {
+      filter: "Fomb · Bombones",
+      builder: ".fomb-builder",
+      row: '.fomb-flavor[data-flavor="Fomb con cantidad cargada"]',
+      flavor: "Fomb con cantidad cargada",
+      kind: "fomb",
+      add: "#addFombBox",
+      total: "#fombTotal",
+      changedPrice: "REF 18,50",
+      id: "fomb-box-4-0-4-0-0",
+      inventory: { kind: "fomb", boxSize: 4, extraCount: 0, preorder: false }
+    }
+  ];
+
+  for (const [index, builderCase] of builderCases.entries()) {
+    if (index) await page.evaluate(() => localStorage.removeItem("fontana-cart-v1"));
+    await page.goto("http://fontana.localhost:8767/");
+    await page.getByRole("button", { name: builderCase.filter }).click();
+    await openFlavorChoice(page, builderCase.builder);
+    const row = page.locator(builderCase.row);
+    const plus = row.locator('[data-delta="1"]');
+    await plus.evaluate(button => {
+      for (let quantity = 0; quantity < 4; quantity += 1) button.click();
+    });
+    await expect(page.locator(builderCase.builder)).toHaveAttribute("data-quantity-pending", "false", { timeout: 3_000 });
+    await expect(row.locator("output")).toHaveText("4");
+    await expect(page.locator(builderCase.total)).toContainText("REF 15,00");
+
+    const gatesBefore = stockApi.gates.length;
+    stockApi.gateNext();
+    await page.locator(builderCase.add).click();
+    await expect.poll(() => stockApi.gates.length).toBe(gatesBefore + 1);
+    const commitGate = stockApi.gates.at(-1);
+    expect(commitGate.payload.checks).toContainEqual(expect.objectContaining({
+      kind: builderCase.kind,
+      flavor: builderCase.flavor,
+      quantity: 4
+    }));
+
+    await plus.click();
+    await expect(row.locator("output")).toHaveText("5", { timeout: 180 });
+    await expect(page.locator(builderCase.total)).toContainText(builderCase.changedPrice);
+    await page.locator("#cartButton").click();
+    await expect(page.locator("#cartCount")).toHaveText("0");
+    await page.locator("#continueCheckout").click();
+    await expect(page.locator("#checkoutForm")).toBeHidden();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]"))).toEqual([]);
+
+    commitGate.release();
+    await expect(page.locator("#checkoutForm")).toBeVisible({ timeout: 3_000 });
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]"));
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      id: builderCase.id,
+      name: expect.stringContaining("Caja de 4"),
+      price: 15,
+      qty: 1,
+      inventory: builderCase.inventory
+    });
+    expect(stored[0].inventory.flavors).toEqual([
+      expect.objectContaining({ name: builderCase.flavor, qty: 4, preorder: false })
+    ]);
+  }
+});
+
+test("la ráfaga ampliada acepta más y menos durante una validación pendiente", async ({ page }) => {
+  const activity = await installDelayedBuilderStockApi(page);
+  await page.goto("http://fontana.localhost:8767/");
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+
+  const flavorName = "Fonkie con stock real";
+  const source = page.locator(`.fonkie-gallery-card[data-flavor="${flavorName}"]`);
+  const sourceOutput = page.locator(`.fonkie-flavor[data-flavor="${flavorName}"] output`);
+  await source.click();
+  const overlay = page.locator(".builder-flavor-flip-card");
+  const output = overlay.locator(".builder-flavor-quantity-output");
+  const plus = overlay.getByRole("button", { name: `Sumar ${flavorName}` });
+  const minus = overlay.getByRole("button", { name: `Restar ${flavorName}` });
+
+  await plus.evaluate(button => {
+    for (let index = 0; index < 4; index += 1) button.click();
+  });
+  await expect(output).toHaveText("4", { timeout: 180 });
+  await expect.poll(() => activity.started).toBeGreaterThan(0);
+  expect(activity.completed).toBe(0);
+  await expect(overlay.locator(".builder-flavor-expanded-actions")).toHaveAttribute("aria-busy", "true");
+  await expect(plus).toBeEnabled();
+  await expect(minus).toBeEnabled();
+
+  await plus.evaluate(button => {
+    for (let index = 0; index < 4; index += 1) button.click();
+  });
+  await minus.evaluate(button => {
+    for (let index = 0; index < 3; index += 1) button.click();
+  });
+  await expect(output).toHaveText("5", { timeout: 180 });
+  await expect(sourceOutput).toHaveText("5");
+  expect(activity.completed).toBe(0);
+
+  await expect(overlay.locator(".builder-flavor-expanded-actions")).toHaveAttribute("aria-busy", "false", { timeout: 3_000 });
+  await expect(output).toHaveText("5");
+  await expect(sourceOutput).toHaveText("5");
+  expect(activity.completed).toBeGreaterThan(0);
+});
+
+test("la ráfaga del carrito conserva todos los clics de más y menos", async ({ page }) => {
+  const activity = await installDelayedBuilderStockApi(page);
+  await page.addInitScript(cart => {
+    localStorage.setItem("fontana-cart-v1", JSON.stringify(cart));
+  }, [{
+    id: "fonkie-box-fast-clicks",
+    productId: "fonkie-box",
+    name: "Caja de 4 Fonkies · Un sabor",
+    price: 15,
+    image: "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg",
+    choices: "4 Fonkie con stock real · ENTREGA INMEDIATA",
+    inventory: {
+      kind: "fonkies",
+      flavors: [{ name: "Fonkie con stock real", qty: 4, preorder: false, stockState: "immediate" }],
+      preorder: false,
+      availability: "immediate"
+    },
+    qty: 1
+  }]);
+  await page.goto("http://fontana.localhost:8767/");
+  await page.locator("#cartButton").click();
+
+  const item = page.locator(".cart-item").filter({ hasText: "Caja de 4 Fonkies" });
+  await item.getByRole("button", { name: "Sumar" }).evaluate(button => {
+    for (let index = 0; index < 6; index += 1) button.click();
+  });
+  await expect(item.locator(".qty b")).toHaveText("7", { timeout: 180 });
+  await expect(page.locator("#cartCount")).toHaveText("7");
+  await expect.poll(() => activity.started).toBeGreaterThan(0);
+  expect(activity.completed).toBe(0);
+
+  await item.getByRole("button", { name: "Restar" }).evaluate(button => {
+    for (let index = 0; index < 3; index += 1) button.click();
+  });
+  await expect(item.locator(".qty b")).toHaveText("4", { timeout: 180 });
+  await expect(page.locator("#cartCount")).toHaveText("4");
+  expect(activity.completed).toBe(0);
+
+  await expect.poll(() => activity.completed).toBeGreaterThan(0);
+  await expect(item.locator(".qty b")).toHaveText("4");
+  await expect(page.locator("#cartCount")).toHaveText("4");
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1"))[0].qty)).toBe(4);
 });
 
 test("las tarjetas conservan la compra al frente y giran físicamente al ampliarse", async ({ page }, testInfo) => {
@@ -817,6 +1311,8 @@ test("Fonkies y Fomb giran como tarjetas completas sin perder selección ni scro
     await expect(expandedOutput).toHaveText(String(previous + 1));
     await expect(output).toHaveText(String(previous + 1));
     const done = overlay.locator(".builder-flavor-done");
+    await expect(overlay.locator(".builder-flavor-expanded-actions")).toHaveAttribute("aria-busy", "false");
+    await expect(done).toBeEnabled();
     await done.focus();
     await page.keyboard.press("Tab");
     await expect(overlay.locator(".builder-flavor-expanded-media")).toBeFocused();
