@@ -63,6 +63,16 @@ export const categoryPages = [
     eyebrow: "Stock de hoy",
     intro: "Agrega una bebida refrigerada a tu pedido y consulta su disponibilidad para el mismo día.",
     detail: "Las existencias y la entrega final se confirman junto con el resto del pedido por WhatsApp."
+  },
+  {
+    id: "bottega",
+    slug: "bottega",
+    navName: "Bottega",
+    title: "Bottega · Selección para tu despensa",
+    description: "Descubre la selección Bottega de Fontana y agrega productos para tu despensa al pedido, sujetos a disponibilidad.",
+    eyebrow: "Selección Bottega",
+    intro: "Una selección de productos para complementar tu pedido Fontana. Consulta cada ficha para conocer su presentación, ingredientes y características confirmadas.",
+    detail: "Las existencias y la entrega final se confirman junto con el resto del pedido por WhatsApp."
   }
 ];
 

@@ -1,8 +1,22 @@
 const { test, expect } = require("@playwright/test");
 const { readFile, readdir, stat } = require("node:fs/promises");
 const path = require("node:path");
+const sharp = require("sharp");
 
 const productionPreview = "http://127.0.0.1:8768";
+const bottegaAssets = [
+  "de-cecco-tortiglioni-fontana.jpg",
+  "de-cecco-penne-rigate-fontana.jpg",
+  "de-cecco-linguine-fontana.jpg",
+  "de-cecco-aceite-oliva-classico-fontana.jpg",
+  "pecorino-romano-dop-fontana.jpg",
+  "provolone-valpadana-piccante-fontana.jpg",
+  "apetina-tomates-secos-fontana.jpg",
+  "apetina-feta-aceitunas-negras-fontana.jpg",
+  "arla-lactofree-queso-fresco-fontana.jpg",
+  "cirio-passata-fontana.jpg",
+  "barilla-pesto-sin-ajo-fontana.jpg"
+];
 
 test("el build publica JavaScript versionado sin inflar el HTML principal", async () => {
   const html = await readFile(path.join(process.cwd(), "dist/index.html"), "utf8");
@@ -28,6 +42,7 @@ test("el sitemap generado incluye categorías y fichas de producto", async () =>
   expect(locations).toContain("https://fontanasingluten.com/fonkies-galletas-sin-gluten/");
   expect(locations).toContain("https://fontanasingluten.com/fomb-bombones-sin-azucar/");
   expect(locations).toContain("https://fontanasingluten.com/salados-sin-gluten-carabobo/");
+  expect(locations).toContain("https://fontanasingluten.com/bottega/");
   expect(locations).toContain("https://fontanasingluten.com/productos/pistacho/");
   expect(locations).toContain("https://fontanasingluten.com/informacion-del-pedido/");
   expect(locations).toContain("https://fontanasingluten.com/privacidad/");
@@ -63,6 +78,19 @@ test("las imágenes responsivas conservan el original de alta resolución", asyn
   expect((await stat(path.join(process.cwd(), "dist/assets/fontana-og-share.jpg"))).size).toBeGreaterThan(100_000);
 });
 
+test("los 11 assets de Bottega son JPEG decodificables de 1200 por 1200", async () => {
+  expect(bottegaAssets).toHaveLength(11);
+  for (const filename of bottegaAssets) {
+    for (const root of ["assets", path.join("dist", "assets")]) {
+      const asset = path.join(process.cwd(), root, "bottega", filename);
+      const metadata = await sharp(asset).metadata();
+      expect(metadata.format, asset).toBe("jpeg");
+      expect(metadata.width, asset).toBe(1200);
+      expect(metadata.height, asset).toBe(1200);
+    }
+  }
+});
+
 test("las categorías SEO son rastreables, útiles y responsivas", async ({ page }) => {
   const consoleErrors = [];
   page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
@@ -77,6 +105,41 @@ test("las categorías SEO son rastreables, útiles y responsivas", async ({ page
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
   expect(consoleErrors).toEqual([]);
+});
+
+test("Bottega tiene una página SEO propia y enlaza sus productos", async ({ page }) => {
+  const html = await readFile(path.join(process.cwd(), "dist/bottega/index.html"), "utf8");
+  expect(html).toContain('href="https://fontanasingluten.com/bottega/"');
+  expect(html).toContain("Bottega");
+
+  for (const viewport of [{ width:390, height:844 }, { width:1366, height:900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${productionPreview}/bottega/`);
+    await expect(page.locator("h1")).toContainText("Bottega");
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://fontanasingluten.com/bottega/");
+    await expect(page.locator(".product-card")).toHaveCount(11);
+    await expect(page.locator(".product-card .price")).toHaveText(Array(11).fill("REF 10,00"));
+    await expect(page.getByRole("link", { name: "Ver producto y sus ingredientes" }).first()).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+});
+
+test("las fichas Bottega publican REF 10 sin afirmar stock no administrado", async ({ page }) => {
+  await page.goto(`${productionPreview}/productos/bottega-de-cecco-tortiglioni/`);
+  await expect(page.locator("h1")).toHaveText("De Cecco Tortiglioni Senza Glutine");
+  const publishedPrice = page.locator(".detail-facts .fact").filter({ hasText:"Precio publicado" }).locator("strong");
+  await expect(publishedPrice).toHaveText("REF 10,00");
+  const jsonLd = await page.locator('script[type="application/ld+json"]').textContent();
+  const graph = JSON.parse(jsonLd)["@graph"];
+  const product = graph.find(item => item["@type"] === "Product");
+  expect(product).toBeTruthy();
+  expect(product.offers).toMatchObject({
+    "@type":"Offer",
+    price:10,
+    priceCurrency:"USD"
+  });
+  expect(product.offers).not.toHaveProperty("availability");
+  expect(product.brand).toEqual({ "@type":"Brand", name:"De Cecco" });
 });
 
 test("cada ficha publica Product, Offer y contenido visible equivalente", async ({ page }) => {

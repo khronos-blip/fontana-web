@@ -8,6 +8,7 @@ import {
 import { fombPricingMatchesRequest, resolveFombPricing } from "./pricing.mjs";
 import {
   applyPublicBuilderAvailability,
+  applyPublicProductAvailability,
   builderFlavorInventoryKey,
   deriveBuilderInventoryDefinitions,
   newlyIntroducedBuilderInventorySkus,
@@ -221,30 +222,12 @@ function applyPublicAvailability(state, inventory, operations = { electricityEna
     if (!byProduct.has(definition.productId)) byProduct.set(definition.productId, []);
     byProduct.get(definition.productId).push(definition);
   }
-  const resolved = candidates => {
-    if (!candidates.length) return null;
-    const rows = candidates.map(item => inventory.get(item.sku));
-    if (rows.some(row => !row?.trackStock)) return null;
-    return rows.some(row => row.available > 0);
-  };
   for (const product of publicState.products || []) {
     if (automaticPreorderForProduct(product)) product.allowPreorder = true;
     product.requiresElectricity = product.requiresElectricity === true;
     product.temporarilyUnavailable = !operations.electricityEnabled && product.requiresElectricity;
     const candidates = byProduct.get(product.id) || [];
-    const productAvailable = resolved(candidates);
-    if (productAvailable !== null) product.status = productAvailable ? "available" : "sold-out";
-    for (const variant of product.variants || []) {
-      const available = resolved(candidates.filter(item => item.variantName === variant.name));
-      if (available !== null) variant.status = available ? "available" : "sold-out";
-      delete variant.stockQuantity;
-    }
-    for (const size of product.sizes || []) {
-      const available = resolved(candidates.filter(item => item.sizeName === size.name));
-      if (available !== null) size.status = available ? "available" : "sold-out";
-      delete size.stockQuantity;
-    }
-    delete product.stockQuantity;
+    applyPublicProductAvailability(product, candidates, inventory);
   }
   for (const kind of ["fonkies", "fomb"]) {
     const builder = publicState.builders?.[kind];

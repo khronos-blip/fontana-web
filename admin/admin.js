@@ -183,6 +183,7 @@
 
   let state = defaultState();
   let remoteRevision = 0;
+  let pendingConfiguredProductCount = 0;
   let dirty = false;
   let currentSession = null;
   let sales = [];
@@ -215,8 +216,12 @@
 
   async function loadRemoteState() {
     const payload = await apiFetch("/v1/admin/catalog");
-    state = normalizeState(payload?.state || defaultState());
+    const sourceState = payload?.state || defaultState();
+    const publishedIds = new Set((sourceState.products || []).map(product => product.id));
+    pendingConfiguredProductCount = originalProducts.filter(product => !publishedIds.has(product.id)).length;
+    state = normalizeState(sourceState);
     remoteRevision = Number(payload?.revision || 0);
+    if (pendingConfiguredProductCount) dirty = true;
   }
 
   async function loadOperations() {
@@ -235,6 +240,10 @@
     $("#adminApp").hidden = false;
     await loadOperations();
     renderAll();
+    if (pendingConfiguredProductCount) {
+      $("#saveStatus").textContent = `${pendingConfiguredProductCount} productos nuevos pendientes de publicar`;
+      toast("Revisa los productos nuevos y pulsa Guardar y publicar.");
+    }
     await Promise.all([loadSales(), loadInventory(), loadOrders(), loadActivity()]);
   }
 
@@ -336,6 +345,7 @@
         remoteRevision = Number(payload?.revision || remoteRevision + 1);
       }
       dirty = false;
+      pendingConfiguredProductCount = 0;
       $("#saveStatus").textContent = localMode ? "Borrador local guardado" : "Publicado para todos";
       renderAll();
       await loadInventory();
@@ -762,12 +772,12 @@
   }
 
   function openProduct(id) {
-    const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:false,allowPreorder:false,requiresElectricity:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
+    const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",brand:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:false,allowPreorder:false,requiresElectricity:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
     if (!product) return;
     const form = $("#productForm");
     $("#dialogTitle").textContent = id ? "Editar producto" : "Nuevo producto";
     form.elements.originalId.value = id || "";
-    ["id","name","category","description","ingredients","weight","availabilityLabel","status","image"].forEach(field => { form.elements[field].value = product[field] ?? ""; });
+    ["id","name","brand","category","description","ingredients","weight","availabilityLabel","status","image"].forEach(field => { form.elements[field].value = product[field] ?? ""; });
     form.elements.price.value = product.price ?? "";
     form.elements.minimumBusinessDays.value = product.minimumBusinessDays ?? 0;
     form.elements.stockQuantity.value = product.stockQuantity ?? "";
@@ -1171,7 +1181,7 @@
     const duplicate = state.products.some(product => product.id === id && product.id !== originalId && !product.deleted);
     if (duplicate) return toast("Ya existe un producto con ese identificador");
     const product = {
-      id,name:String(data.get("name")).trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:String(data.get("weight")).trim(),availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
+      id,name:String(data.get("name")).trim(),brand:String(data.get("brand") || "").trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:String(data.get("weight")).trim(),availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
     };
     const index = state.products.findIndex(item => item.id === originalId);
     if (index >= 0) state.products[index] = product; else state.products.push(product);

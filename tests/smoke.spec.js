@@ -1,6 +1,20 @@
 const { test, expect } = require("@playwright/test");
 const { existsSync, readFileSync } = require("node:fs");
 
+const expectedBottegaProducts = [
+  { id:"bottega-de-cecco-tortiglioni", brand:"De Cecco", image:"assets/bottega/de-cecco-tortiglioni-fontana.jpg", description:"Pasta tortiglioni hecha de maíz, arroz integral y papa.", ingredients:"Maíz, arroz integral y papa.", seals:["Sin gluten", "Sin lactosa"] },
+  { id:"bottega-de-cecco-penne-rigate", brand:"De Cecco", image:"assets/bottega/de-cecco-penne-rigate-fontana.jpg", description:"Pasta penne rigate hecha de maíz, arroz integral y papa.", ingredients:"Maíz, arroz integral y papa.", seals:["Sin gluten", "Sin lactosa"] },
+  { id:"bottega-de-cecco-linguine", brand:"De Cecco", image:"assets/bottega/de-cecco-linguine-fontana.jpg", description:"Pasta linguine hecha de maíz, arroz integral y papa.", ingredients:"Maíz, arroz integral y papa.", seals:["Sin gluten", "Sin lactosa"] },
+  { id:"bottega-de-cecco-aceite-oliva-classico", brand:"De Cecco", image:"assets/bottega/de-cecco-aceite-oliva-classico-fontana.jpg", description:"Aceite de oliva extra virgen clásico.", ingredients:"Olivas.", seals:["Sin gluten", "Sin azúcar", "Sin lactosa"] },
+  { id:"bottega-pecorino-romano-dop", brand:"", image:"assets/bottega/pecorino-romano-dop-fontana.jpg", description:"Queso Pecorino Romano con denominación de origen protegida.", ingredients:"Leche de oveja y sal.", seals:["Sin gluten", "Sin azúcar", "Sin lactosa"] },
+  { id:"bottega-provolone-valpadana-piccante", brand:"", image:"assets/bottega/provolone-valpadana-piccante-fontana.jpg", description:"Queso Provolone Valpadana de sabor picante.", ingredients:"Leche y sal.", seals:["Sin gluten"] },
+  { id:"bottega-apetina-tomates-secos", brand:"Apetina", image:"assets/bottega/apetina-tomates-secos-fontana.jpg", description:"Queso blanco en aceite con tomates secos.", ingredients:"Leche, sal, tomates secos y aceite.", seals:["Sin gluten", "Sin azúcar"] },
+  { id:"bottega-apetina-feta-aceitunas-negras", brand:"Apetina", image:"assets/bottega/apetina-feta-aceitunas-negras-fontana.jpg", description:"Feta en aceite con aceitunas negras.", ingredients:"Leche, sal, aceitunas y aceite.", seals:["Sin gluten", "Sin azúcar"] },
+  { id:"bottega-arla-lactofree-queso-fresco", brand:"Arla", image:"assets/bottega/arla-lactofree-queso-fresco-fontana.jpg", description:"Queso fresco elaborado con leche deslactosada.", ingredients:"Leche deslactosada.", seals:["Sin gluten", "Sin azúcar", "Sin lactosa"] },
+  { id:"bottega-cirio-passata", brand:"Cirio", image:"assets/bottega/cirio-passata-fontana.jpg", description:"Tomate tamizado tipo passata.", ingredients:"Tomates.", seals:["Sin gluten", "Sin azúcar", "Sin lactosa"] },
+  { id:"bottega-barilla-pesto-sin-ajo", brand:"Barilla", image:"assets/bottega/barilla-pesto-sin-ajo-fontana.jpg", description:"Pesto genovés sin ajo.", ingredients:"Albahaca, Grana Padano, aceite y sal.", seals:["Sin gluten", "Sin azúcar", "Sin lactosa"] }
+];
+
 const previewPages = new WeakSet();
 
 async function openPreview(page) {
@@ -4989,9 +5003,10 @@ test("el catálogo separa visualmente cada familia de productos", async ({ page 
     "Fonkies",
     "Bombones",
     "Salados",
-    "Bebidas"
+    "Bebidas",
+    "Bottega"
   ]);
-  await expect(groups.locator(".catalog-group-line")).toHaveCount(5);
+  await expect(groups.locator(".catalog-group-line")).toHaveCount(6);
   await expect(groups.first().locator(".catalog-group-heading")).toHaveCSS("color", "rgb(184, 205, 105)");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
@@ -5126,6 +5141,285 @@ test("catálogo incluye productos confirmados y fotos profesionales", async ({ p
   await expect(page.locator('[data-product-id="agua-minalba-600"]')).toBeVisible();
   await page.getByRole("button", { name: "Salado" }).click();
   await expect(page.locator('[data-product-id="nuggets-rora"] img')).toHaveAttribute("src", "assets/nuggets-rora-fontana-pro.jpg");
+});
+
+test("los productos empacados de Bottega no ofrecen retirar ingredientes", async ({ page }) => {
+  await openPreview(page);
+  const product = await page.evaluate(() => {
+    const selected = window.FONTANA_CONFIG.dynamicCatalog.find(item => item.category === "bottega");
+    if (!selected) return null;
+    localStorage.setItem("fontana-cart-v1", JSON.stringify([{
+      id: selected.id,
+      productId: selected.id,
+      category: selected.category,
+      name: selected.name,
+      price: selected.price,
+      image: selected.image,
+      ingredients: selected.ingredients,
+      inventory: { kind:"product", productId:selected.id, size:"", variant:"", preorder:false },
+      qty: 1
+    }]));
+    return {id:selected.id, name:selected.name};
+  });
+  expect(product).not.toBeNull();
+
+  await page.reload();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item")).toContainText(product.name);
+  await page.locator("#continueCheckout").click();
+  await page.locator('input[name="hasAllergies"][value="yes"]').check();
+
+  await expect(page.locator("#allergyItemNotes")).toBeHidden();
+  await expect(page.locator(".item-allergy-field")).toHaveCount(0);
+  await expect(page.locator("#allergyItemNotes")).not.toContainText(product.name);
+  await expect(page.locator("#checkoutForm")).not.toContainText("¿Qué ingrediente deseas retirar o evitar?");
+});
+
+test("Bottega conserva sus 11 productos a REF 10 y no promete stock sin inventario real", async ({ page }) => {
+  await openPreview(page);
+  const configuredProducts = await page.evaluate(() => window.FONTANA_CONFIG.dynamicCatalog
+    .filter(product => product.category === "bottega")
+    .map(product => ({
+      id: product.id,
+      brand: product.brand,
+      image: product.image,
+      description: product.description,
+      ingredients: product.ingredients,
+      price: product.price,
+      glutenFree: product.glutenFree,
+      sugarFree: product.sugarFree,
+      lactoseFree: product.lactoseFree,
+      eggFree: product.eggFree
+    })));
+  expect(configuredProducts).toHaveLength(expectedBottegaProducts.length);
+
+  for (const expectedProduct of expectedBottegaProducts) {
+    const configured = configuredProducts.find(product => product.id === expectedProduct.id);
+    expect(configured, expectedProduct.id).toBeTruthy();
+    expect(configured.image).toBe(expectedProduct.image);
+    expect(configured.description).toBe(expectedProduct.description);
+    expect(configured.ingredients).toBe(expectedProduct.ingredients);
+    expect(configured.brand || "").toBe(expectedProduct.brand);
+    expect(configured.price).toBe(10);
+
+    const expectedFlags = {
+      glutenFree: expectedProduct.seals.includes("Sin gluten"),
+      sugarFree: expectedProduct.seals.includes("Sin azúcar"),
+      lactoseFree: expectedProduct.seals.includes("Sin lactosa"),
+      eggFree: expectedProduct.seals.includes("Sin huevo")
+    };
+    expect(configured).toMatchObject(expectedFlags);
+  }
+
+  await page.getByRole("button", { name: "Bottega", exact: true }).click();
+  const group = page.locator('.catalog-group[data-catalog-group="bottega"]');
+  const cards = group.locator('.product[data-category="bottega"]');
+  await expect(group).toBeVisible();
+  await expect(cards).toHaveCount(expectedBottegaProducts.length);
+
+  for (const expectedProduct of expectedBottegaProducts) {
+    const card = group.locator(`[data-product-id="${expectedProduct.id}"]`);
+    await expect(card).toHaveCount(1);
+    await expect(card.locator(".price").first()).toHaveText("REF 10,00");
+    await expect(card).toContainText("DISPONIBILIDAD POR CONFIRMAR");
+    await expect(card.locator(".add")).toBeVisible();
+    await expect(card.locator(".product-quote")).toHaveCount(0);
+    await expect(card).not.toContainText("ENTREGA INMEDIATA");
+    await expect(card).not.toContainText("STOCK DE HOY");
+    await expect(card.locator(".product-media img").first()).toHaveAttribute("src", expectedProduct.image);
+    await expect(card.locator(".product-dietary-seal span")).toHaveText(expectedProduct.seals);
+  }
+});
+
+test("Bottega habilita compra, agotado y pre-order solo según el inventario administrado", async ({ page }) => {
+  await openPreview(page);
+  const ids = expectedBottegaProducts.slice(0, 4).map(product => product.id);
+  await page.evaluate(productIds => {
+    const products = window.FONTANA_CONFIG.dynamicCatalog.map(product => {
+      if (product.id === productIds[0]) return {...product, stockTracked:true, status:"available", allowPreorder:false};
+      if (product.id === productIds[1]) return {...product, stockTracked:true, status:"sold-out", allowPreorder:false};
+      if (product.id === productIds[2]) return {...product, stockTracked:true, status:"sold-out", allowPreorder:true};
+      if (product.id === productIds[3]) return {...product, stockTracked:false, status:"available", allowPreorder:false};
+      return product;
+    });
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version:2,
+      settings:{productionWithElectricity:true,stockTodayOpen:true},
+      operations:{verified:true,electricityEnabled:true},
+      products
+    }));
+  }, ids);
+  await page.reload();
+  await page.getByRole("button", { name:"Bottega", exact:true }).click();
+
+  const group = page.locator('.catalog-group[data-catalog-group="bottega"]');
+  const immediate = group.locator(`[data-product-id="${ids[0]}"]`);
+  const unavailable = group.locator(`[data-product-id="${ids[1]}"]`);
+  const preorder = group.locator(`[data-product-id="${ids[2]}"]`);
+  const pending = group.locator(`[data-product-id="${ids[3]}"]`);
+
+  await expect(immediate.locator(".price").first()).toHaveText("REF 10,00");
+  await expect(immediate).toContainText("ENTREGA INMEDIATA");
+  await expect(immediate.locator(".add")).toBeVisible();
+  await immediate.locator(".add").click();
+  await expect.poll(() => page.evaluate(productId => {
+    const cart = JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]");
+    return cart.find(item => item.inventory?.productId === productId)?.inventory?.availability;
+  }, ids[0])).toBe("immediate");
+
+  await expect(unavailable).toContainText("AGOTADO");
+  await expect(unavailable.locator(".add")).toHaveCount(0);
+  await expect(unavailable).not.toContainText("PRE-ORDER");
+
+  await expect(preorder).toContainText("PRE-ORDER");
+  await expect(preorder).not.toContainText("2 días");
+  await expect(preorder.locator(".add")).toHaveText("PRE-ORDER");
+
+  await expect(pending).toContainText("DISPONIBILIDAD POR CONFIRMAR");
+  await expect(pending.locator(".add")).toBeVisible();
+  await expect(pending).not.toContainText("ENTREGA INMEDIATA");
+
+  const immediateName = (await immediate.locator("h3").textContent()).trim();
+  await page.locator("#cartButton").click();
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator(".checkout-preparation-row.same-day")).toContainText(immediateName);
+  await expect(page.locator(".checkout-preparation-row.pending")).toHaveCount(0);
+});
+
+test("el carrito Bottega reconcilia la disponibilidad vigente antes del checkout", async ({ page }) => {
+  await openPreview(page);
+  const seeded = await page.evaluate(productIds => {
+    const productsById = new Map(window.FONTANA_CONFIG.dynamicCatalog.map(product => [product.id, product]));
+    const initialAvailability = ["immediate", "pending", "immediate", "preorder"];
+    const products = window.FONTANA_CONFIG.dynamicCatalog.map(product => {
+      const index = productIds.indexOf(product.id);
+      if (index < 0) return product;
+      const next = {
+        ...product,
+        status:index === 3 ? "sold-out" : "available",
+        stockTracked:index !== 1,
+        allowPreorder:index === 3
+      };
+      delete next.stockQuantity;
+      return next;
+    });
+    const cart = productIds.map((id, index) => {
+      const product = productsById.get(id);
+      const availability = initialAvailability[index];
+      const labels = {
+        immediate:"ENTREGA INMEDIATA",
+        pending:"DISPONIBILIDAD POR CONFIRMAR",
+        preorder:"PRE-ORDER"
+      };
+      return {
+        id:`${id}-guardado`,
+        productId:id,
+        category:"bottega",
+        name:product.name,
+        price:product.price,
+        image:product.image,
+        choices:labels[availability],
+        inventory:{
+          kind:"product",
+          productId:id,
+          size:"",
+          variant:"",
+          preorder:availability === "preorder",
+          availability
+        },
+        qty:1
+      };
+    });
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version:2,
+      settings:{productionWithElectricity:true,stockTodayOpen:true},
+      operations:{verified:true,electricityEnabled:true},
+      products
+    }));
+    localStorage.setItem("fontana-cart-v1", JSON.stringify(cart));
+    return cart.map(item => ({id:item.productId,name:item.name}));
+  }, expectedBottegaProducts.slice(0, 4).map(product => product.id));
+  await page.reload();
+  await expect(page.locator("#cartCount")).toHaveText("4");
+
+  await page.evaluate(productIds => {
+    const state = JSON.parse(localStorage.getItem("fontana-admin-catalog-v1") || "{}");
+    state.products = state.products.map(product => {
+      const index = productIds.indexOf(product.id);
+      if (index < 0) return product;
+      const next = {
+        ...product,
+        status:index >= 2 ? "sold-out" : "available",
+        stockTracked:index !== 0,
+        allowPreorder:index === 2
+      };
+      delete next.stockQuantity;
+      return next;
+    });
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify(state));
+  }, seeded.map(item => item.id));
+
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item")).toHaveCount(4);
+  await page.locator("#continueCheckout").click();
+
+  const reconciled = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+    .map(item => ({
+      productId:item.inventory?.productId,
+      availability:item.inventory?.availability,
+      preorder:item.inventory?.preorder,
+      choices:item.choices
+    })));
+  expect(reconciled).toEqual([
+    {productId:seeded[0].id,availability:"pending",preorder:false,choices:"DISPONIBILIDAD POR CONFIRMAR"},
+    {productId:seeded[1].id,availability:"immediate",preorder:false,choices:"ENTREGA INMEDIATA"},
+    {productId:seeded[2].id,availability:"preorder",preorder:true,choices:"PRE-ORDER"},
+    {productId:seeded[3].id,availability:"unavailable",preorder:false,choices:"AGOTADO"}
+  ]);
+  for (const expected of reconciled) {
+    const item = page.locator(".cart-item").filter({ hasText:seeded.find(product => product.id === expected.productId).name });
+    await expect(item.locator(".cart-choices")).toHaveText(expected.choices);
+  }
+  await expect(page.locator("#checkoutForm")).toBeHidden();
+  await expect(page.locator("#toast")).toContainText("temporalmente no disponible");
+  await expect(page.locator("#continueCheckout")).toBeDisabled();
+  await expect(page.locator("#drawer")).not.toContainText("2 días");
+});
+
+test("las imágenes Bottega se encuadran completas en compacto y expandido", async ({ page }) => {
+  for (const viewport of [{ width:390, height:844 }, { width:1366, height:900 }]) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    await page.getByRole("button", { name: "Bottega", exact: true }).click();
+    const cards = page.locator('.catalog-group[data-catalog-group="bottega"] .product[data-category="bottega"]');
+    await expect(cards).toHaveCount(expectedBottegaProducts.length);
+    expect(await cards.locator(".product-media img").evaluateAll(images => images.every(image => (
+      getComputedStyle(image).objectFit === "contain"
+        && getComputedStyle(image).objectPosition === "50% 50%"
+    )))).toBe(true);
+
+    const card = cards.first();
+    await openProductCard(page, card);
+    await expect(card).toHaveClass(/product-expanded-open/);
+    await expect(card).not.toHaveClass(/product-expanded-animating/, { timeout:1500 });
+    await expect(card.locator(".product-back .product-expanded-media img")).toHaveCSS("object-fit", "contain");
+    await expect(card.locator(".product-back .product-expanded-media img")).toHaveCSS("object-position", "50% 50%");
+    const layout = await card.evaluate(element => {
+      const cardBox = element.getBoundingClientRect();
+      const viewportWidth = window.visualViewport?.width || window.innerWidth;
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      return {
+        insideViewport: cardBox.left >= -1
+          && cardBox.right <= viewportWidth + 1
+          && cardBox.top >= -1
+          && cardBox.bottom <= viewportHeight + 1,
+        pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth
+      };
+    });
+    expect(layout.insideViewport).toBe(true);
+    expect(layout.pageFits).toBe(true);
+    await closeProductCard(page);
+  }
 });
 
 test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotados", async ({ page }) => {
@@ -5378,6 +5672,120 @@ test("el panel administrador permite entrar, editar y reflejar el catálogo en l
   await expect(ballerine).toBeVisible();
   await expect(ballerine).toContainText("Disponible para celebrar hoy.");
   await expect(ballerine.locator(".product-tag")).toHaveText("PROMOCIÓN DEL DÍA");
+});
+
+test("el panel administrador lista y conserva los 11 Bottega con precio, marca y categoría", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Productos", exact: true }).click();
+  await page.locator("#categoryFilter").selectOption("bottega");
+  const rows = page.locator("#productList .product-row");
+  await expect(rows).toHaveCount(expectedBottegaProducts.length);
+  await expect(rows.locator(".badges")).toContainText(Array(expectedBottegaProducts.length).fill("REF 10,00"));
+  await page.getByRole("button", { name:"Guardar cambios" }).click();
+
+  const storedProducts = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("fontana-admin-catalog-v1") || "{}");
+    return (state.products || []).filter(product => product.category === "bottega")
+      .map(product => ({id:product.id,brand:product.brand || "",price:product.price}));
+  });
+  expect(storedProducts).toHaveLength(expectedBottegaProducts.length);
+  for (const expectedProduct of expectedBottegaProducts) {
+    expect(storedProducts.find(product => product.id === expectedProduct.id)).toEqual({
+      id:expectedProduct.id,
+      brand:expectedProduct.brand,
+      price:10
+    });
+  }
+
+  await page.getByRole("button", { name:"Inventario", exact:true }).click();
+  const inventoryRows = page.locator('#inventoryList .inventory-row[data-sku^="product:bottega-"]');
+  await expect(inventoryRows).toHaveCount(expectedBottegaProducts.length);
+  expect(await inventoryRows.locator("[data-track-stock]").evaluateAll(inputs => inputs.every(input => !input.checked))).toBe(true);
+  await page.getByRole("button", { name:"Productos", exact:true }).click();
+  await page.locator("#categoryFilter").selectOption("bottega");
+
+  const expectedProduct = expectedBottegaProducts[0];
+  const row = page.locator(`#productList .product-row[data-product-id="${expectedProduct.id}"]`);
+  await row.locator(`[data-edit="${expectedProduct.id}"]`).click();
+  const form = page.locator("#productForm");
+  await expect(form.locator('[name="category"]')).toHaveValue("bottega");
+  await expect(form.locator('[name="price"]')).toHaveValue("10");
+  await expect(form.locator('[name="brand"]')).toHaveValue(expectedProduct.brand);
+  await form.locator('[name="brand"]').fill("De Cecco · Bottega");
+  await form.getByRole("button", { name: "Guardar producto" }).click();
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Productos", exact: true }).click();
+  await page.locator("#categoryFilter").selectOption("bottega");
+  await page.locator(`[data-product-id="${expectedProduct.id}"] [data-edit="${expectedProduct.id}"]`).click();
+  await expect(page.locator('#productForm [name="category"]')).toHaveValue("bottega");
+  await expect(page.locator('#productForm [name="price"]')).toHaveValue("10");
+  await expect(page.locator('#productForm [name="brand"]')).toHaveValue("De Cecco · Bottega");
+
+  const savedProduct = await page.evaluate(id => {
+    const state = JSON.parse(localStorage.getItem("fontana-admin-catalog-v1") || "{}");
+    const product = state.products?.find(entry => entry.id === id);
+    return product && {category:product.category,price:product.price,brand:product.brand};
+  }, expectedProduct.id);
+  expect(savedProduct).toEqual({category:"bottega",price:10,brand:"De Cecco · Bottega"});
+});
+
+test("Bottega queda pendiente en el panel y no aparece en producción antes de publicarse en D1", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name:"Entrar al panel" }).click();
+  await page.getByRole("button", { name:"Guardar cambios" }).click();
+  const publishedState = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("fontana-admin-catalog-v1") || "{}");
+    state.products = (state.products || []).filter(product => product.category !== "bottega");
+    state.operations = {verified:true,electricityEnabled:true};
+    return state;
+  });
+
+  const apiOrigin = "http://fontana.localhost:8767";
+  await page.route("https://api.fontanasingluten.com/v1/**", async route => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const headers = {
+      "access-control-allow-origin":apiOrigin,
+      "access-control-allow-credentials":"true",
+      "access-control-allow-methods":"GET, POST, PUT, OPTIONS",
+      "access-control-allow-headers":"content-type"
+    };
+    if (request.method() === "OPTIONS") {
+      await route.fulfill({status:204,headers});
+      return;
+    }
+    let payload = {};
+    if (pathname === "/v1/catalog") payload = {state:publishedState};
+    else if (pathname === "/v1/auth/login") payload = {ok:true,username:"fontana-test",displayName:"Fontana",role:"owner"};
+    else if (pathname === "/v1/admin/catalog") payload = {state:publishedState,revision:7};
+    else if (pathname === "/v1/admin/operations") payload = {electricityEnabled:true,updatedAt:null,updatedBy:"fontana-test",affectedCount:0};
+    else if (pathname === "/v1/admin/inventory") payload = {items:[],summary:{tracked:0,available:0,reserved:0,soldOut:0}};
+    else if (pathname === "/v1/admin/orders") payload = {items:[],summary:{reserved:0,confirmed:0,expired:0}};
+    else if (pathname === "/v1/admin/sales") payload = {items:[],summary:{todayCents:0,monthCents:0,yearCents:0,allCents:0,confirmedCount:0,pendingCount:0}};
+    else if (pathname === "/v1/admin/activity") payload = {items:[]};
+    await route.fulfill({status:200,contentType:"application/json",headers,body:JSON.stringify(payload)});
+  });
+
+  await page.goto(`${apiOrigin}/`);
+  await expect(page.locator("#products")).toHaveClass(/catalog-organized/);
+  await expect(page.locator('.catalog-group[data-catalog-group="bottega"]')).toHaveCount(0);
+  await expect(page.locator('[data-product-id^="bottega-"]')).toHaveCount(0);
+  expect(await page.evaluate(() => window.FONTANA_CONFIG.dynamicCatalog.some(product => product.category === "bottega"))).toBe(false);
+
+  await page.goto(`${apiOrigin}/admin/`);
+  await page.locator("#loginUsername").fill("fontana-test");
+  await page.locator("#loginPassword").fill("password-de-prueba");
+  await page.getByRole("button", { name:"Entrar al panel" }).click();
+  await expect(page.locator("#saveStatus")).toHaveText("11 productos nuevos pendientes de publicar");
+  await page.getByRole("button", { name:"Productos", exact:true }).click();
+  await page.locator("#categoryFilter").selectOption("bottega");
+  const pendingRows = page.locator("#productList .product-row");
+  await expect(pendingRows).toHaveCount(expectedBottegaProducts.length);
+  await expect(pendingRows.locator(".badges")).toContainText(Array(expectedBottegaProducts.length).fill("REF 10,00"));
 });
 
 test("el panel controla los sellos visibles de cada producto", async ({ page }, testInfo) => {
@@ -5777,7 +6185,8 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
     "Fomb · Bombones",
     "Foncake · Tortas completas",
     "Salado",
-    "Bebida"
+    "Bebida",
+    "Bottega"
   ]);
   const cakes = page.locator('.catalog-group[data-catalog-group="cakes"]');
   const fonkies = page.locator('.catalog-group[data-catalog-group="fonkies"]');
@@ -5798,6 +6207,11 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   const salado = page.locator('.catalog-group[data-catalog-group="salado"]');
   await expect(salado).toBeVisible();
   await expect(cakes).toBeHidden();
+  await page.getByRole("button", { name: "Bottega", exact: true }).click();
+  const bottega = page.locator('.catalog-group[data-catalog-group="bottega"]');
+  await expect(bottega).toBeVisible();
+  await expect(salado).toBeHidden();
+  await expect(cakes).toBeHidden();
   const fitsMobileViewport = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   expect(fitsMobileViewport).toBe(true);
   await page.locator(".menu-intro").scrollIntoViewIfNeeded();
@@ -5805,7 +6219,7 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   await expect(page.locator(".menu-section")).toHaveClass(/menu-entry-visible/);
   await expect(page.locator(".menu-title-letter")).toHaveCount(13);
   await expect(page.locator(".menu-title-letter").first()).toHaveCSS("animation-name", "menu-letter-in");
-  await salado.scrollIntoViewIfNeeded();
+  await bottega.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("catalogo-movil.png"), fullPage: false });
   expect(browserErrors).toEqual([]);
 });

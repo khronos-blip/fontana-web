@@ -57,6 +57,32 @@
     return automaticPreorderCategories.has(String(product?.category || ""));
   }
 
+  function productHasLocalTrackedStock(product = {}) {
+    return localMode
+      && product.stockQuantity !== null
+      && product.stockQuantity !== undefined
+      && product.stockQuantity !== ""
+      && Number.isFinite(Number(product.stockQuantity));
+  }
+
+  function productStockIsTracked(product = {}) {
+    return product.stockTracked === true || productHasLocalTrackedStock(product);
+  }
+
+  function resolvedBottegaAvailability({ stockTracked = false, soldOut = false, preorder = false, unavailable = false } = {}) {
+    if (unavailable) return "unavailable";
+    if (!stockTracked) return "pending";
+    if (!soldOut) return "immediate";
+    return preorder ? "preorder" : "unavailable";
+  }
+
+  function bottegaAvailabilityCopy(availability) {
+    if (availability === "immediate") return "ENTREGA INMEDIATA";
+    if (availability === "preorder") return "PRE-ORDER";
+    if (availability === "unavailable") return "AGOTADO";
+    return "DISPONIBILIDAD POR CONFIRMAR";
+  }
+
   function builderAllowsAutomaticPreorder(kind) {
     return kind === "fonkies" || kind === "fomb";
   }
@@ -219,7 +245,12 @@
     $$("#products > .product").forEach(product => product.remove());
     const configuredProducts = Array.isArray(config.dynamicCatalog) ? config.dynamicCatalog : [];
     const managedIds = new Set(adminState.products.map(product => product.id));
-    const newlyConfiguredProducts = configuredProducts.filter(product => !managedIds.has(product.id));
+    // A product that exists only in the static fallback cannot yet be
+    // validated or reserved by the Worker. Keep it available in local/offline
+    // previews, but do not expose a broken checkout in verified production.
+    const newlyConfiguredProducts = localMode || !adminStateVerified
+      ? configuredProducts.filter(product => !managedIds.has(product.id))
+      : [];
     config.dynamicCatalog = [
       ...adminState.products.filter(product => !product.deleted && product.visible !== false),
       ...newlyConfiguredProducts
@@ -242,6 +273,9 @@
     const normalized = [];
     for (const storedItem of stored) {
       const item = {...storedItem, inventory:{...(storedItem.inventory || {})}};
+      if (item.inventory.kind === "product") {
+        if (refreshBottegaCartAvailability(item)) changed = true;
+      }
       if (item.inventory.kind === "fonkies" || item.inventory.kind === "fomb") {
         if (refreshBuilderCartAvailability(item)) changed = true;
       }
@@ -659,6 +693,51 @@
     if (availability === "immediate") return "ENTREGA INMEDIATA";
     if (availability === "preorder") return "PRE-ORDER · 2 días hábiles";
     return "DISPONIBILIDAD POR CONFIRMAR";
+  }
+
+  function refreshBottegaCartAvailability(item) {
+    const inventory = item.inventory || {};
+    if (inventory.kind !== "product") return false;
+    const catalogAvailable = Boolean(adminState && Array.isArray(adminState.products));
+    const productId = inventory.productId || item.productId;
+    const product = adminState?.products?.find(candidate => candidate.id === productId);
+    if (item.category !== "bottega" && product?.category !== "bottega") return false;
+    // Without a verified/current catalogue, preserve the last known state. A
+    // refresh with a real catalogue is what authoritatively changes the cart.
+    if (!catalogAvailable) return false;
+
+    const missingOrHidden = !product || product.deleted === true || product.visible === false;
+    const variants = Array.isArray(product?.variants) ? product.variants : [];
+    const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
+    const availableVariants = variants.filter(variant => variant.status !== "sold-out" && variant.stockQuantity !== 0);
+    const availableSizes = sizes.filter(size => size.status !== "sold-out" && size.stockQuantity !== 0);
+    const soldOut = product?.status === "sold-out"
+      || product?.stockQuantity === 0
+      || (variants.length > 0 && availableVariants.length === 0)
+      || (sizes.length > 0 && availableSizes.length === 0);
+    const preorderAllowed = Boolean(product?.allowPreorder);
+    const preorder = soldOut && preorderAllowed;
+    const temporarilyUnavailable = Boolean(product?.temporarilyUnavailable
+      || (!productionWithElectricity && product?.requiresElectricity));
+    const availability = resolvedBottegaAvailability({
+      stockTracked: productStockIsTracked(product),
+      soldOut,
+      preorder,
+      unavailable: missingOrHidden || temporarilyUnavailable
+    });
+    const effectivePreorder = availability === "preorder";
+    const choices = [
+      inventory.size,
+      inventory.variant,
+      bottegaAvailabilityCopy(availability)
+    ].filter(Boolean).join(" · ");
+    const changed = inventory.availability !== availability
+      || Boolean(inventory.preorder) !== effectivePreorder
+      || item.choices !== choices;
+    inventory.preorder = effectivePreorder;
+    inventory.availability = availability;
+    item.choices = choices;
+    return changed;
   }
 
   function refreshBuilderCartAvailability(item) {
@@ -2941,7 +3020,7 @@
     const container = $("#products");
     const emptyState = $("#emptyFilterState");
     if (!container || !emptyState || !products.length) return;
-    const allowedCategories = new Set(["cakes", "snacks", "salado", "beverages"]);
+    const allowedCategories = new Set(["cakes", "snacks", "salado", "beverages", "bottega"]);
     const cards = products.map((product, index) => {
       const category = allowedCategories.has(product.category) ? product.category : "snacks";
       const productId = String(product.id || index + 1).replace(/[^a-z0-9_-]/gi, "-");
@@ -2955,8 +3034,16 @@
       const availableSizes = sizes.filter(size => size.status !== "sold-out" && size.stockQuantity !== 0);
       const temporarilyUnavailable = Boolean(product.temporarilyUnavailable || (!productionWithElectricity && product.requiresElectricity));
       const soldOut = product.status === "sold-out" || product.stockQuantity === 0 || (variants.length > 0 && availableVariants.length === 0) || (sizes.length > 0 && availableSizes.length === 0);
+      const stockTracked = productStockIsTracked(product);
       const preorderAllowed = productAllowsAutomaticPreorder(product) || Boolean(product.allowPreorder);
       const preorder = soldOut && preorderAllowed;
+      const bottegaAvailability = category !== "bottega"
+        ? ""
+        : resolvedBottegaAvailability({ stockTracked, soldOut, preorder });
+      const bottegaAvailabilityLabel = bottegaAvailabilityCopy(bottegaAvailability);
+      const immediate = category === "bottega"
+        ? stockTodayOpen && bottegaAvailability === "immediate"
+        : stockTodayOpen && Boolean(product.immediate);
       const description = String(product.description || "Disponibilidad sujeta a confirmación por WhatsApp.");
       const ingredients = String(product.ingredients || "");
       const dietary = resolvedDietary(product);
@@ -2966,7 +3053,7 @@
       if (preorder) badges.push("PRE-ORDER");
       if (product.isNew) badges.push("NUEVO");
       if (product.promo) badges.push("PROMOCIÓN DEL DÍA");
-      if (stockTodayOpen && product.immediate) badges.push("STOCK DE HOY");
+      if (immediate) badges.push("STOCK DE HOY");
       (Array.isArray(product.customLabels) ? product.customLabels : []).forEach(label => { if (label) badges.push(String(label).slice(0,40)); });
       const image = product.image
         ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(name)}" loading="lazy" decoding="async">`
@@ -2996,12 +3083,14 @@
         : "";
       const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => { const statusClass = badge === "TEMPORALMENTE NO DISPONIBLE" || badge === "AGOTADO" ? " status-unavailable" : badge === "PRE-ORDER" ? " status-preorder" : ""; return `<span class="product-tag${index ? " secondary" : ""}${statusClass}">${escapeHtml(badge)}</span>`; }).join("")}</div>` : "";
       const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
-      const quoteText = `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
+      const quoteText = category === "bottega"
+        ? `Hola Fontana sin gluten 💜 Quisiera consultar el precio y la disponibilidad de ${name}.`
+        : `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
       const quoteButton = !hasPrice && whatsappNumber
         ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">Consultar por WhatsApp</a>`
         : "";
-      const footerCopy = product.weight || product.availabilityLabel;
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${stockTodayOpen && Boolean(product.immediate)}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
+      const footerCopy = category === "bottega" ? bottegaAvailabilityLabel : product.weight || product.availabilityLabel;
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${immediate}" data-stock-state="${bottegaAvailability || "pending"}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
@@ -3009,13 +3098,14 @@
   function setupCatalogGroups() {
     const container = $("#products");
     if (!container || container.classList.contains("catalog-organized")) return;
-    const categories = ["cakes", "fonkies", "fomb", "salado", "beverages", "snacks"];
+    const categories = ["cakes", "fonkies", "fomb", "salado", "beverages", "bottega", "snacks"];
     const categoryLabels = {
       cakes: "Tortas",
       fonkies: "Fonkies",
       fomb: "Bombones",
       salado: "Salados",
       beverages: "Bebidas",
+      bottega: "Bottega",
       snacks: "Otros antojos"
     };
     const catalogItems = $$(".product, .fonkie-builder, .builder-panel", container);
@@ -3097,8 +3187,21 @@
     const selectedSizeOption = sizeSelect?.selectedOptions?.[0];
     const selectedOptionSoldOut = selectedVariantOption?.dataset.soldOut === "true" || selectedSizeOption?.dataset.soldOut === "true";
     const preorder = card.dataset.preorderAllowed === "true" && (card.dataset.soldOut === "true" || selectedOptionSoldOut);
-    const selectedChoices = [selectedSize, selectedVariant, preorder ? "PRE-ORDER · 2 días hábiles" : ""].filter(Boolean);
-    const choiceSlug = selectedChoices.join("-").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const stockState = card.dataset.stockState || "";
+    const stockCopy = card.dataset.category === "bottega"
+      ? stockState === "immediate"
+        ? "ENTREGA INMEDIATA"
+        : stockState === "preorder"
+          ? "PRE-ORDER"
+          : stockState === "pending"
+            ? "DISPONIBILIDAD POR CONFIRMAR"
+            : ""
+      : preorder
+        ? "PRE-ORDER · 2 días hábiles"
+        : "";
+    const identityChoices = [selectedSize, selectedVariant].filter(Boolean);
+    const selectedChoices = [...identityChoices, stockCopy].filter(Boolean);
+    const choiceSlug = identityChoices.join("-").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = choiceSlug ? `${card.dataset.id}-${choiceSlug}` : card.dataset.id;
     const selectedPrice = sizeSelect ? Number(sizeSelect.selectedOptions[0]?.dataset.price) : Number(card.dataset.price);
     return {
@@ -3113,7 +3216,7 @@
         image: card.dataset.image,
         ingredients: productIngredients(card.dataset.id),
         choices: selectedChoices.join(" · ") || undefined,
-        inventory: { kind:"product", productId:card.dataset.productId || card.dataset.id, size:selectedSize, variant:selectedVariant, preorder },
+        inventory: { kind:"product", productId:card.dataset.productId || card.dataset.id, size:selectedSize, variant:selectedVariant, preorder, availability:stockState || undefined },
         qty: 0
       }
     };
@@ -3890,6 +3993,9 @@
     if (item.inventory?.kind === "fonkies" || item.inventory?.kind === "fomb") {
       return item.inventory.availability === "unavailable";
     }
+    if (item.category === "bottega" && item.inventory?.kind === "product") {
+      return item.inventory.availability === "unavailable";
+    }
     if (productionWithElectricity) return false;
     if (item.inventory?.kind !== "product") return false;
     const product = adminState?.products?.find(entry => entry.id === item.inventory.productId);
@@ -3999,6 +4105,13 @@
   }
 
   function itemLeadTime(item) {
+    if (item.category === "bottega") {
+      if (item.inventory?.preorder) {
+        const configured = Number(config.leadTimesByProduct?.[item.inventory?.productId || item.productId || item.id]?.minimumBusinessDays);
+        return Number.isFinite(configured) && configured > 0 ? configured : null;
+      }
+      return item.inventory?.availability === "immediate" ? 0 : null;
+    }
     if (item.inventory?.preorder) return 2;
     if (item.inventory?.kind === "fonkies" || item.inventory?.kind === "fomb") {
       return item.inventory.availability === "immediate" ? 0 : null;
@@ -4154,10 +4267,10 @@
   function renderAllergyItemNotes() {
     const container = $("#allergyItemNotes");
     const customizableItems = cart.filter(item => {
-      if (item.category === "beverages") return false;
+      if (item.category === "beverages" || item.category === "bottega") return false;
       const productId = item.productId || item.inventory?.productId;
       const product = adminState?.products?.find(entry => entry.id === productId);
-      return product?.category !== "beverages";
+      return product?.category !== "beverages" && product?.category !== "bottega";
     });
     container.innerHTML = customizableItems.map(item => {
       const fieldId = `allergyNote-${item.id.replace(/[^a-z0-9_-]/gi, "-")}`;
@@ -4384,6 +4497,7 @@
         || (filter === "fomb" && category === "fomb")
         || (filter === "salado" && category === "salado")
         || (filter === "beverages" && category === "beverages")
+        || (filter === "bottega" && category === "bottega")
         || (filter === "promo" && product.dataset.promo === "true")
         || (filter === "immediate" && product.dataset.immediate === "true");
       product.classList.toggle("hidden", !matches);
@@ -4393,6 +4507,7 @@
     const emptyCopy = {
       promo: ["Promo del día", "Las promociones activas aparecerán aquí cuando Fontana las publique."],
       beverages: ["Bebidas", "Las bebidas confirmadas aparecerán aquí cuando se incorporen al menú."],
+      bottega: ["Bottega", "Los productos de Bottega aparecerán aquí cuando se incorporen al catálogo."],
       immediate: ["Stock de hoy", "Los productos disponibles para entrega inmediata aparecerán aquí cada día."]
     };
     emptyState.hidden = visibleCount > 0;

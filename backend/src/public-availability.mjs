@@ -89,6 +89,38 @@ function inventoryResult(candidates, inventory) {
   };
 }
 
+export function applyPublicProductAvailability(product, candidates, inventory) {
+  const productResult = inventoryResult(candidates, inventory);
+  product.stockTracked = productResult.tracked;
+  if (productResult.available !== null) {
+    product.status = productResult.available ? "available" : "sold-out";
+  }
+  for (const variant of product.variants || []) {
+    const variantResult = inventoryResult(
+      candidates.filter(item => item.variantName === variant.name),
+      inventory
+    );
+    variant.stockTracked = variantResult.tracked;
+    if (variantResult.available !== null) {
+      variant.status = variantResult.available ? "available" : "sold-out";
+    }
+    delete variant.stockQuantity;
+  }
+  for (const size of product.sizes || []) {
+    const sizeResult = inventoryResult(
+      candidates.filter(item => item.sizeName === size.name),
+      inventory
+    );
+    size.stockTracked = sizeResult.tracked;
+    if (sizeResult.available !== null) {
+      size.status = sizeResult.available ? "available" : "sold-out";
+    }
+    delete size.stockQuantity;
+  }
+  delete product.stockQuantity;
+  return product;
+}
+
 export function applyPublicBuilderAvailability(builder, candidates, inventory) {
   const manuallyPaused = builder.status === "sold-out";
   const builderResult = inventoryResult(candidates, inventory);

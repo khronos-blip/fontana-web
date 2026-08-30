@@ -96,7 +96,7 @@
 
         <section class="view" data-panel="products">
           <div class="page-head"><div><span class="eyebrow">Catálogo</span><h1>Productos</h1><p>Edita el contenido que aparece en la tienda y en WhatsApp.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>
-          <div class="toolbar"><input id="productSearch" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="snacks">Otros</option></select><select id="statusFilter"><option value="all">Todos los estados</option><option value="available">Disponibles</option><option value="sold-out">Agotados</option><option value="hidden">Ocultos</option><option value="preorder">Pre-order</option><option value="new">Nuevos</option><option value="promo">Promoción</option><option value="immediate">Stock de hoy</option></select></div>
+          <div class="toolbar"><input id="productSearch" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="bottega">Bottega</option><option value="snacks">Otros</option></select><select id="statusFilter"><option value="all">Todos los estados</option><option value="available">Disponibles</option><option value="sold-out">Agotados</option><option value="hidden">Ocultos</option><option value="preorder">Pre-order</option><option value="new">Nuevos</option><option value="promo">Promoción</option><option value="immediate">Stock de hoy</option></select></div>
           <div class="filter-summary" id="productFilterSummary" aria-live="polite"></div>
           <div class="product-list" id="productList"></div>
         </section>
@@ -183,8 +183,9 @@
       <input type="hidden" name="originalId">
       <div class="form-grid">
         <label>Nombre<input name="name" required></label>
+        <label>Marca<input name="brand" placeholder="Ej. De Cecco"></label>
         <label>Identificador<input name="id" required pattern="[a-z0-9-]+"><small>Minúsculas, números y guiones.</small></label>
-        <label>Categoría<select name="category"><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="snacks">Otros</option></select></label>
+        <label>Categoría<select name="category"><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="bottega">Bottega</option><option value="snacks">Otros</option></select></label>
         <label>Precio REF<input name="price" type="number" min="0" step="0.01" placeholder="Vacío = por confirmar"></label>
         <label class="wide">Descripción<textarea name="description" rows="3"></textarea></label>
         <label class="wide">Ingredientes<textarea name="ingredients" rows="4"></textarea></label>

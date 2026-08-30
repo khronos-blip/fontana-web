@@ -35,7 +35,7 @@ function productPath(product) {
 }
 
 function money(value) {
-  if (!Number.isFinite(Number(value))) return "Precio por confirmar";
+  if (value === null || value === "" || !Number.isFinite(Number(value))) return "Precio por confirmar";
   const amount = new Intl.NumberFormat(site.locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -203,7 +203,7 @@ function categoryPage(category, products, seoStyleFile) {
   };
   const heroImage = products[0]?.image || site.defaultImage;
   return `${commonHead({ title: `${category.title} | Fontana`, description: category.description, canonical, image: heroImage, schema, seoStyleFile })}
-<body>${navigation()}${breadcrumbs([{ name: "Inicio", url: "/" }, { name: category.navName, url: `/${category.slug}/` }])}
+<body class="category-${escapeHtml(category.id)}">${navigation()}${breadcrumbs([{ name: "Inicio", url: "/" }, { name: category.navName, url: `/${category.slug}/` }])}
 <main id="contenido"><header class="hero"><div class="container hero-grid"><div><span class="eyebrow">${escapeHtml(category.eyebrow)}</span><h1>${escapeHtml(category.title)}</h1><p>${escapeHtml(category.intro)}</p><div class="hero-actions"><a class="button" href="/#menu">Armar mi pedido</a><a class="button secondary" href="https://wa.me/${site.whatsapp}" rel="noopener">Consultar por WhatsApp</a></div></div><div class="hero-media">${responsiveImage(heroImage, { alt: category.title, loading: "eager", fetchpriority: "high", sizes: "(max-width: 800px) 94vw, 470px" })}</div></div></header>
 <section class="section"><div class="container"><div class="section-heading"><span class="eyebrow">Menú Fontana</span><h2>Conoce cada opción</h2><p>${escapeHtml(category.detail)}</p></div><div class="product-grid">${products.map(productCard).join("")}</div><p class="notice">La disponibilidad, el tiempo de preparación y el pago se confirman directamente con Fontana antes de aceptar el pedido.</p></div></section>
 <section class="section alt"><div class="container"><div class="section-heading"><span class="eyebrow">Pedido informado</span><h2>Antes de confirmar</h2></div><div class="help-grid"><article class="help-card"><h3>Elige</h3><p>Revisa presentaciones, sabores, ingredientes y cantidades desde la tienda.</p></article><article class="help-card"><h3>Indica tus necesidades</h3><p>Si tienes una condición, alergia o intolerancia, descríbela en el pedido para que Fontana pueda revisar cada producto.</p></article><article class="help-card"><h3>Confirma</h3><p>El pedido, la disponibilidad y el pago quedan pendientes hasta recibir confirmación por WhatsApp.</p></article></div></div></section>
@@ -213,14 +213,25 @@ function categoryPage(category, products, seoStyleFile) {
 function productPage(product, category, seoStyleFile) {
   const canonical = absoluteUrl(productPath(product));
   const tags = dietaryTags(product);
-  const offers = Number.isFinite(Number(product.price)) ? {
+  const brandName = String(product.brand || "").trim() || (product.category === "bottega" ? "" : site.shortName);
+  const quantityConfigured = product.stockQuantity !== null
+    && product.stockQuantity !== ""
+    && Number.isFinite(Number(product.stockQuantity));
+  const stockTracked = product.stockTracked === true || quantityConfigured;
+  const offerAvailability = product.status === "sold-out"
+    ? "https://schema.org/OutOfStock"
+    : product.category !== "bottega" || stockTracked
+      ? "https://schema.org/InStock"
+      : "";
+  const offers = product.price !== null && product.price !== "" && Number.isFinite(Number(product.price)) ? {
     "@type": "Offer", url: canonical, priceCurrency: site.currency, price: Number(product.price),
-    availability: product.status === "sold-out" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+    ...(offerAvailability ? { availability: offerAvailability } : {}),
     itemCondition: "https://schema.org/NewCondition", seller: { "@id": `${site.origin}/#business` }
   } : undefined;
   const schemaProduct = {
     "@type": "Product", "@id": `${canonical}#product`, name: product.name, image: [absoluteUrl(product.image)],
-    description: product.description, sku: product.id, category: category.title, brand: { "@type": "Brand", name: site.shortName }, url: canonical,
+    description: product.description, sku: product.id, category: category.title, url: canonical,
+    ...(brandName ? { brand: { "@type": "Brand", name: brandName } } : {}),
     ...(offers ? { offers } : {}),
     ...(tags.length ? { additionalProperty: tags.map(tag => ({ "@type": "PropertyValue", name: tag, value: true })) } : {})
   };
@@ -237,7 +248,7 @@ function productPage(product, category, seoStyleFile) {
     ]
   };
   return `${commonHead({ title: `${product.name} | Fontana`, description: `${product.description} Pickup en Mañongo o delivery en Carabobo.`, canonical, image: product.image, schema, seoStyleFile })}
-<body>${navigation()}${breadcrumbs([{ name: "Inicio", url: "/" }, { name: category.navName, url: `/${category.slug}/` }, { name: product.name, url: productPath(product) }])}
+<body class="category-${escapeHtml(category.id)}">${navigation()}${breadcrumbs([{ name: "Inicio", url: "/" }, { name: category.navName, url: `/${category.slug}/` }, { name: product.name, url: productPath(product) }])}
 <main id="contenido"><section class="section"><div class="container detail-grid"><div class="detail-photo">${responsiveImage(product.image, { alt: product.name, loading: "eager", fetchpriority: "high", sizes: "(max-width: 800px) 94vw, 510px" })}</div><div class="detail-copy"><span class="eyebrow">${escapeHtml(category.navName)} Fontana</span><h1>${escapeHtml(product.name)}</h1><p class="lede">${escapeHtml(product.description)}</p><div class="product-meta">${tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div><div class="detail-facts"><div class="fact"><small>Precio publicado</small><strong>${escapeHtml(money(product.price))}</strong></div><div class="fact"><small>Presentación</small><strong>${escapeHtml(product.weight || product.availabilityLabel || "Sujeta a confirmación")}</strong></div></div><div class="ingredients"><h2>Ingredientes publicados</h2><p>${escapeHtml(product.ingredients || "Los ingredientes se confirman directamente con Fontana según la personalización elegida.")}</p></div><p class="notice">Si tienes una condición, alergia o intolerancia, indícala al armar el pedido. Fontana revisará los ingredientes y las instrucciones antes de aceptarlo.</p><div class="hero-actions"><a class="button" href="/#menu">Armar pedido en la tienda</a><a class="button secondary" href="/${category.slug}/">Ver más ${escapeHtml(category.navName.toLowerCase())}</a></div></div></div></section>
 <section class="section alt"><div class="container"><div class="section-heading"><span class="eyebrow">Entrega y confirmación</span><h2>Cómo pedir</h2></div><div class="help-grid"><article class="help-card"><h3>Pickup</h3><p>Retiro en Mañongo; los detalles se coordinan por WhatsApp.</p></article><article class="help-card"><h3>Delivery</h3><p>Disponible en Carabobo; el costo se confirma por WhatsApp.</p></article><article class="help-card"><h3>Pago</h3><p>El pedido queda pendiente hasta que Fontana confirme disponibilidad y pago.</p></article></div></div></section>
 <section class="section"><div class="container"><div class="section-heading"><span class="eyebrow">Explora Fontana</span><h2>Otras categorías</h2></div>${categoryNavigation(category.id)}</div></section></main>${footer()}</body></html>`;
