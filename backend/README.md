@@ -8,7 +8,8 @@ El módulo de ventas registra fecha, importe, estado, canal, forma de pago, prod
 
 - Cada presentación de producto tiene un SKU independiente. Fonkies y Fomb se controlan por sabor; bebidas por unidad; salados y tortas por su presentación o variante.
 - Las cantidades reales y reservadas solo están disponibles tras iniciar sesión en `/admin/`; `/v1/catalog` publica únicamente disponible o agotado.
-- El control comienza desactivado para cualquier referencia sin una cantidad comercial confirmada. La dueña carga el inventario real en **Stock de hoy** y activa **Controlar existencias**.
+- El control comienza desactivado para cualquier referencia sin una cantidad comercial confirmada. La dueña carga la cantidad real en **Inventario** y activa **Control activo**. En Fonkies y Fomb la cifra corresponde a galletas o bombones individuales de cada sabor, no a cajas armadas.
+- Para Fonkies y Fomb, `inventory_items` es la única fuente cuantitativa. El estado manual del catálogo sirve como pausa general o fallback cuando el control está apagado; nunca reescribe las cantidades reales.
 - `POST /v1/orders/reserve` recalcula el carrito con el catálogo del servidor y reserva las unidades durante 30 minutos antes de abrir WhatsApp.
 - El trigger `inventory_balance_guard` impide que las reservas superen las existencias, incluso si dos clientes intentan comprar la última unidad al mismo tiempo.
 - En **Pedidos**, confirmar descuenta existencias y crea una venta confirmada; cancelar devuelve la reserva; ampliar concede 30 minutos nuevos.

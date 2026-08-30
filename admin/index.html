@@ -112,7 +112,7 @@
         </section>
 
         <section class="view" data-panel="inventory">
-          <div class="page-head"><div><span class="eyebrow">Inventario central</span><h1>Inventario</h1><p>Escribe la cantidad exacta o ajústala con − y +. Las cantidades son privadas: la tienda solo muestra Disponible o Agotado.</p></div><button class="ghost" id="refreshInventoryButton" type="button">Actualizar</button></div>
+          <div class="page-head"><div><span class="eyebrow">Inventario central</span><h1>Inventario</h1><p>Este es el único lugar para cambiar cantidades. Fonkies y Fomb se cuentan por galleta o bombón individual, no por caja. La tienda no publica las cifras: solo comunica si hay entrega inmediata, Pre-Order o disponibilidad por confirmar.</p></div><button class="ghost" id="refreshInventoryButton" type="button">Actualizar</button></div>
           <div class="stats" id="inventoryStats"></div>
           <div class="toolbar inventory-toolbar"><input id="inventorySearch" type="search" placeholder="Buscar producto, sabor o presentación"><select id="inventoryKindFilter"><option value="all">Todo el inventario</option><option value="product">Productos</option><option value="fonkies">Sabores Fonkies</option><option value="fomb">Sabores Fomb</option></select><select id="inventoryStateFilter"><option value="all">Todos los niveles</option><option value="low">Stock bajo</option><option value="soldout">Agotados</option><option value="reserved">Con reservas</option></select></div>
           <div class="inventory-list" id="inventoryList"></div>
@@ -223,8 +223,7 @@
       <input type="hidden" name="builder"><input type="hidden" name="index">
       <div class="form-grid">
         <label>Nombre<input name="name" required></label>
-        <label>Estado<select name="status"><option value="available">Disponible</option><option value="sold-out">Agotado</option></select></label>
-        <label>Cantidad<input name="stockQuantity" type="number" min="0" step="1" placeholder="Vacío = sin control numérico"></label>
+        <label class="wide">Disponibilidad manual<select name="status"><option value="available">Normal · manda Inventario</option><option value="sold-out">Pre-Order manual</option></select><small>Con control activo, Inventario determina la disponibilidad. Sin control, esta elección decide entre disponibilidad por confirmar y Pre-Order.</small></label>
         <label class="wide">Ingredientes<textarea name="ingredients" rows="4"></textarea></label>
         <div class="image-field wide"><div class="image-preview" id="flavorImagePreview"></div><div><label>Ruta de imagen<input name="image"></label><label class="file-button">Subir y optimizar imagen<input id="flavorImageInput" type="file" accept="image/jpeg,image/png,image/webp"></label></div></div>
       </div>

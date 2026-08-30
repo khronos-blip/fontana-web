@@ -10,6 +10,58 @@
   const $ = (selector, context = document) => context.querySelector(selector);
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
   const clone = value => JSON.parse(JSON.stringify(value));
+  const INVENTORY_KEY_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,69})$/;
+
+  function inventoryKeySlug(value) {
+    return String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 70) || "sabor";
+  }
+
+  function availableInventoryKey(baseValue, usedKeys) {
+    const requested = String(baseValue || "").trim();
+    const base = INVENTORY_KEY_PATTERN.test(requested) ? requested : inventoryKeySlug(requested);
+    let candidate = base;
+    let suffix = 2;
+    while (usedKeys.has(candidate)) {
+      const ending = `-${suffix}`;
+      candidate = `${base.slice(0, 70 - ending.length)}${ending}`;
+      suffix += 1;
+    }
+    usedKeys.add(candidate);
+    return candidate;
+  }
+
+  function freshInventoryKey(value, usedKeys) {
+    const base = inventoryKeySlug(value);
+    const randomSuffix = globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 12)
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.slice(0, 12);
+    return availableInventoryKey(`${base.slice(0, 57)}-${randomSuffix}`, usedKeys);
+  }
+
+  function normalizeBuilderFlavors(sourceFlavors) {
+    const usedKeys = new Set();
+    return (sourceFlavors || []).map(sourceFlavor => {
+      const flavor = {...sourceFlavor};
+      flavor.inventoryKey = availableInventoryKey(flavor.inventoryKey || flavor.name, usedKeys);
+      flavor.status = flavor.status === "sold-out" ? "sold-out" : "available";
+      if (localMode) {
+        flavor.stockQuantity = flavor.stockQuantity === null || flavor.stockQuantity === "" || flavor.stockQuantity === undefined
+          ? null
+          : Math.max(0, Number(flavor.stockQuantity));
+      } else {
+        // En producción, D1 es la única fuente de cantidades. Este campo se
+        // conserva solo en localhost para reproducir ese contrato sin Worker.
+        delete flavor.stockQuantity;
+      }
+      return flavor;
+    });
+  }
 
   const originalProducts = [
     { id:"pistacho",category:"cakes",name:"Torta de Pistacho & Frambuesa",price:60,image:"assets/pistachio-raspberry-fontana-v2.jpg",description:"Harina de almendra, frambuesa, pistacho y glaseado vegano.",ingredients:"Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho, frambuesa, semillas de amapola, alulosa y chocolate blanco vegano sin azúcar",weight:"25 CM · 1 KG",availabilityLabel:"POR ENCARGO · 2 DÍAS",minimumBusinessDays:2,status:"available" },
@@ -99,18 +151,19 @@
     next.builders = next.builders || clone(originalBuilders);
     ["fonkies", "fomb"].forEach(kind => {
       const builder = next.builders[kind] || clone(originalBuilders[kind]);
-      next.builders[kind] = {
+      const normalizedBuilder = {
         ...builder,
         glutenFree: Object.prototype.hasOwnProperty.call(builder, "glutenFree") ? Boolean(builder.glutenFree) : true,
         sugarFree: Object.prototype.hasOwnProperty.call(builder, "sugarFree") ? Boolean(builder.sugarFree) : true,
         lactoseFree: Object.prototype.hasOwnProperty.call(builder, "lactoseFree") ? Boolean(builder.lactoseFree) : true,
         eggFree: Object.prototype.hasOwnProperty.call(builder, "eggFree") ? Boolean(builder.eggFree) : kind === "fomb",
         visible: builder.visible !== false, status: builder.status === "sold-out" ? "sold-out" : "available",
-        stockQuantity: builder.stockQuantity === null || builder.stockQuantity === "" || builder.stockQuantity === undefined ? null : Math.max(0, Number(builder.stockQuantity)),
         isNew: Boolean(builder.isNew), promo: Boolean(builder.promo), immediate: Boolean(builder.immediate), allowPreorder: true,
         requiresElectricity: Object.prototype.hasOwnProperty.call(builder, "requiresElectricity") ? Boolean(builder.requiresElectricity) : kind === "fonkies",
-        flavors: (builder.flavors || []).map(flavor => ({...flavor, stockQuantity: flavor.stockQuantity === null || flavor.stockQuantity === "" || flavor.stockQuantity === undefined ? null : Math.max(0, Number(flavor.stockQuantity))}))
+        flavors: normalizeBuilderFlavors(builder.flavors)
       };
+      delete normalizedBuilder.stockQuantity;
+      next.builders[kind] = normalizedBuilder;
     });
     return next;
   }
@@ -135,6 +188,7 @@
   let sales = [];
   let salesSummary = {todayCents:0,monthCents:0,yearCents:0,allCents:0,confirmedCount:0,pendingCount:0};
   let inventory = [];
+  let inventoryLoaded = false;
   let inventorySummary = {tracked:0,available:0,reserved:0,soldOut:0};
   let orders = [];
   let orderSummary = {reserved:0,confirmed:0,expired:0};
@@ -284,6 +338,7 @@
       dirty = false;
       $("#saveStatus").textContent = localMode ? "Borrador local guardado" : "Publicado para todos";
       renderAll();
+      await loadInventory();
       if (!localMode) await loadActivity();
       toast(localMode ? "Cambios guardados en este navegador" : "Cambios publicados en la tienda");
     } catch (error) {
@@ -455,23 +510,48 @@
 
   function localInventoryItems() {
     const rows = state.products.filter(product => !product.deleted).map(product => ({sku:`product:${product.id}:base:base`,kind:"product",label:product.name,optionSummary:"",onHand:Number(product.stockQuantity || 0),reserved:0,available:Number(product.stockQuantity || 0),trackStock:product.stockQuantity !== null}));
-    ["fonkies","fomb"].forEach(kind => state.builders[kind].flavors.forEach(flavor => rows.push({sku:`builder:${kind}:${flavor.name.toLowerCase().replace(/[^a-z0-9]+/g,"-")}`,kind,label:flavor.name,optionSummary:kind === "fonkies" ? "Fonkies" : "Fomb",onHand:Number(flavor.stockQuantity || 0),reserved:0,available:Number(flavor.stockQuantity || 0),trackStock:flavor.stockQuantity !== null})));
+    ["fonkies","fomb"].forEach(kind => state.builders[kind].flavors.forEach(flavor => {
+      const onHand = Number(flavor.stockQuantity || 0);
+      rows.push({
+        sku:`builder:${kind}:${flavor.inventoryKey || inventoryKeySlug(flavor.name)}`,
+        inventoryKey:flavor.inventoryKey || inventoryKeySlug(flavor.name),
+        kind,
+        label:kind === "fonkies" ? "Fonkies" : "Fomb",
+        optionSummary:flavor.name,
+        onHand,
+        reserved:0,
+        available:onHand,
+        trackStock:flavor.stockQuantity !== null && flavor.stockQuantity !== undefined
+      });
+    }));
     return rows;
+  }
+
+  function calculateInventorySummary(items = inventory) {
+    const tracked = items.filter(item => item.trackStock);
+    return {
+      tracked:tracked.length,
+      available:tracked.reduce((sum,item)=>sum+Number(item.available || 0),0),
+      reserved:tracked.reduce((sum,item)=>sum+Number(item.reserved || 0),0),
+      soldOut:tracked.filter(item=>Number(item.available || 0)===0).length
+    };
   }
 
   async function loadInventory() {
     try {
       if (localMode) {
         inventory = localInventoryItems();
-        const tracked = inventory.filter(item => item.trackStock);
-        inventorySummary = {tracked:tracked.length,available:tracked.reduce((sum,item)=>sum+item.available,0),reserved:0,soldOut:tracked.filter(item=>item.available===0).length};
+        inventorySummary = calculateInventorySummary();
       } else {
         const payload = await apiFetch("/v1/admin/inventory");
         inventory = payload.items || [];
         inventorySummary = payload.summary || inventorySummary;
       }
+      inventoryLoaded = true;
       renderInventory();
       renderDashboardOperations();
+      renderBuilder("fonkies");
+      renderBuilder("fomb");
     } catch (error) { if (error.status === 401) showLogin("Tu sesión venció."); else toast("No se pudo cargar el inventario."); }
   }
 
@@ -485,7 +565,22 @@
       return (!query || `${item.label} ${item.optionSummary}`.toLowerCase().includes(query)) && (kind === "all" || item.kind === kind) && levelMatch;
     });
     $("#inventoryStats").innerHTML = [[inventorySummary.available,"Disponibles"],[inventorySummary.reserved,"Reservadas"],[inventorySummary.tracked,"Artículos controlados"],[inventorySummary.soldOut,"Agotados"]].map(([value,label])=>`<article class="stat"><b>${Number(value||0)}</b><span>${label}</span></article>`).join("");
-    $("#inventoryList").innerHTML = items.length ? items.map(item => { const minimum=Number(item.reserved||0); const value=Number(item.onHand||0); return `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy"><span class="eyebrow">${escapeHtml(item.optionSummary || item.kind)}</span><h3>${escapeHtml(item.label)}</h3><p>${item.trackStock ? `${item.available} disponible${item.available===1?"":"s"} · ${item.reserved} reservada${item.reserved===1?"":"s"}` : "Sin control numérico"}</p></div><label class="stock-quantity-label">Cantidad total<div class="stock-stepper"><button type="button" data-stock-delta="-1" aria-label="Restar una unidad" ${value<=minimum?"disabled":""}>−</button><input data-stock-value aria-label="Cantidad total de ${escapeHtml(item.label)}" type="number" inputmode="numeric" min="${minimum}" step="1" value="${value}"><button type="button" data-stock-delta="1" aria-label="Sumar una unidad">+</button></div></label><label class="switch"><input data-track-stock type="checkbox" ${item.trackStock?"checked":""}><span>Control activo</span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`; }).join("") : '<div class="empty-list">No hay artículos que coincidan.</div>';
+    $("#inventoryList").innerHTML = items.length ? items.map(item => {
+      const minimum = Number(item.reserved || 0);
+      const value = Number(item.onHand || 0);
+      const isBuilderFlavor = item.kind === "fonkies" || item.kind === "fomb";
+      const displayName = isBuilderFlavor ? item.optionSummary : item.label;
+      const context = item.kind === "fonkies"
+        ? "Fonkies · galletas individuales"
+        : item.kind === "fomb"
+          ? "Fomb · bombones individuales"
+          : item.optionSummary || item.kind;
+      const quantityLabel = item.kind === "fonkies" ? "Galletas totales" : item.kind === "fomb" ? "Bombones totales" : "Cantidad total";
+      const stockCopy = item.trackStock
+        ? `${item.available} disponible${item.available===1?"":"s"} · ${item.reserved} reservada${item.reserved===1?"":"s"}`
+        : "Control inactivo · disponibilidad por confirmar";
+      return `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy"><span class="eyebrow">${escapeHtml(context)}</span><h3>${escapeHtml(displayName)}</h3><p>${escapeHtml(stockCopy)}</p></div><label class="stock-quantity-label">${escapeHtml(quantityLabel)}<div class="stock-stepper"><button type="button" data-stock-delta="-1" aria-label="Restar una unidad" ${value<=minimum?"disabled":""}>−</button><input data-stock-value aria-label="${escapeHtml(quantityLabel)} de ${escapeHtml(displayName)}" type="number" inputmode="numeric" min="${minimum}" step="1" value="${value}"><button type="button" data-stock-delta="1" aria-label="Sumar una unidad">+</button></div></label><label class="switch"><input data-track-stock type="checkbox" ${item.trackStock?"checked":""}><span>Control activo</span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`;
+    }).join("") : '<div class="empty-list">No hay artículos que coincidan.</div>';
   }
 
   async function loadOrders() {
@@ -716,24 +811,51 @@
     return /^https?:\/\//.test(payload.url || "") ? payload.url : `${apiBase}${payload.url}`;
   }
 
+  function inventoryForBuilderFlavor(kind, flavor) {
+    const key = flavor.inventoryKey || inventoryKeySlug(flavor.name);
+    const sku = `builder:${kind}:${key}`;
+    return inventory.find(item => item.sku === sku)
+      || inventory.find(item => item.kind === kind && item.inventoryKey === key)
+      || null;
+  }
+
+  function builderFlavorInventoryBadge(kind, flavor) {
+    if (!inventoryLoaded) return '<span class="badge">Cargando inventario…</span>';
+    const item = inventoryForBuilderFlavor(kind, flavor);
+    if (!item) return '<span class="badge">Pendiente de publicar</span>';
+    if (!item.trackStock) return '<span class="badge" title="No se limita ni se promete entrega inmediata">Control inactivo</span>';
+    const available = Math.max(0, Number(item.available || 0));
+    const reserved = Math.max(0, Number(item.reserved || 0));
+    const cssClass = available > 0 ? "green" : "red";
+    return `<span class="badge ${cssClass}" title="${available} disponibles y ${reserved} reservadas">${available} disp. · ${reserved} reserv.</span>`;
+  }
+
+  function openBuilderInventory(kind) {
+    $("#inventorySearch").value = "";
+    $("#inventoryKindFilter").value = kind;
+    $("#inventoryStateFilter").value = "all";
+    showView("inventory");
+    renderInventory();
+  }
+
   function renderBuilder(kind) {
     const builder = state.builders[kind];
     const title = kind === "fonkies" ? "Fonkies" : "Fomb";
     const pricing = kind === "fonkies"
       ? `<label>Precio REF · 4 iguales<input data-builder-field="singlePrice" type="number" min="0" step=".01" value="${builder.singlePrice}"></label><label>Precio REF · 4 mixtas<input data-builder-field="mixedPrice" type="number" min="0" step=".01" value="${builder.mixedPrice}"></label><label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label><label>Mínimo<input data-builder-field="minimumQuantity" type="number" min="1" value="${builder.minimumQuantity}"></label>`
       : `<label>Precio REF · caja de 4<input data-builder-size="0" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[0]?.price ?? 15}"></label><label>Precio REF · caja de 12<input data-builder-size="1" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[1]?.price ?? 30}"></label><label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label>`;
-    const availability = builder.status === "sold-out" ? "Agotado" : builder.visible === false ? "Oculto" : "Disponible";
-    $(`#${kind}Editor`).innerHTML = `<article class="builder-card" data-builder="${kind}"><details class="builder-settings"><summary><span><b>Configuración general</b><small>Precios, sellos y disponibilidad</small></span><span class="builder-state">${availability}</span></summary><div class="builder-form">${pricing}<label>Estado<select data-builder-field="status"><option value="available" ${builder.status !== "sold-out" ? "selected" : ""}>Disponible</option><option value="sold-out" ${builder.status === "sold-out" ? "selected" : ""}>Agotado</option></select></label><label>Cantidad administrada<input data-builder-field="stockQuantity" type="number" min="0" step="1" value="${builder.stockQuantity ?? ""}" placeholder="Sin control numérico"></label><label class="switch"><input data-builder-field="visible" type="checkbox" ${builder.visible !== false ? "checked" : ""}><span>Visible en la tienda</span></label><label class="switch"><input data-builder-field="isNew" type="checkbox" ${builder.isNew ? "checked" : ""}><span>Etiqueta Nuevo</span></label><label class="switch"><input data-builder-field="promo" type="checkbox" ${builder.promo ? "checked" : ""}><span>Promoción del día</span></label><label class="switch"><input data-builder-field="immediate" type="checkbox" ${builder.immediate ? "checked" : ""}><span>Stock de hoy</span></label><label class="switch"><input data-builder-field="allowPreorder" type="checkbox" ${builder.allowPreorder ? "checked" : ""}><span>Permitir pre-order agotado</span></label><label class="switch"><input data-builder-field="glutenFree" type="checkbox" ${builder.glutenFree ? "checked" : ""}><span>Mostrar sello Sin gluten</span></label><label class="switch"><input data-builder-field="sugarFree" type="checkbox" ${builder.sugarFree ? "checked" : ""}><span>Mostrar sello Sin azúcar</span></label><label class="switch"><input data-builder-field="lactoseFree" type="checkbox" ${builder.lactoseFree ? "checked" : ""}><span>Mostrar sello Sin lactosa</span></label></div></details><div class="panel-head builder-flavor-head"><div><span class="eyebrow">${builder.flavors.length} sabores</span><h2>Sabores de ${title}</h2></div><button class="ghost" data-add-flavor="${kind}">+ Agregar sabor</button></div><div class="flavor-admin-list">${builder.flavors.map((flavor,index) => { const soldOut = flavor.status === "sold-out" || flavor.stockQuantity === 0; return `<div class="flavor-row"><img src="${escapeHtml(absoluteImage(flavor.image))}" alt=""><div class="flavor-copy"><div class="flavor-title"><h3>${escapeHtml(flavor.name)}</h3><span class="badge ${soldOut ? "red" : "green"}">${soldOut ? "Agotado" : "Disponible"}${flavor.stockQuantity === null || flavor.stockQuantity === undefined ? "" : ` · ${flavor.stockQuantity}`}</span></div><p>${escapeHtml(flavor.ingredients)}</p></div><div class="row-actions"><button data-edit-flavor="${kind}:${index}" aria-label="Editar sabor">✎</button><button data-delete-flavor="${kind}:${index}" aria-label="Eliminar sabor">×</button></div></div>`; }).join("")}</div><div class="builder-actions"><button class="primary" data-save-builder="${kind}" aria-label="Guardar ${title}">Guardar y publicar ${title}</button></div></article>`;
+    const availability = builder.visible === false ? "Oculto" : builder.status === "sold-out" ? "Pre-Order manual" : "Inventario por sabor";
+    const flavorRows = builder.flavors.map((flavor,index) => `<div class="flavor-row" data-inventory-key="${escapeHtml(flavor.inventoryKey)}"><img src="${escapeHtml(absoluteImage(flavor.image))}" alt=""><div class="flavor-copy"><div class="flavor-title"><h3>${escapeHtml(flavor.name)}</h3>${builderFlavorInventoryBadge(kind, flavor)}</div><p>${escapeHtml(flavor.ingredients)}</p></div><div class="row-actions"><button data-edit-flavor="${kind}:${index}" aria-label="Editar sabor">✎</button><button data-delete-flavor="${kind}:${index}" aria-label="Eliminar sabor">×</button></div></div>`).join("");
+    $(`#${kind}Editor`).innerHTML = `<article class="builder-card" data-builder="${kind}"><details class="builder-settings"><summary><span><b>Configuración general</b><small>Precios, sellos y pausa manual</small></span><span class="builder-state">${availability}</span></summary><div class="builder-form">${pricing}<label class="span-2">Disponibilidad manual<select data-builder-field="status"><option value="available" ${builder.status !== "sold-out" ? "selected" : ""}>Normal · manda el inventario por sabor</option><option value="sold-out" ${builder.status === "sold-out" ? "selected" : ""}>Pausar todo · ofrecer Pre-Order</option></select><small>La pausa manual afecta todos los sabores. Las cantidades reales se cambian únicamente en Inventario.</small></label><label class="switch"><input data-builder-field="visible" type="checkbox" ${builder.visible !== false ? "checked" : ""}><span>Visible en la tienda</span></label><label class="switch"><input data-builder-field="isNew" type="checkbox" ${builder.isNew ? "checked" : ""}><span>Etiqueta Nuevo</span></label><label class="switch"><input data-builder-field="promo" type="checkbox" ${builder.promo ? "checked" : ""}><span>Promoción del día</span></label><label class="switch"><input data-builder-field="glutenFree" type="checkbox" ${builder.glutenFree ? "checked" : ""}><span>Mostrar sello Sin gluten</span></label><label class="switch"><input data-builder-field="sugarFree" type="checkbox" ${builder.sugarFree ? "checked" : ""}><span>Mostrar sello Sin azúcar</span></label><label class="switch"><input data-builder-field="lactoseFree" type="checkbox" ${builder.lactoseFree ? "checked" : ""}><span>Mostrar sello Sin lactosa</span></label></div></details><div class="panel-head builder-flavor-head"><div><span class="eyebrow">${builder.flavors.length} sabores</span><h2>Sabores de ${title}</h2></div><div><button class="ghost" type="button" data-builder-inventory="${kind}">Ver inventario</button> <button class="ghost" type="button" data-add-flavor="${kind}">+ Agregar sabor</button></div></div><div class="flavor-admin-list">${flavorRows}</div><div class="builder-actions"><button class="primary" data-save-builder="${kind}" aria-label="Guardar ${title}">Guardar y publicar ${title}</button></div></article>`;
     $(".builder-form", $(`#${kind}Editor`)).insertAdjacentHTML("beforeend", `<label class="switch"><input data-builder-field="eggFree" type="checkbox" ${builder.eggFree ? "checked" : ""}><span>Mostrar sello Sin huevo</span></label><label class="switch"><input data-builder-field="requiresElectricity" type="checkbox" ${builder.requiresElectricity ? "checked" : ""}><span>Requiere electricidad para producirse</span></label>`);
   }
 
   function openFlavor(kind,index) {
-    const flavor = Number.isInteger(index) ? state.builders[kind].flavors[index] : {name:"",ingredients:"",image:"",status:"available",stockQuantity:null};
+    const flavor = Number.isInteger(index) ? state.builders[kind].flavors[index] : {name:"",ingredients:"",image:"",status:"available"};
     const form = $("#flavorForm");
     form.elements.builder.value = kind;
     form.elements.index.value = Number.isInteger(index) ? index : "";
     ["name","ingredients","image","status"].forEach(field => { form.elements[field].value = flavor[field] || ""; });
-    form.elements.stockQuantity.value = flavor.stockQuantity ?? "";
     $("#flavorDialogTitle").textContent = Number.isInteger(index) ? "Editar sabor" : "Nuevo sabor";
     $("#flavorImagePreview").style.backgroundImage = `url("${absoluteImage(flavor.image)}")`;
     $("#flavorDialog").showModal();
@@ -923,7 +1045,7 @@
   $("#refreshActivityButton").addEventListener("click", loadActivity);
   $("#inventoryList").addEventListener("input", event => {
     const input=event.target.closest("[data-stock-value]");
-    if(!input || Number(input.value)<=0) return;
+    if(!input || input.value === "") return;
     const row=input.closest("[data-sku]");
     const control=$("[data-track-stock]",row);
     if(control) control.checked=true;
@@ -948,10 +1070,26 @@
     try {
       if (localMode) {
         const item=inventory.find(entry=>entry.sku===row.dataset.sku);
-        if(item){item.onHand=payload.onHand;item.available=Math.max(0,payload.onHand-Number(item.reserved||0));item.trackStock=payload.trackStock;}
+        if(item){
+          item.onHand=payload.onHand;
+          item.available=Math.max(0,payload.onHand-Number(item.reserved||0));
+          item.trackStock=payload.trackStock;
+          if(item.kind === "fonkies" || item.kind === "fomb"){
+            const builder=state.builders?.[item.kind];
+            const inventoryKey=String(item.inventoryKey || item.sku.split(":").pop() || "");
+            const flavor=builder?.flavors?.find(entry=>entry.inventoryKey===inventoryKey)
+              || builder?.flavors?.find(entry=>entry.name===item.optionSummary);
+            if(flavor){
+              flavor.stockQuantity=payload.trackStock ? payload.onHand : null;
+            }
+          }
+          state.updatedAt=new Date().toISOString();
+          localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+          inventorySummary=calculateInventorySummary();
+        }
       } else await apiFetch(`/v1/admin/inventory/${encodeURIComponent(row.dataset.sku)}`,{method:"PUT",body:JSON.stringify({...payload,note:deltaButton?`Ajuste rápido ${delta>0?"+":""}${delta}`:"Cantidad escrita manualmente desde el panel"})});
       toast(deltaButton?(delta>0?"Se sumó una unidad.":"Se restó una unidad."):"Cantidad actualizada para todos los clientes.");
-      if(localMode){renderInventory();renderDashboardOperations();}else await Promise.all([loadInventory(),loadActivity()]);
+      if(localMode){renderInventory();renderDashboardOperations();renderBuilder("fonkies");renderBuilder("fomb");}else await Promise.all([loadInventory(),loadActivity()]);
     } catch(error){toast(error.message||"No se pudo actualizar la cantidad.");}
     finally{button.disabled=false;}
   });
@@ -1054,10 +1192,12 @@
   });
 
   ["fonkiesEditor","fombEditor"].forEach(id => $(`#${id}`).addEventListener("click", event => {
+    const openInventory = event.target.closest("[data-builder-inventory]");
     const add = event.target.closest("[data-add-flavor]");
     const edit = event.target.closest("[data-edit-flavor]");
     const remove = event.target.closest("[data-delete-flavor]");
     const save = event.target.closest("[data-save-builder]");
+    if (openInventory) openBuilderInventory(openInventory.dataset.builderInventory);
     if (add) openFlavor(add.dataset.addFlavor);
     if (edit) { const [kind,index] = edit.dataset.editFlavor.split(":"); openFlavor(kind,Number(index)); }
     if (remove) {
@@ -1088,7 +1228,17 @@
     const data = new FormData(form);
     const kind = data.get("builder");
     const index = data.get("index") === "" ? -1 : Number(data.get("index"));
-    const flavor = {name:String(data.get("name")).trim(),ingredients:String(data.get("ingredients")).trim(),image:String(data.get("image")).trim(),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity")))};
+    const name = String(data.get("name")).trim();
+    const normalizedName = inventoryKeySlug(name);
+    const duplicateName = state.builders[kind].flavors.some((item,itemIndex) => itemIndex !== index && inventoryKeySlug(item.name) === normalizedName);
+    if (duplicateName) return toast("Ya existe un sabor con ese nombre o uno equivalente.");
+    const existing = index >= 0 ? state.builders[kind].flavors[index] : null;
+    const usedKeys = new Set(state.builders[kind].flavors.filter((_item,itemIndex) => itemIndex !== index).map(item => item.inventoryKey || inventoryKeySlug(item.name)));
+    // A newly created flavor must never reuse the SKU of a deleted flavor.
+    // Existing flavors keep their immutable key across renames.
+    const inventoryKey = existing?.inventoryKey || freshInventoryKey(name, usedKeys);
+    const flavor = {...(existing || {}),name,ingredients:String(data.get("ingredients")).trim(),image:String(data.get("image")).trim(),status:data.get("status"),inventoryKey};
+    if (!localMode) delete flavor.stockQuantity;
     if (index >= 0) state.builders[kind].flavors[index] = flavor; else state.builders[kind].flavors.push(flavor);
     markDirty();
     renderBuilder(kind);

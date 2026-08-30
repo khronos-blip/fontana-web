@@ -45,7 +45,7 @@ En producción, el panel guarda en D1 y los cambios se reflejan para todos los v
 9. `stockQuantity: 0` también marca el producto u opción como agotado. Si `allowPreorder` está activo, se conserva la solicitud en el carrito y WhatsApp como pre-order sujeto a confirmación.
 10. `visible: false` retira el producto de la tienda sin borrar su ficha del panel.
 
-Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
+Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Sus cantidades se gestionan exclusivamente en **Inventario**, por sabor y por unidad individual; el rótulo «Stock de hoy» de cada constructor se deriva de ese inventario real. El estado manual del constructor solo pausa toda la línea o define el fallback sin control numérico. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
 
 ## Páginas públicas y SEO
 

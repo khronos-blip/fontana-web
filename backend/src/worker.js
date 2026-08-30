@@ -6,7 +6,14 @@ import {
 } from "@simplewebauthn/server";
 
 import { fombPricingMatchesRequest, resolveFombPricing } from "./pricing.mjs";
-import { applyPublicBuilderAvailability } from "./public-availability.mjs";
+import {
+  applyPublicBuilderAvailability,
+  builderFlavorInventoryKey,
+  deriveBuilderInventoryDefinitions,
+  newlyIntroducedBuilderInventorySkus,
+  resolveBuilderFlavorSelection,
+  validateBuilderInventoryIdentity
+} from "./public-availability.mjs";
 
 const SESSION_COOKIE = "fontana_admin_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -179,18 +186,7 @@ function deriveInventoryDefinitions(state) {
       });
     }
   }
-  for (const kind of ["fonkies", "fomb"]) {
-    const builder = state?.builders?.[kind];
-    if (!builder || builder.visible === false) continue;
-    for (const flavor of builder.flavors || []) {
-      const sourceQuantity = flavor.stockQuantity === null || flavor.stockQuantity === undefined || flavor.stockQuantity === "" ? null : (Number.isFinite(Number(flavor.stockQuantity)) ? Math.max(0, Math.floor(Number(flavor.stockQuantity))) : null);
-      definitions.push({
-        sku: `builder:${kind}:${stockSlug(flavor.name)}`, productId: kind === "fonkies" ? "fonkie-box" : "fomb-box",
-        kind, label: kind === "fonkies" ? "Fonkies" : "Fomb", optionSummary: flavor.name,
-        flavorName: flavor.name, sourceQuantity
-      });
-    }
-  }
+  definitions.push(...deriveBuilderInventoryDefinitions(state));
   return definitions;
 }
 
@@ -284,7 +280,7 @@ function parsePositiveInteger(value, maximum = MAX_ITEM_QUANTITY) {
   return Number.isInteger(number) && number > 0 && number <= maximum ? number : 0;
 }
 
-function resolveReservationCart(state, requestedItems, operations) {
+export function resolveReservationCart(state, requestedItems, operations) {
   if (!Array.isArray(requestedItems) || !requestedItems.length || requestedItems.length > MAX_ORDER_ITEMS) throw new Error("invalid_cart");
   const definitions = deriveInventoryDefinitions(state);
   const definitionMap = new Map(definitions.map(item => [item.sku, item]));
@@ -331,22 +327,30 @@ function resolveReservationCart(state, requestedItems, operations) {
     const requiresElectricity = builder.requiresElectricity === true || (kind === "fonkies" && !Object.prototype.hasOwnProperty.call(builder, "requiresElectricity"));
     if (!operations.electricityEnabled && requiresElectricity) throw new Error("temporarily_unavailable");
     const requestedFlavors = Array.isArray(requested.flavors) ? requested.flavors : [];
-    const flavors = requestedFlavors.map(item => ({name:String(item.name || ""),quantity:parsePositiveInteger(item.quantity)}));
-    const uniqueFlavorNames = new Set(flavors.map(item => item.name));
+    const flavors = requestedFlavors.map(item => ({
+      name: String(item.name || ""),
+      inventoryKey: String(item.inventoryKey || "").trim(),
+      quantity: parsePositiveInteger(item.quantity)
+    }));
     if (!flavors.length
       || flavors.length > (builder.flavors || []).length
-      || uniqueFlavorNames.size !== flavors.length
-      || flavors.some(item => !item.quantity || !(builder.flavors || []).some(flavor => flavor.name === item.name))) throw new Error("invalid_option");
+      || flavors.some(item => !item.quantity)) throw new Error("invalid_option");
+    const resolvedSelections = flavors.map(selected => ({
+      ...selected,
+      resolved: resolveBuilderFlavorSelection(builder, selected, selected.name)
+    }));
+    if (resolvedSelections.some(item => !item.resolved)
+      || new Set(resolvedSelections.map(item => item.resolved.inventoryKey)).size !== resolvedSelections.length) throw new Error("invalid_option");
     const preorderAllowed = automaticPreorderForBuilder(kind) || builder.allowPreorder === true;
-    const resolvedFlavors = flavors.map(selected => {
-      const flavor = builder.flavors.find(item => item.name === selected.name);
+    const resolvedFlavors = resolvedSelections.map(selected => {
+      const { flavor, name, inventoryKey } = selected.resolved;
       const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
       const preorder = Boolean(requested.preorder && unavailable && preorderAllowed);
       if (unavailable && !preorder) throw new Error("unavailable_product");
-      return {...selected, preorder};
+      return { name, inventoryKey, quantity: selected.quantity, preorder };
     });
     const preorder = resolvedFlavors.some(item => item.preorder);
-    const selectedTotal = flavors.reduce((sum,item) => sum + item.quantity, 0);
+    const selectedTotal = resolvedFlavors.reduce((sum,item) => sum + item.quantity, 0);
     let unitPriceCents;
     let boxSize = 0;
     let extraCount = 0;
@@ -368,7 +372,7 @@ function resolveReservationCart(state, requestedItems, operations) {
     const optionSummary = resolvedFlavors.map(item => `${item.quantity} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", ");
     snapshotItems.push({kind,productId,name,quantity,unitPriceCents,optionSummary,flavors:resolvedFlavors,boxSize,extraCount,preorder});
     for (const selected of resolvedFlavors.filter(item => !item.preorder)) {
-      const definition = definitionMap.get(`builder:${kind}:${stockSlug(selected.name)}`);
+      const definition = definitionMap.get(`builder:${kind}:${selected.inventoryKey}`);
       if (!definition) throw new Error("invalid_option");
       addDemand(definition, selected.quantity * quantity);
     }
@@ -377,7 +381,7 @@ function resolveReservationCart(state, requestedItems, operations) {
   return {snapshotItems,demands:[...demands.values()],totalCents};
 }
 
-function resolveStockChecks(state, requestedChecks, operations) {
+export function resolveStockChecks(state, requestedChecks, operations) {
   if (!Array.isArray(requestedChecks) || requestedChecks.length > MAX_ORDER_ITEMS * 10) throw new Error("invalid_cart");
   const definitions = deriveInventoryDefinitions(state);
   const definitionMap = new Map(definitions.map(item => [item.sku, item]));
@@ -419,13 +423,14 @@ function resolveStockChecks(state, requestedChecks, operations) {
     const requiresElectricity = builder.requiresElectricity === true || (kind === "fonkies" && !Object.prototype.hasOwnProperty.call(builder, "requiresElectricity"));
     if (!operations.electricityEnabled && requiresElectricity) throw new Error("temporarily_unavailable");
     const flavorName = String(requested.flavor || "");
-    const flavor = (builder.flavors || []).find(item => item.name === flavorName);
-    if (!flavor) throw new Error("invalid_option");
+    const resolvedFlavor = resolveBuilderFlavorSelection(builder, requested, flavorName);
+    if (!resolvedFlavor) throw new Error("invalid_option");
+    const { flavor, inventoryKey } = resolvedFlavor;
     const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
     const preorder = requested.preorder === true && unavailable && (automaticPreorderForBuilder(kind) || builder.allowPreorder === true);
     if (unavailable && !preorder) throw new Error("unavailable_product");
     if (preorder) continue;
-    const definition = definitionMap.get(`builder:${kind}:${stockSlug(flavorName)}`);
+    const definition = definitionMap.get(`builder:${kind}:${inventoryKey}`);
     if (!definition) throw new Error("invalid_option");
     addDemand(definition, quantity);
   }
@@ -907,10 +912,21 @@ async function putCatalog(request, env) {
   try { payload = JSON.parse(raw); } catch { return json({ error: "Catálogo inválido" }, 400); }
   const validationError = validateCatalog(payload.state);
   if (validationError) return json({ error: validationError }, 400);
-  const existing = await env.DB.prepare("SELECT revision FROM catalog_state WHERE id = 'published'").first();
+  const existing = await env.DB.prepare("SELECT state_json AS stateJson, revision FROM catalog_state WHERE id = 'published'").first();
   const expectedRevision = Number(payload.expectedRevision);
   const currentRevision = Number(existing?.revision || 0);
   if (!Number.isInteger(expectedRevision) || expectedRevision !== currentRevision) return json({ error: "El catálogo cambió en otro dispositivo", revision: currentRevision }, 409);
+  const previousState = existing?.stateJson ? JSON.parse(existing.stateJson) : null;
+  const introducedBuilderSkus = newlyIntroducedBuilderInventorySkus(previousState, payload.state);
+  for (let index = 0; index < introducedBuilderSkus.length; index += 80) {
+    const chunk = introducedBuilderSkus.slice(index, index + 80);
+    const placeholders = chunk.map(() => "?").join(",");
+    const historical = await env.DB.prepare(`SELECT sku FROM inventory_items WHERE sku IN (${placeholders}) LIMIT 1`).bind(...chunk).first();
+    if (historical) return json({
+      error: "Una clave de inventario nueva ya pertenece a un sabor eliminado. Recarga el panel antes de publicar.",
+      code: "inventory_key_reuse"
+    }, 409);
+  }
   const revision = currentRevision + 1;
   const now = new Date().toISOString();
   const stateJson = JSON.stringify({ ...payload.state, version: 2, updatedAt: now });
@@ -1138,6 +1154,12 @@ function validateCatalog(state) {
     ids.add(product.id);
     if (!String(product.name || "").trim()) return `El producto ${product.id} no tiene nombre`;
     if (typeof product.image === "string" && product.image.startsWith("data:")) return "Guarda las imágenes con el botón de subida antes de publicar";
+  }
+  for (const kind of ["fonkies", "fomb"]) {
+    const builder = state.builders[kind];
+    if (!builder) continue;
+    const identityError = validateBuilderInventoryIdentity(kind, builder);
+    if (identityError) return identityError;
   }
   return "";
 }

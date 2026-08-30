@@ -22,10 +22,10 @@
   // The catalogue request can be slow or offline; the visible menu heading
   // must not wait for it before running its existing entrance animation.
   setupMenuIntro();
-  const adminState = await readAdminState();
+  let adminState = await readAdminState();
   const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
-  const productionWithElectricity = localMode ? adminState?.settings?.productionWithElectricity !== false : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
-  const stockTodayOpen = adminState?.settings?.stockTodayOpen !== false;
+  let productionWithElectricity = localMode ? adminState?.settings?.productionWithElectricity !== false : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
+  let stockTodayOpen = adminState?.settings?.stockTodayOpen !== false;
   const drawer = $("#drawer");
   const backdrop = $("#backdrop");
   const toast = $("#toast");
@@ -41,6 +41,7 @@
   const quantityCommitTasks = new Set();
   let stockQuantityMutationTail = Promise.resolve();
   let quantityMutationVersion = 0;
+  let storefrontCatalogRefresh = null;
   const automaticPreorderCategories = new Set(["salado"]);
   const optimizedAssetPaths = new Map([
     ["assets/pistacho-fontana-v4.png", "assets/pistacho-fontana-v4.webp"],
@@ -58,6 +59,79 @@
 
   function builderAllowsAutomaticPreorder(kind) {
     return kind === "fonkies" || kind === "fomb";
+  }
+
+  function builderFlavorInventoryKey(flavor = {}) {
+    return String(flavor.inventoryKey || "").trim();
+  }
+
+  function builderFlavorIdentity(flavor = {}) {
+    const inventoryKey = builderFlavorInventoryKey(flavor);
+    const name = String(flavor.name || "").trim();
+    return inventoryKey ? `key:${inventoryKey}` : name ? `name:${name}` : "";
+  }
+
+  function normalizedBuilderFlavorEntries(flavors = []) {
+    const quantities = new Map();
+    for (const flavor of flavors || []) {
+      const name = String(flavor?.name || "").trim();
+      const inventoryKey = builderFlavorInventoryKey(flavor);
+      const identity = builderFlavorIdentity({ name, inventoryKey });
+      const rawQuantity = Number(flavor?.quantity ?? flavor?.qty ?? 0);
+      if (!name || !identity || !Number.isFinite(rawQuantity)) continue;
+      const quantity = Math.max(0, Math.floor(rawQuantity));
+      if (!quantity) continue;
+      const current = quantities.get(identity);
+      quantities.set(identity, {
+        identity,
+        inventoryKey,
+        name,
+        quantity: Number(current?.quantity || 0) + quantity
+      });
+    }
+    return [...quantities.values()]
+      .sort((left, right) => left.identity === right.identity ? 0 : left.identity < right.identity ? -1 : 1);
+  }
+
+  function encodeBuilderCartIdentity(value) {
+    return encodeURIComponent(String(value)).replace(/[!'()*]/g, character =>
+      `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+    );
+  }
+
+  function builderFlavorSignature(flavors = []) {
+    return normalizedBuilderFlavorEntries(flavors)
+      .map(flavor => {
+        const identity = flavor.inventoryKey ? `key:${flavor.inventoryKey}` : flavor.name;
+        return `${encodeBuilderCartIdentity(identity)}:${flavor.quantity}`;
+      })
+      .join("|");
+  }
+
+  function builderCartId(kind, flavors, { boxSize = 0, extraCount = 0 } = {}) {
+    const signature = builderFlavorSignature(flavors);
+    if (!signature) return "";
+    if (kind === "fonkies") return `fonkie-box-v2-${signature}`;
+    if (kind !== "fomb") return "";
+    const normalizedBoxSize = Math.max(0, Math.floor(Number(boxSize) || 0));
+    const normalizedExtraCount = Math.max(0, Math.floor(Number(extraCount) || 0));
+    if (!normalizedBoxSize) return "";
+    return `fomb-box-v2-${normalizedBoxSize}-${normalizedExtraCount}-${signature}`;
+  }
+
+  function builderCartItemsCanMerge(left, right) {
+    if (!left?.id || left.id !== right?.id) return false;
+    const leftKind = left.inventory?.kind;
+    const rightKind = right.inventory?.kind;
+    const builderKinds = new Set(["fonkies", "fomb"]);
+    if (!builderKinds.has(leftKind) && !builderKinds.has(rightKind)) return true;
+    if (leftKind !== rightKind || !builderKinds.has(leftKind)) return false;
+    const leftSignature = builderFlavorSignature(left.inventory?.flavors);
+    const rightSignature = builderFlavorSignature(right.inventory?.flavors);
+    if (!leftSignature || leftSignature !== rightSignature) return false;
+    return leftKind !== "fomb"
+      || (Number(left.inventory?.boxSize) === Number(right.inventory?.boxSize)
+        && Number(left.inventory?.extraCount) === Number(right.inventory?.extraCount));
   }
 
   function captureCatalogHydrationScrollAnchor() {
@@ -163,6 +237,60 @@
     });
   }
 
+  function reconcileCartEntries(stored) {
+    let changed = false;
+    const normalized = [];
+    for (const storedItem of stored) {
+      const item = {...storedItem, inventory:{...(storedItem.inventory || {})}};
+      if (item.inventory.kind === "fonkies" || item.inventory.kind === "fomb") {
+        if (refreshBuilderCartAvailability(item)) changed = true;
+      }
+      if (item.inventory.kind === "fomb") {
+        const selectedTotal = (item.inventory.flavors || []).reduce(
+          (sum, flavor) => sum + Math.max(0, Number(flavor.quantity ?? flavor.qty ?? 0)),
+          0
+        );
+        const pricing = resolveFombPricing(selectedTotal);
+        if (pricing && selectedTotal >= pricing.size) {
+          if (Number(item.price) !== pricing.price
+            || Number(item.inventory.boxSize) !== pricing.size
+            || Number(item.inventory.extraCount) !== pricing.extras) changed = true;
+          item.price = pricing.price;
+          item.inventory.boxSize = pricing.size;
+          item.inventory.extraCount = pricing.extras;
+        }
+      }
+      if (item.inventory.kind === "fonkies" && adminState?.builders?.fonkies) {
+        const selected = normalizedBuilderFlavorEntries(item.inventory.flavors);
+        const selectedTotal = selected.reduce((sum, flavor) => sum + flavor.quantity, 0);
+        const minimum = Math.max(1, Number(adminState.builders.fonkies.minimumQuantity || 4));
+        if (selectedTotal >= minimum) {
+          const currentPrice = fonkiePrice(selectedTotal, selected.length);
+          if (Number.isFinite(currentPrice) && Number(item.price) !== currentPrice) {
+            item.price = currentPrice;
+            changed = true;
+          }
+        }
+      }
+      if (item.inventory.kind === "fonkies" || item.inventory.kind === "fomb") {
+        const canonicalId = builderCartId(item.inventory.kind, item.inventory.flavors, {
+          boxSize: item.inventory.boxSize,
+          extraCount: item.inventory.extraCount
+        });
+        if (canonicalId && canonicalId !== item.id) {
+          item.id = canonicalId;
+          changed = true;
+        }
+      }
+      const existing = item.id ? normalized.find(candidate => builderCartItemsCanMerge(candidate, item)) : null;
+      if (existing) {
+        existing.qty = Number(existing.qty || 0) + Number(item.qty || 0);
+        changed = true;
+      } else normalized.push(item);
+    }
+    return { cart:normalized, changed };
+  }
+
   function readCart() {
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey) || "[]");
@@ -174,44 +302,9 @@
         localStorage.removeItem(storageKey);
         return [];
       }
-      let changed = false;
-      const normalized = [];
-      for (const storedItem of stored) {
-        const item = {...storedItem, inventory:{...(storedItem.inventory || {})}};
-        if (item.inventory.kind === "fonkies" || item.inventory.kind === "fomb") {
-          if (refreshBuilderCartAvailability(item)) changed = true;
-        }
-        if (item.inventory.kind === "fomb") {
-          const selectedTotal = (item.inventory.flavors || []).reduce(
-            (sum, flavor) => sum + Math.max(0, Number(flavor.quantity ?? flavor.qty ?? 0)),
-            0
-          );
-          const pricing = resolveFombPricing(selectedTotal);
-          if (pricing && selectedTotal >= pricing.size) {
-            const canonicalId = String(item.id || "").replace(
-              /^fomb-box-\d+-\d+-/,
-              `fomb-box-${pricing.size}-${pricing.extras}-`
-            );
-            if (canonicalId && canonicalId !== item.id) {
-              item.id = canonicalId;
-              changed = true;
-            }
-            if (Number(item.price) !== pricing.price
-              || Number(item.inventory.boxSize) !== pricing.size
-              || Number(item.inventory.extraCount) !== pricing.extras) changed = true;
-            item.price = pricing.price;
-            item.inventory.boxSize = pricing.size;
-            item.inventory.extraCount = pricing.extras;
-          }
-        }
-        const existing = item.id ? normalized.find(candidate => candidate.id === item.id) : null;
-        if (existing) {
-          existing.qty = Number(existing.qty || 0) + Number(item.qty || 0);
-          changed = true;
-        } else normalized.push(item);
-      }
-      if (changed) localStorage.setItem(storageKey, JSON.stringify(normalized));
-      return normalized;
+      const reconciled = reconcileCartEntries(stored);
+      if (reconciled.changed) localStorage.setItem(storageKey, JSON.stringify(reconciled.cart));
+      return reconciled.cart;
     } catch {
       return [];
     }
@@ -232,7 +325,12 @@
       for (const flavor of inventory.flavors || []) {
         if (flavor.preorder) continue;
         const perBox = Math.max(0, Number(flavor.quantity ?? flavor.qty ?? 0));
-        if (perBox) checks.push({kind:inventory.kind,flavor:flavor.name,quantity:perBox * itemQuantity});
+        if (perBox) checks.push({
+          kind:inventory.kind,
+          flavor:flavor.name,
+          inventoryKey:builderFlavorInventoryKey(flavor),
+          quantity:perBox * itemQuantity
+        });
       }
     }
     return [...checks, ...extraChecks].filter(check => Number(check.quantity) > 0);
@@ -244,7 +342,7 @@
     for (const check of checks) {
       const key = check.kind === "product"
         ? `product:${check.productId}:${check.size || ""}:${check.variant || ""}`
-        : `${check.kind}:${check.flavor}`;
+        : `${check.kind}:${check.inventoryKey ? `key:${check.inventoryKey}` : `name:${check.flavor}`}`;
       demands.set(key, {check,quantity:Number(check.quantity) + Number(demands.get(key)?.quantity || 0)});
     }
     for (const {check,quantity} of demands.values()) {
@@ -255,7 +353,11 @@
         const variant = product?.variants?.find(item => item.name === check.variant);
         configuredQuantity = variant?.stockQuantity ?? size?.stockQuantity ?? product?.stockQuantity ?? null;
       } else {
-        const flavor = adminState.builders?.[check.kind]?.flavors?.find(item => item.name === check.flavor);
+        const configuredKey = String(check.inventoryKey || "").trim();
+        const flavor = configuredKey
+          ? adminState.builders?.[check.kind]?.flavors?.find(item => builderFlavorInventoryKey(item) === configuredKey)
+          : adminState.builders?.[check.kind]?.flavors?.find(item => item.name === check.flavor);
+        if (configuredKey && !flavor) return false;
         configuredQuantity = flavor?.stockQuantity ?? null;
       }
       if (configuredQuantity !== null && configuredQuantity !== "" && quantity > Number(configuredQuantity)) return false;
@@ -297,7 +399,12 @@
       productId:item.inventory?.productId || item.productId,
       size:item.inventory?.size || "",
       variant:item.inventory?.variant || "",
-      flavors:(item.inventory?.flavors || []).map(flavor => ({name:flavor.name,quantity:Number(flavor.quantity ?? flavor.qty ?? 0),preorder:Boolean(flavor.preorder)})),
+      flavors:(item.inventory?.flavors || []).map(flavor => ({
+        name:flavor.name,
+        inventoryKey:builderFlavorInventoryKey(flavor),
+        quantity:Number(flavor.quantity ?? flavor.qty ?? 0),
+        preorder:Boolean(flavor.preorder)
+      })),
       boxSize:item.inventory?.boxSize,
       extraCount:item.inventory?.extraCount,
       preorder:Boolean(item.inventory?.preorder)
@@ -429,9 +536,9 @@
 
   function renderBuilderTags(element, builder) {
     $(".builder-admin-tags", element)?.remove();
-    const soldOut = builder.status === "sold-out" || builder.stockQuantity === 0;
+    const soldOut = builder.status === "sold-out";
     const temporarilyUnavailable = Boolean(builder.temporarilyUnavailable || element.dataset.temporarilyUnavailable === "true");
-    const labels = [temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : "", soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", stockTodayOpen && builder.immediate ? "STOCK DE HOY" : ""].filter(Boolean);
+    const labels = [temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : "", soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", element.dataset.immediate === "true" ? "STOCK DE HOY" : ""].filter(Boolean);
     if (!labels.length) return;
     const tags = document.createElement("div");
     tags.className = "builder-admin-tags";
@@ -445,10 +552,19 @@
   function builderFlavorStockDetails(flavor = {}, builder = {}) {
     // Only the central inventory flag may promise immediate fulfillment. The
     // legacy catalogue quantity is intentionally ignored here: it is not the
-    // owner's live stock source and the public Worker removes it.
-    const tracked = flavor.stockTracked === true;
+    // owner's live stock source and the public Worker removes it. Local preview
+    // has no Worker transformation, so a configured local quantity represents
+    // the equivalent tracked state there.
+    const localQuantityConfigured = localMode
+      && flavor.stockQuantity !== null
+      && flavor.stockQuantity !== undefined
+      && flavor.stockQuantity !== ""
+      && Number.isFinite(Number(flavor.stockQuantity));
+    const tracked = flavor.stockTracked === true || localQuantityConfigured;
     const temporarilyUnavailable = builder.temporarilyUnavailable === true;
-    const soldOut = builder.status === "sold-out" || flavor.status === "sold-out";
+    const soldOut = builder.status === "sold-out"
+      || flavor.status === "sold-out"
+      || (localQuantityConfigured && Number(flavor.stockQuantity) <= 0);
     const state = temporarilyUnavailable
       ? "unavailable"
       : soldOut
@@ -464,6 +580,39 @@
           ? "Pre-Order · 2 días hábiles"
           : "Disponibilidad por confirmar";
     return { tracked, soldOut, state, label };
+  }
+
+  function builderMinimumBoxQuantity(kind, builder = {}) {
+    if (kind === "fonkies") {
+      const minimum = Number(builder.minimumQuantity);
+      return Number.isFinite(minimum) && minimum > 0 ? Math.floor(minimum) : 4;
+    }
+    const sizes = (Array.isArray(builder.sizes) ? builder.sizes : [])
+      .map(size => Math.floor(Number(size?.quantity)))
+      .filter(quantity => Number.isFinite(quantity) && quantity > 0);
+    return sizes.length ? Math.min(...sizes) : 4;
+  }
+
+  function builderHasImmediateBox(kind, builder = {}, stockContext = {}) {
+    if (stockContext.temporarilyUnavailable === true || builder.status === "sold-out") return false;
+    const flavors = Array.isArray(builder.flavors) ? builder.flavors : [];
+    const hasLocalQuantities = localMode && flavors.some(flavor =>
+      flavor.stockQuantity !== null
+      && flavor.stockQuantity !== undefined
+      && flavor.stockQuantity !== ""
+      && Number.isFinite(Number(flavor.stockQuantity))
+    );
+    // Production receives this privacy-preserving boolean from the Worker. It
+    // indicates that the tracked units can fill at least the smallest box,
+    // without publishing any inventory count in the catalogue response.
+    if (!hasLocalQuantities) return builder.immediateBoxAvailable === true;
+    const trackedUnits = flavors.reduce((sum, flavor) => {
+      const quantity = Math.max(0, Math.floor(Number(flavor.stockQuantity) || 0));
+      return builderFlavorStockDetails(flavor, stockContext).state === "immediate"
+        ? sum + quantity
+        : sum;
+    }, 0);
+    return trackedUnits >= builderMinimumBoxQuantity(kind, builder);
   }
 
   function builderFlavorAvailabilityMarkup(details) {
@@ -516,23 +665,42 @@
     const inventory = item.inventory || {};
     const kind = inventory.kind;
     if (kind !== "fonkies" && kind !== "fomb") return false;
+    const catalogAvailable = Boolean(adminState && Array.isArray(adminState.products));
     const builder = adminState?.builders?.[kind];
-    const builderUnavailable = builderTemporarilyUnavailable(kind, builder);
+    const builderMissingOrHidden = catalogAvailable && (!builder || builder.visible === false);
+    const builderUnavailable = builderMissingOrHidden || builderTemporarilyUnavailable(kind, builder);
     const builderPreorder = builder?.status === "sold-out";
     const selected = (inventory.flavors || []).map(flavor => {
-      const meta = builder?.flavors?.find(candidate => candidate.name === flavor.name);
-      const stock = meta ? builderFlavorStockDetails(meta, builder) : {
-        state: flavor.preorder ? "preorder" : "pending",
-        soldOut: Boolean(flavor.preorder)
-      };
+      const storedInventoryKey = builderFlavorInventoryKey(flavor);
+      // A cart that already knows its immutable inventory key must never jump
+      // to a newly-created flavor that happens to reuse the same visible name.
+      // Name matching remains only as a one-time migration path for old carts.
+      const meta = storedInventoryKey
+        ? builder?.flavors?.find(candidate => builderFlavorInventoryKey(candidate) === storedInventoryKey)
+        : builder?.flavors?.find(candidate => candidate.name === flavor.name);
+      const inventoryKey = meta ? builderFlavorInventoryKey(meta) : storedInventoryKey;
+      const name = meta ? String(meta.name || flavor.name) : flavor.name;
+      const previousState = ["unavailable", "preorder", "immediate", "pending"].includes(flavor.stockState)
+        ? flavor.stockState
+        : flavor.preorder
+          ? "preorder"
+          : "pending";
+      const stock = builderMissingOrHidden || (catalogAvailable && !meta)
+        ? { state:"unavailable", soldOut:false }
+        : meta
+          ? builderFlavorStockDetails(meta, builder)
+          : { state:previousState, soldOut:previousState === "preorder" };
       return {
         ...flavor,
+        name,
+        inventoryKey,
         qty: Number(flavor.quantity ?? flavor.qty ?? 0),
-        preorder: builderPreorder || stock.state === "preorder",
+        preorder: !builderUnavailable && stock.state !== "unavailable" && (builderPreorder || stock.state === "preorder"),
         stockState: stock.state
       };
     });
-    const availability = builderUnavailable
+    const flavorUnavailable = selected.some(flavor => flavor.stockState === "unavailable");
+    const availability = builderUnavailable || flavorUnavailable
       ? "unavailable"
       : builderPreorder
         ? "preorder"
@@ -550,6 +718,7 @@
       || item.choices !== choices
       || JSON.stringify(inventory.flavors || []) !== JSON.stringify(selected.map(flavor => ({
         name:flavor.name,
+        inventoryKey:flavor.inventoryKey,
         qty:flavor.qty,
         preorder:flavor.preorder,
         stockState:flavor.stockState
@@ -558,6 +727,7 @@
     item.choices = choices;
     inventory.flavors = selected.map(flavor => ({
       name:flavor.name,
+      inventoryKey:flavor.inventoryKey,
       qty:flavor.qty,
       preorder:flavor.preorder,
       stockState:flavor.stockState
@@ -573,6 +743,7 @@
       const fombBuilder = $(".fomb-builder");
       if (fonkieBuilder) {
         fonkieBuilder.dataset.preorder = "true";
+        fonkieBuilder.dataset.immediate = "false";
         const temporarilyUnavailable = builderTemporarilyUnavailable("fonkies");
         fonkieBuilder.dataset.temporarilyUnavailable = String(temporarilyUnavailable);
         decorateStaticBuilderAvailability(
@@ -584,6 +755,7 @@
       }
       if (fombBuilder) {
         fombBuilder.dataset.preorder = "true";
+        fombBuilder.dataset.immediate = "false";
         const temporarilyUnavailable = builderTemporarilyUnavailable("fomb");
         fombBuilder.dataset.temporarilyUnavailable = String(temporarilyUnavailable);
         decorateStaticBuilderAvailability(
@@ -599,34 +771,35 @@
     const fonkieBuilder = $(".fonkie-builder");
     if (fonkies && fonkieBuilder) {
       const temporarilyUnavailable = builderTemporarilyUnavailable("fonkies", fonkies);
+      const flavors = Array.isArray(fonkies.flavors) ? fonkies.flavors : [];
+      const stockContext = {
+        status: fonkies.status,
+        temporarilyUnavailable
+      };
+      const hasImmediateBox = builderHasImmediateBox("fonkies", fonkies, stockContext);
       fonkieBuilder.dataset.promo = String(Boolean(fonkies.promo));
-      fonkieBuilder.dataset.immediate = String(stockTodayOpen && Boolean(fonkies.immediate));
+      fonkieBuilder.dataset.immediate = String(stockTodayOpen && hasImmediateBox);
       fonkieBuilder.dataset.new = String(Boolean(fonkies.isNew));
       fonkieBuilder.dataset.preorder = String(builderAllowsAutomaticPreorder("fonkies") || Boolean(fonkies.allowPreorder));
       fonkieBuilder.dataset.glutenFree = String(fonkies.glutenFree !== false);
       fonkieBuilder.dataset.sugarFree = String(fonkies.sugarFree !== false);
       fonkieBuilder.dataset.lactoseFree = String(fonkies.lactoseFree !== false);
       fonkieBuilder.dataset.eggFree = String(Boolean(fonkies.eggFree));
-      fonkieBuilder.dataset.soldOut = String(fonkies.status === "sold-out" || fonkies.stockQuantity === 0);
+      fonkieBuilder.dataset.soldOut = String(fonkies.status === "sold-out");
       fonkieBuilder.dataset.temporarilyUnavailable = String(temporarilyUnavailable);
       fonkieBuilder.hidden = fonkies.visible === false;
       renderBuilderTags(fonkieBuilder, fonkies);
-      const flavors = Array.isArray(fonkies.flavors) ? fonkies.flavors : [];
       const gallery = $(".fonkie-gallery-track", fonkieBuilder);
       const chooser = $(".fonkie-flavors", fonkieBuilder);
       const count = $(".gallery-label-meta span", fonkieBuilder);
-      const stockContext = {
-        status: fonkies.status,
-        temporarilyUnavailable
-      };
       if (count) count.textContent = `${flavors.length} sabores`;
       if (gallery) gallery.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
-        return `<figure class="fonkie-gallery-card${stock.soldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
+        return `<figure class="fonkie-gallery-card${stock.soldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
       }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
-        return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`;
+        return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`;
       }).join("");
       const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       fonkieBuilder.dataset.ingredients = availableIngredients;
@@ -637,34 +810,35 @@
     const fombBuilder = $(".fomb-builder");
     if (fomb && fombBuilder) {
       const temporarilyUnavailable = builderTemporarilyUnavailable("fomb", fomb);
+      const flavors = Array.isArray(fomb.flavors) ? fomb.flavors : [];
+      const stockContext = {
+        status: fomb.status,
+        temporarilyUnavailable
+      };
+      const hasImmediateBox = builderHasImmediateBox("fomb", fomb, stockContext);
       fombBuilder.dataset.promo = String(Boolean(fomb.promo));
-      fombBuilder.dataset.immediate = String(stockTodayOpen && Boolean(fomb.immediate));
+      fombBuilder.dataset.immediate = String(stockTodayOpen && hasImmediateBox);
       fombBuilder.dataset.new = String(Boolean(fomb.isNew));
       fombBuilder.dataset.preorder = String(builderAllowsAutomaticPreorder("fomb") || Boolean(fomb.allowPreorder));
       fombBuilder.dataset.glutenFree = String(fomb.glutenFree !== false);
       fombBuilder.dataset.sugarFree = String(fomb.sugarFree !== false);
       fombBuilder.dataset.lactoseFree = String(fomb.lactoseFree !== false);
       fombBuilder.dataset.eggFree = String(fomb.eggFree !== false);
-      fombBuilder.dataset.soldOut = String(fomb.status === "sold-out" || fomb.stockQuantity === 0);
+      fombBuilder.dataset.soldOut = String(fomb.status === "sold-out");
       fombBuilder.dataset.temporarilyUnavailable = String(temporarilyUnavailable);
       fombBuilder.hidden = fomb.visible === false;
       renderBuilderTags(fombBuilder, fomb);
-      const flavors = Array.isArray(fomb.flavors) ? fomb.flavors : [];
       const gallery = $(".builder-gallery-track", fombBuilder);
       const chooser = $(".fomb-flavors", fombBuilder);
       const count = $(".gallery-label-meta span", fombBuilder);
-      const stockContext = {
-        status: fomb.status,
-        temporarilyUnavailable
-      };
       if (count) count.textContent = `${flavors.length} sabores`;
       if (gallery) gallery.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
-        return `<figure class="builder-gallery-card${stock.soldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
+        return `<figure class="builder-gallery-card${stock.soldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
       }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
-        return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`;
+        return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`;
       }).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
@@ -3274,6 +3448,7 @@
       .map(row => ({
         kind,
         flavor: row.dataset.flavor,
+        inventoryKey: row.dataset.inventoryKey || "",
         quantity: Math.max(0,
           Number(state.committed.get(row) || 0)
           + operations.filter(operation => !operation.cancelled && operation.row === row).length
@@ -3424,6 +3599,7 @@
     function selectedFlavors() {
       return rows.map(row => ({
         name: row.dataset.flavor,
+        inventoryKey: row.dataset.inventoryKey || "",
         qty: Number($("output", row).value || $("output", row).textContent || 0),
         preorder: row.dataset.soldOut === "true",
         stockState: row.dataset.stockState || "pending"
@@ -3482,19 +3658,19 @@
         const preorder = selected.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
         const availability = preorder ? "preorder" : selectedBuilderAvailability(selected);
         const stocked = selected.filter(item => !item.preorder);
-        const quantities = new Map(selected.map(item => [item.name, item.qty]));
         const price = fonkiePrice(total, selected.length);
         const choices = [selected.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), builderAvailabilityCopy(availability)].filter(Boolean).join(" · ");
-        const id = `fonkie-box-${rows.map(row => Number(quantities.get(row.dataset.flavor) || 0)).join("-")}`;
+        const inventory = { kind:"fonkies", flavors:selected.map(item => ({name:item.name,inventoryKey:item.inventoryKey,qty:item.qty,preorder:item.preorder,stockState:item.stockState})), preorder, availability };
+        const id = builderCartId("fonkies", inventory.flavors);
         await serializeStockQuantityMutation(async () => {
           if (stocked.length) {
-            const validation = await validateStock(stocked.map(item => ({kind:"fonkies",flavor:item.name,quantity:item.qty})));
+            const validation = await validateStock(stocked.map(item => ({kind:"fonkies",flavor:item.name,inventoryKey:item.inventoryKey,quantity:item.qty})));
             if (!validation.ok) {
               say(stockLimitNotice(validation.error, "la caja de Fonkies"));
               return;
             }
           }
-          const found = cart.find(item => item.id === id);
+          const found = cart.find(item => builderCartItemsCanMerge(item, { id, inventory }));
           if (found) {
             found.qty += 1;
           } else {
@@ -3506,7 +3682,7 @@
               image: builder.dataset.image,
               ingredients: productIngredients("fonkie-box"),
               choices,
-              inventory: { kind:"fonkies", flavors:selected.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder,stockState:item.stockState})), preorder, availability },
+              inventory,
               qty: 1
             });
           }
@@ -3536,6 +3712,7 @@
     function selectedFlavors() {
       return rows.map(row => ({
         name: row.dataset.flavor,
+        inventoryKey: row.dataset.inventoryKey || "",
         qty: Number($("output", row).value || $("output", row).textContent || 0),
         preorder: row.dataset.soldOut === "true",
         stockState: row.dataset.stockState || "pending"
@@ -3604,18 +3781,21 @@
         const preorder = current.flavors.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
         const availability = preorder ? "preorder" : current.availability;
         const stocked = current.flavors.filter(item => !item.preorder);
-        const quantities = new Map(current.flavors.map(item => [item.name, item.qty]));
         const choices = [current.flavors.map(item => `${item.qty} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", "), builderAvailabilityCopy(availability)].filter(Boolean).join(" · ");
-        const id = `fomb-box-${current.size}-${current.extras}-${rows.map(row => Number(quantities.get(row.dataset.flavor) || 0)).join("-")}`;
+        const inventory = { kind:"fomb", flavors:current.flavors.map(item => ({name:item.name,inventoryKey:item.inventoryKey,qty:item.qty,preorder:item.preorder,stockState:item.stockState})), boxSize:current.size, extraCount:current.extras, preorder, availability };
+        const id = builderCartId("fomb", inventory.flavors, {
+          boxSize: current.size,
+          extraCount: current.extras
+        });
         await serializeStockQuantityMutation(async () => {
           if (stocked.length) {
-            const validation = await validateStock(stocked.map(item => ({kind:"fomb",flavor:item.name,quantity:item.qty})));
+            const validation = await validateStock(stocked.map(item => ({kind:"fomb",flavor:item.name,inventoryKey:item.inventoryKey,quantity:item.qty})));
             if (!validation.ok) {
               say(stockLimitNotice(validation.error, "la caja Fomb"));
               return;
             }
           }
-          const found = cart.find(item => item.id === id);
+          const found = cart.find(item => builderCartItemsCanMerge(item, { id, inventory }));
           if (found) {
             found.qty += 1;
           } else {
@@ -3627,7 +3807,7 @@
               image: builder.dataset.image,
               ingredients: builder.dataset.ingredients,
               choices,
-              inventory: { kind:"fomb", flavors:current.flavors.map(item => ({name:item.name,qty:item.qty,preorder:item.preorder,stockState:item.stockState})), boxSize:current.size, extraCount:current.extras, preorder, availability },
+              inventory,
               qty: 1
             });
           }
@@ -3656,7 +3836,8 @@
     if (!Number.isFinite(change) || change === 0) return;
     if (change > 0) {
       quantityMutationVersion += 1;
-      if (item.inventory?.preorder) {
+      const consumesTrackedOrPendingStock = stockChecks([{...item, qty:1}]).length > 0;
+      if (item.inventory?.preorder && !consumesTrackedOrPendingStock) {
         item.qty += change;
         save();
         return;
@@ -3715,8 +3896,45 @@
     return product?.requiresElectricity === true;
   }
 
+  async function refreshAdminStateAndCart() {
+    if (storefrontCatalogRefresh) return storefrontCatalogRefresh;
+    storefrontCatalogRefresh = (async () => {
+      const latestState = await readAdminState();
+      if (!latestState || !Array.isArray(latestState.products)) return { refreshed:false, changed:false };
+
+      // A customer may still tap a cart stepper while the catalogue request is
+      // in flight. Settle that work before canonical IDs or prices are replaced.
+      await flushQuantityWork();
+      return serializeStockQuantityMutation(async () => {
+        adminState = latestState;
+        adminStateVerified = localMode || latestState.operations?.verified === true;
+        productionWithElectricity = localMode
+          ? latestState.settings?.productionWithElectricity !== false
+          : adminStateVerified && latestState.operations?.electricityEnabled !== false;
+        stockTodayOpen = latestState.settings?.stockTodayOpen !== false;
+
+        const reconciled = reconcileCartEntries(cart);
+        cart = reconciled.cart;
+        if (reconciled.changed) {
+          quantityMutationVersion += 1;
+          localStorage.setItem(storageKey, JSON.stringify(cart));
+        }
+        renderCart();
+        if (reconciled.changed && !checkoutForm.hidden) setupRequestedDate();
+        return { refreshed:true, changed:reconciled.changed };
+      });
+    })();
+    try {
+      return await storefrontCatalogRefresh;
+    } finally {
+      storefrontCatalogRefresh = null;
+    }
+  }
+
   async function showCheckoutStep() {
     while (true) {
+      await flushQuantityWork();
+      await refreshAdminStateAndCart();
       await flushQuantityWork();
       if (!cart.length) {
         say("Primero agrega algo rico al pedido");
@@ -3827,12 +4045,20 @@
     return result;
   }
 
+  function checkoutScheduleItemLabel(item) {
+    if (item?.inventory?.kind !== "fonkies" && item?.inventory?.kind !== "fomb") return item.name;
+    const flavors = normalizedBuilderFlavorEntries(item.inventory.flavors);
+    if (!flavors.length) return item.name;
+    const flavorSummary = flavors.map(flavor => `${flavor.quantity} ${flavor.name}`).join(", ");
+    return `${item.name} — ${flavorSummary}`;
+  }
+
   function renderCheckoutPreparationGuide() {
     const schedule = cartScheduleGroups();
     const groups = {
-      sameDay: schedule.immediate.map(item => item.name),
-      prepared: schedule.prepared.map(entry => ({ name:entry.item.name, days:entry.days })),
-      pending: schedule.pending.map(item => item.name)
+      sameDay: schedule.immediate.map(checkoutScheduleItemLabel),
+      prepared: schedule.prepared.map(entry => ({ name:checkoutScheduleItemLabel(entry.item), days:entry.days })),
+      pending: schedule.pending.map(checkoutScheduleItemLabel)
     };
     const unique = values => [...new Set(values)];
     const rows = [];
@@ -3852,7 +4078,7 @@
   }
 
   function renderSplitItemSummaries(schedule) {
-    const itemMarkup = item => `<li>${item.qty}× ${escapeHtml(item.name)}</li>`;
+    const itemMarkup = item => `<li>${item.qty}× ${escapeHtml(checkoutScheduleItemLabel(item))}</li>`;
     $("#immediateItemSummary").innerHTML = schedule.immediate.map(itemMarkup).join("");
     $("#preparedItemSummary").innerHTML = [
       ...schedule.prepared.map(entry => entry.item),
@@ -4080,6 +4306,12 @@
     const formData = new FormData(checkoutForm);
     if (formData.get("hasAllergies") === "yes" && !formData.getAll("allergens").length && !String(formData.get("otherAllergy") || "").trim()) {
       showCheckoutErrors($("#otherAllergy"));
+      return;
+    }
+    await flushQuantityWork();
+    await refreshAdminStateAndCart();
+    if (cart.some(isElectricityBlockedCartItem)) {
+      say("Hay un producto que ya no está disponible. Vuelve al carrito y retíralo para continuar.");
       return;
     }
     const stockValidation = await validateStock();
