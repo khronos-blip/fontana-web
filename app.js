@@ -1361,20 +1361,36 @@
         const shortBottegaViewport = isBottega && viewportHeight <= 650 && viewportWidth > viewportHeight;
         const horizontalMargin = shortBottegaViewport ? 16 : mobile ? 28 : desktop ? 48 : 80;
         const verticalMargin = shortBottegaViewport ? 16 : mobile ? (isBottega ? 16 : 52) : desktop ? 48 : 60;
+        const availableWidth = viewportWidth - (horizontalMargin * 2);
+        const availableHeight = viewportHeight - (verticalMargin * 2);
+        const bottegaWidth = desktop
+          ? Math.min(availableWidth, 900)
+          : mobile
+          ? Math.min(availableWidth, Math.max(280, rect.width * 1.55))
+          : Math.min(availableWidth, 620);
+        const bottegaHeight = desktop
+          ? Math.min(availableHeight, 500)
+          : mobile
+          ? Math.min(availableHeight, 520)
+          : Math.min(availableHeight, 560);
         const width = Math.round(shortBottegaViewport
-          ? Math.min(viewportWidth - (horizontalMargin * 2), desktop ? 1040 : 820)
+          ? Math.min(availableWidth, desktop ? 900 : 820)
+          : isBottega
+          ? bottegaWidth
           : desktop
-          ? Math.min(viewportWidth - (horizontalMargin * 2), 1040)
+          ? Math.min(availableWidth, 1040)
           : Math.min(
-              viewportWidth - (horizontalMargin * 2),
+              availableWidth,
               Math.max(mobile ? 280 : 520, rect.width * (mobile ? 1.55 : 1.42))
             ));
         const height = Math.round(shortBottegaViewport
-          ? Math.min(viewportHeight - (verticalMargin * 2), 640)
+          ? Math.min(availableHeight, 500)
+          : isBottega
+          ? bottegaHeight
           : desktop
-          ? Math.min(viewportHeight - (verticalMargin * 2), 640)
+          ? Math.min(availableHeight, 640)
           : Math.min(
-              viewportHeight - (verticalMargin * 2),
+              availableHeight,
               Math.max(mobile ? 560 : 600, rect.height * (mobile ? 1.34 : 1.12))
             ));
         return {

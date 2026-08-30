@@ -5480,14 +5480,22 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
       await expect(card).toHaveClass(/product-expanded-open/);
       await expect(card).not.toHaveClass(/product-expanded-animating/);
       const safety = card.locator(".product-back .product-safety");
-      const mobileOrTablet = viewport.width < 960;
-      if (mobileOrTablet) {
-        await expect(safety).toBeVisible();
-        await safety.locator("summary").click();
-        await expect(safety).toHaveAttribute("open", "");
-      } else {
-        await expect(safety).toBeHidden();
-        await expect(card.locator(".product-back .product-expanded-ingredients")).toBeVisible();
+      const ingredientPanel = card.locator(".product-back .product-expanded-ingredients");
+      await expect(safety).toBeHidden();
+      await expect(ingredientPanel).toBeVisible();
+      await expect(ingredientPanel).toContainText(expectedProduct.ingredients);
+      const expandedBox = await card.boundingBox();
+      const landscapeShort = viewport.height <= 650 && viewport.width > viewport.height;
+      const maximumExpandedHeight = landscapeShort
+        ? Math.min(viewport.height - 32, 500)
+        : viewport.width >= 960
+        ? Math.min(viewport.height - 96, 500)
+        : viewport.width <= 640
+        ? Math.min(viewport.height - 32, 520)
+        : Math.min(viewport.height - 120, 560);
+      expect(expandedBox.height, `${expectedProduct.id} usa una altura compacta en ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(maximumExpandedHeight + 1);
+      if (viewport.width >= 960) {
+        expect(expandedBox.width, `${expectedProduct.id} usa un ancho compacto en escritorio`).toBeLessThanOrEqual(901);
       }
 
       const expanded = await card.evaluate((element, expectedIngredients) => {
@@ -5543,10 +5551,6 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
         image:{ fit:"contain", position:"50% 50%", transform:"none" }, pageOverflow:0
       });
 
-      if (mobileOrTablet) {
-        await safety.locator("summary").click();
-        await expect(safety).not.toHaveAttribute("open", "");
-      }
       await closeProductCard(page);
       await expect(card).not.toHaveClass(/product-expanded/);
     }
@@ -5571,10 +5575,11 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
   await expect.poll(() => card.evaluate(element => element.getBoundingClientRect().right <= 845 && element.getBoundingClientRect().bottom <= 391)).toBe(true);
 
   const safety = card.locator(".product-back .product-safety");
-  await expect(safety).toBeVisible();
-  await safety.locator("summary").click();
-  await expect(safety).toHaveAttribute("open", "");
-  await expect(safety.locator("summary")).toBeFocused();
+  const ingredientPanel = card.locator(".product-back .product-expanded-ingredients");
+  await expect(safety).toBeHidden();
+  await expect(ingredientPanel).toBeVisible();
+  await expect(ingredientPanel).toContainText("Olivas");
+  await card.locator(".product-back").focus();
 
   const expectExpandedFit = async (viewport, label) => {
     const metrics = await card.evaluate((element, expectedViewport) => {
@@ -5601,8 +5606,8 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
         outside:[back, media, body].filter(node => !fits(node, element)).map(node => node.className),
         outsideBody:bodyChildren.filter(node => !fits(node, body)).map(node => node.className || node.tagName),
         bodyOverflowY:getComputedStyle(body).overflowY,
-        ingredientsOpen:Boolean(body.querySelector(".product-safety[open]")),
-        ingredientsVisible:body.querySelector(".product-safety")?.textContent.includes("Olivas"),
+        ingredientsVisible:visible(body.querySelector(".product-expanded-ingredients"))
+          && body.querySelector(".product-expanded-ingredients")?.textContent.includes("Olivas"),
         focusInside:element.contains(document.activeElement),
         pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth,
         expectedViewport
@@ -5610,7 +5615,7 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
     }, viewport);
     expect(metrics, label).toEqual({
       viewport:[viewport.width, viewport.height], insideViewport:true, overflow:[], outside:[], outsideBody:[],
-      bodyOverflowY:"hidden", ingredientsOpen:true, ingredientsVisible:true, focusInside:true, pageOverflow:0,
+      bodyOverflowY:"hidden", ingredientsVisible:true, focusInside:true, pageOverflow:0,
       expectedViewport:viewport
     });
   };
@@ -5620,8 +5625,9 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
   await expect(card).toHaveClass(/product-expanded-open/);
   await expect(card).not.toHaveClass(/product-expanded-animating/);
   await expect.poll(() => card.evaluate(element => element.getBoundingClientRect().right <= 391 && element.getBoundingClientRect().bottom <= 845)).toBe(true);
-  await expect(safety).toHaveAttribute("open", "");
-  await expect(safety.locator("summary")).toBeFocused();
+  await expect(safety).toBeHidden();
+  await expect(ingredientPanel).toBeVisible();
+  await expect(card.locator(".product-back")).toBeFocused();
   await expectExpandedFit({ width:390, height:844 }, "Bottega abierta de vuelta en retrato");
 
   await page.keyboard.press("Escape");
@@ -6031,11 +6037,13 @@ test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mi
     await openProductCard(page, card);
     await expect(card).toHaveClass(/product-expanded-open/);
     const safety = card.locator(".product-back .product-safety");
-    await safety.locator("summary").click();
-    await expect(safety).toHaveAttribute("open", "");
+    const ingredientPanel = card.locator(".product-back .product-expanded-ingredients");
+    await expect(safety).toBeHidden();
+    await expect(ingredientPanel).toBeVisible();
+    await expect(ingredientPanel).toContainText(expectedProduct.ingredients);
     const expanded = await card.evaluate((element, expectedIngredients) => {
-      const back = element.querySelector(".product-back"), body = back.querySelector(".product-expanded-body"), footer = body.querySelector(".product-footer"), safety = body.querySelector(".product-safety");
-      const measured = [element, element.querySelector(".product-flip-inner"), back, body, footer, safety, ...footer.children];
+      const back = element.querySelector(".product-back"), body = back.querySelector(".product-expanded-body"), footer = body.querySelector(".product-footer"), ingredientPanel = body.querySelector(".product-expanded-ingredients");
+      const measured = [element, element.querySelector(".product-flip-inner"), back, body, footer, ingredientPanel, ...footer.children];
       const outer = footer.getBoundingClientRect();
       const viewport = window.visualViewport || {offsetLeft:0,offsetTop:0,width:window.innerWidth,height:window.innerHeight};
       const box = element.getBoundingClientRect();
@@ -6044,14 +6052,13 @@ test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mi
         overflow:measured.filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1).map(node => node.className || node.tagName),
         outside:[...footer.children].filter(node => { const child = node.getBoundingClientRect(); return child.left < outer.left - 1 || child.right > outer.right + 1 || child.top < outer.top - 1 || child.bottom > outer.bottom + 1; }).map(node => node.className),
         bodyOverflowY:getComputedStyle(body).overflowY,
-        ingredientsVisible:safety.textContent.includes(expectedIngredients),
+        ingredientsVisible:getComputedStyle(ingredientPanel).display !== "none" && ingredientPanel.textContent.includes(expectedIngredients),
         pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth
       };
     }, expectedProduct.ingredients);
     expect(expanded, `${expectedProduct.id} pendiente expandida`).toEqual({
       insideViewport:true,overflow:[],outside:[],bodyOverflowY:"hidden",ingredientsVisible:true,pageOverflow:0
     });
-    await safety.locator("summary").click();
     await closeProductCard(page);
   }
 
