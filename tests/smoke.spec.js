@@ -5963,6 +5963,59 @@ test("el panel administrador permite entrar, editar y reflejar el catálogo en l
   await expect(ballerine.locator(".product-tag")).toHaveText("PROMOCIÓN DEL DÍA");
 });
 
+test("el panel permite editar u ocultar el peso y volumen de cada producto", async ({ page }) => {
+  await page.setViewportSize({ width:390, height:844 });
+  await page.goto("/admin/");
+  await page.getByRole("button", { name:"Entrar al panel" }).click();
+  await page.getByRole("button", { name:"Productos", exact:true }).click();
+  await page.locator('[data-product-id="agua-minalba-600"] [data-edit="agua-minalba-600"]').click();
+
+  const form = page.locator("#productForm");
+  const weightFieldset = form.locator(".weight-fieldset");
+  await expect(form.locator('[name="weightEnabled"]')).toBeChecked();
+  await expect(form.locator('[name="weightValue"]')).toHaveValue("355");
+  await expect(form.locator('[name="weightUnit"]')).toHaveValue("ml");
+  await expect(form.locator("[data-weight-fields]")).toBeVisible();
+  await expect(form.locator("[data-weight-custom]")).toBeHidden();
+  expect(await form.locator('[name="weightUnit"] option').evaluateAll(options => options.map(option => option.value))).toEqual(["mg","g","kg","ml","l","custom"]);
+
+  await form.locator('[name="weightValue"]').fill("1.5");
+  await form.locator('[name="weightUnit"]').selectOption("l");
+  await expect(form.locator("[data-weight-preview]")).toHaveText("Vista previa: 1,5 L");
+  expect(await weightFieldset.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await page.setViewportSize({ width:1280, height:900 });
+  expect(await weightFieldset.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await form.getByRole("button", { name:"Guardar producto" }).click();
+  await page.getByRole("button", { name:"Guardar cambios" }).click();
+
+  await page.goto("/");
+  await expect(page.locator('[data-product-id="agua-minalba-600"] .diet')).toHaveText("1,5 L");
+
+  await page.goto("/admin/");
+  await page.getByRole("button", { name:"Entrar al panel" }).click();
+  await page.getByRole("button", { name:"Productos", exact:true }).click();
+  await page.locator('[data-product-id="pistacho"] [data-edit="pistacho"]').click();
+  await expect(form.locator('[name="weightEnabled"]')).toBeChecked();
+  await expect(form.locator('[name="weightUnit"]')).toHaveValue("custom");
+  await expect(form.locator('[name="weightCustom"]')).toHaveValue("25 CM · 1 KG");
+  await form.getByRole("button", { name:"Cancelar" }).click();
+
+  await page.locator('[data-product-id="agua-minalba-600"] [data-edit="agua-minalba-600"]').click();
+  await form.locator('[name="weightEnabled"]').uncheck();
+  await expect(form.locator("[data-weight-fields]")).toBeHidden();
+  await expect(form.locator("[data-weight-preview]")).toHaveText("No se mostrará peso ni volumen en la tienda.");
+  await form.getByRole("button", { name:"Guardar producto" }).click();
+  await page.getByRole("button", { name:"Guardar cambios" }).click();
+
+  const storedWeight = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("fontana-admin-catalog-v1") || "{}");
+    return state.products?.find(product => product.id === "agua-minalba-600")?.weight;
+  });
+  expect(storedWeight).toBe("");
+  await page.goto("/");
+  await expect(page.locator('[data-product-id="agua-minalba-600"] .diet')).toHaveText("REFRIGERADA");
+});
+
 test("el panel administrador lista y conserva los 11 Bottega con precio, marca y categoría", async ({ page }) => {
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();

@@ -225,7 +225,17 @@
             <label class="switch"><input name="eggFree" type="checkbox"><span>Sin huevo</span></label>
           </div>
         </fieldset>
-        <label>Presentación o peso<input name="weight" placeholder="Ej. 1 KG"></label>
+        <fieldset class="wide weight-fieldset">
+          <legend>Peso o volumen</legend>
+          <label class="switch weight-toggle"><input name="weightEnabled" type="checkbox"><span>Mostrar la presentación de este producto</span></label>
+          <div class="product-weight-fields" data-weight-fields hidden>
+            <label>Cantidad<input name="weightValue" type="text" inputmode="decimal" autocomplete="off" placeholder="Ej. 400"></label>
+            <label>Unidad<select name="weightUnit"><option value="mg">mg</option><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">L (litros)</option><option value="custom">Presentación especial</option></select></label>
+            <label class="wide product-weight-custom" data-weight-custom hidden>Texto de presentación<input name="weightCustom" maxlength="80" placeholder="Ej. 25 CM · 1 KG o TORTA COMPLETA"></label>
+          </div>
+          <output class="product-weight-preview" data-weight-preview>No se mostrará peso ni volumen en la tienda.</output>
+          <small>Desactívalo cuando el producto no tenga un peso o volumen que deba mostrarse. Las presentaciones especiales ya publicadas se conservan.</small>
+        </fieldset>
         <label>Etiqueta de disponibilidad<input name="availabilityLabel" placeholder="Ej. Por encargo"></label>
         <label>Días hábiles mínimos<input name="minimumBusinessDays" type="number" min="0" step="1" value="0"></label>
         <label>Estado<select name="status"><option value="available">Disponible</option><option value="sold-out">Agotado</option></select></label>

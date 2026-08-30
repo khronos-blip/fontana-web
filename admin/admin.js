@@ -1491,13 +1491,64 @@
     }).filter(size => size.name && Number.isFinite(size.price));
   }
 
+  const productWeightUnitLabels = {mg:"MG",g:"G",kg:"KG",ml:"ML",l:"L"};
+
+  function parseProductWeight(value) {
+    const text = String(value || "").trim();
+    if (!text) return {enabled:false,value:"",unit:"g",custom:""};
+    const match = text.match(/^(\d+(?:[.,]\d+)?)\s*(mg|g|kg|ml|l|lt|litros?)$/i);
+    if (!match) return {enabled:true,value:"",unit:"custom",custom:text};
+    const unit = /^(?:l|lt|litros?)$/i.test(match[2]) ? "l" : match[2].toLowerCase();
+    return {enabled:true,value:match[1].replace(",","."),unit,custom:""};
+  }
+
+  function productWeightFromForm(form) {
+    if (!form.elements.weightEnabled.checked) return {value:""};
+    const unit = String(form.elements.weightUnit.value || "g");
+    if (unit === "custom") {
+      const custom = String(form.elements.weightCustom.value || "").trim();
+      return custom ? {value:custom} : {error:"Escribe la presentación especial que quieres mostrar."};
+    }
+    const rawValue = String(form.elements.weightValue.value || "").trim().replace(",",".");
+    if (!/^\d+(?:\.\d{1,3})?$/.test(rawValue)) return {error:"Indica una cantidad válida con hasta tres decimales."};
+    const amount = Number(rawValue);
+    if (!Number.isFinite(amount) || amount <= 0) return {error:"La cantidad del producto debe ser mayor que cero."};
+    const normalizedAmount = String(amount).replace(".",",");
+    return {value:`${normalizedAmount} ${productWeightUnitLabels[unit] || unit.toUpperCase()}`};
+  }
+
+  function syncProductWeightForm(form) {
+    const enabled = form.elements.weightEnabled.checked;
+    const custom = form.elements.weightUnit.value === "custom";
+    const fields = form.querySelector("[data-weight-fields]");
+    const customField = form.querySelector("[data-weight-custom]");
+    const preview = form.querySelector("[data-weight-preview]");
+    const fieldset = form.querySelector(".weight-fieldset");
+    fields.hidden = !enabled;
+    customField.hidden = !enabled || !custom;
+    form.elements.weightValue.disabled = !enabled || custom;
+    form.elements.weightCustom.disabled = !enabled || !custom;
+    fieldset.classList.toggle("is-disabled", !enabled);
+    if (!enabled) preview.textContent = "No se mostrará peso ni volumen en la tienda.";
+    else {
+      const result = productWeightFromForm(form);
+      preview.textContent = result.error ? "Completa la presentación para ver cómo aparecerá." : `Vista previa: ${result.value}`;
+    }
+  }
+
   function openProduct(id) {
     const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",brand:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:false,allowPreorder:false,requiresElectricity:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
     if (!product) return;
     const form = $("#productForm");
     $("#dialogTitle").textContent = id ? "Editar producto" : "Nuevo producto";
     form.elements.originalId.value = id || "";
-    ["id","name","brand","category","description","ingredients","weight","availabilityLabel","status","image"].forEach(field => { form.elements[field].value = product[field] ?? ""; });
+    ["id","name","brand","category","description","ingredients","availabilityLabel","status","image"].forEach(field => { form.elements[field].value = product[field] ?? ""; });
+    const weight = parseProductWeight(product.weight);
+    form.elements.weightEnabled.checked = weight.enabled;
+    form.elements.weightValue.value = weight.value;
+    form.elements.weightUnit.value = weight.unit;
+    form.elements.weightCustom.value = weight.custom;
+    syncProductWeightForm(form);
     form.elements.price.value = product.price ?? "";
     form.elements.minimumBusinessDays.value = product.minimumBusinessDays ?? 0;
     form.elements.stockQuantity.value = product.stockQuantity ?? "";
@@ -2027,8 +2078,10 @@
     const id = String(data.get("id")).trim();
     const duplicate = state.products.some(product => product.id === id && product.id !== originalId && !product.deleted);
     if (duplicate) return toast("Ya existe un producto con ese identificador");
+    const weight = productWeightFromForm(form);
+    if (weight.error) return toast(weight.error);
     const product = {
-      id,name:String(data.get("name")).trim(),brand:String(data.get("brand") || "").trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:String(data.get("weight")).trim(),availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
+      id,name:String(data.get("name")).trim(),brand:String(data.get("brand") || "").trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:weight.value,availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
     };
     const index = state.products.findIndex(item => item.id === originalId);
     if (index >= 0) state.products[index] = product; else state.products.push(product);
@@ -2037,6 +2090,12 @@
     $("#productDialog").close();
     toast("Producto listo para guardar");
   });
+
+  ["input","change"].forEach(eventName => $("#productForm").addEventListener(eventName, event => {
+    if (event.target.matches('[name="weightEnabled"],[name="weightValue"],[name="weightUnit"],[name="weightCustom"]')) {
+      syncProductWeightForm(event.currentTarget);
+    }
+  }));
 
   $("#productImageInput").addEventListener("change", async event => {
     try {
