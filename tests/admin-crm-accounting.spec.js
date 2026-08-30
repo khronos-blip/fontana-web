@@ -707,6 +707,129 @@ test("Admin conserva reintentos, rango, identidad, notas y versiones de mutació
   expect(saleVoidPosts[0]).toMatchObject({pathname:`/v1/admin/sales/${namedSale.id}/void`,body:{reason:"Venta duplicada detectada",expectedVersion:4}});
 });
 
+test("Admin distingue período de cierre y hace visible una anomalía contable", async ({page}) => {
+  const apiOrigin="http://fontana.localhost:8767";
+  const errors=[];
+  page.on("pageerror",error=>errors.push(error.message));
+  const summary={
+    from:"2026-08-01",to:"2026-08-31",functionalCurrency:"USD",
+    // Un saldo negativo sería una anomalía del libro. El panel debe mostrarlo
+    // tal cual para que la dueña pueda detectarlo, nunca convertirlo en cero.
+    receivableFunctionalCents:-123,
+    collectedFunctionalCents:5_000,
+    cashInflowFunctionalCents:5_000,
+    cashOutflowFunctionalCents:7_500,
+    netCashFunctionalCents:-2_500,
+    balancesAsOf:{
+      receivableFunctionalCents:-123,cashBalanceFunctionalCents:-2_500,
+      customerCreditFunctionalCents:0,recoverableFunctionalCents:2_500
+    },
+    period:{
+      incomeFunctionalCents:0,expenseFunctionalCents:0,netIncomeFunctionalCents:0,
+      collectedFunctionalCents:5_000,cashInflowFunctionalCents:5_000,
+      cashOutflowFunctionalCents:7_500,netCashFunctionalCents:-2_500
+    },
+    accounts:[],accountMovements:[],collectionsByCurrencyAndMethod:[],journalBalanced:true,unbalancedJournalCount:0
+  };
+  let failAccounting=false;
+  const fullAccountingError="No se pudo cargar el cierre contable completo: revisa la conexión y vuelve a intentar sin perder el período seleccionado.";
+  await page.route("https://api.fontanasingluten.com/v1/**",async route=>{
+    const request=route.request(),url=new URL(request.url()),pathname=url.pathname;
+    const headers={
+      "access-control-allow-origin":apiOrigin,"access-control-allow-credentials":"true",
+      "access-control-allow-methods":"GET, POST, PUT, OPTIONS","access-control-allow-headers":"content-type"
+    };
+    const fulfill=(payload,status=200)=>route.fulfill({status,headers,contentType:"application/json",body:JSON.stringify(payload)});
+    if(request.method()==="OPTIONS")return route.fulfill({status:204,headers});
+    if(pathname==="/v1/auth/login")return fulfill({ok:true,username:"fontana-test",displayName:"Fontana",role:"owner"});
+    if(pathname==="/v1/admin/catalog")return fulfill({state:null,revision:0});
+    if(pathname==="/v1/admin/operations")return fulfill({electricityEnabled:true,updatedAt:null,updatedBy:"fontana-test",affectedCount:0});
+    if(pathname==="/v1/admin/inventory")return fulfill({items:[],summary:{tracked:0,available:0,reserved:0,soldOut:0}});
+    if(pathname==="/v1/admin/orders")return fulfill({items:[],summary:{reserved:0,confirmed:0,expired:0}});
+    if(pathname==="/v1/admin/sales")return fulfill({items:[],summary:{todayFunctionalCents:0,monthFunctionalCents:0,yearFunctionalCents:0,allFunctionalCents:0,confirmedCount:0,pendingCount:0}});
+    if(pathname==="/v1/admin/customers")return fulfill({items:[],summary:{total:0,recurrent:0,newCustomers:0,withBalance:0}});
+    if(pathname==="/v1/admin/accounting/summary")return failAccounting?fulfill({error:fullAccountingError},500):fulfill(summary);
+    if(pathname==="/v1/admin/expenses")return fulfill({items:[{
+      id:"expense-ui-void",expenseDate:"2026-08-15",category:"Ingredientes e insumos",
+      description:"Gasto reclasificado sin devolución",currency:"USD",amountMinor:7_500,
+      amountScale:2,functionalAmountCents:7_500,method:"Efectivo",status:"voided",mutationVersion:1
+    }]});
+    if(pathname==="/v1/admin/activity")return fulfill({items:[]});
+    return fulfill({error:"not_found"},404);
+  });
+
+  await page.goto(`${apiOrigin}/admin/`);
+  await page.locator("#loginUsername").fill("fontana-test");
+  await page.locator("#loginPassword").fill("password-de-prueba");
+  await page.getByRole("button",{name:"Entrar al panel"}).click();
+  await page.getByRole("button",{name:"Contabilidad",exact:true}).click();
+  const range=page.locator("#accountingRangeForm");
+  await range.locator("[name=from]").fill("2026-08-01");
+  await range.locator("[name=to]").fill("2026-08-31");
+  await range.getByRole("button",{name:"Aplicar período"}).click();
+  await expect(page.locator("#accountingPeriodLabel")).toHaveText("Movimientos: 2026-08-01 al 2026-08-31 · Saldos acumulados al cierre: 2026-08-31");
+
+  const collections=page.locator('[data-accounting-metric="collections-period"]');
+  const outflow=page.locator('[data-accounting-metric="cash-outflow-period"]');
+  const netCash=page.locator('[data-accounting-metric="net-cash-period"]');
+  const receivable=page.locator('[data-accounting-metric="receivable-as-of"]');
+  await expect(collections).toHaveAttribute("data-accounting-scope","period");
+  await expect(outflow).toHaveAttribute("data-accounting-scope","period");
+  await expect(netCash).toHaveAttribute("data-accounting-scope","period");
+  await expect(receivable).toHaveAttribute("data-accounting-scope","as-of");
+  await expect(collections).toContainText("USD 50,00");
+  await expect(outflow).toContainText("USD 75,00");
+  await expect(netCash).toContainText("USD -25,00");
+  await expect(receivable).toContainText("USD -1,23");
+  await expect(receivable).not.toContainText("USD 0,00");
+  await expect(page.locator('[data-expense-id="expense-ui-void"]')).toContainText("Anulado");
+
+  for(const viewport of [{width:390,height:844},{width:1280,height:900}]){
+    await page.setViewportSize(viewport);
+    for(const metric of [collections,outflow,netCash,receivable]){
+      const geometry=await metric.evaluate(element=>{
+        const box=element.getBoundingClientRect();
+        return {
+          left:box.left,right:box.right,viewport:window.innerWidth,
+          clippedX:element.scrollWidth>element.clientWidth+1,
+          clippedY:element.scrollHeight>element.clientHeight+1
+        };
+      });
+      expect(geometry.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.right).toBeLessThanOrEqual(geometry.viewport+1);
+      expect(geometry.clippedX).toBe(false);
+      expect(geometry.clippedY).toBe(false);
+    }
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
+  }
+
+  await page.setViewportSize({width:390,height:844});
+  failAccounting=true;
+  await page.locator("#refreshAccountingButton").click();
+  const accountingError=page.locator("#accountingError");
+  await expect(accountingError).toBeVisible();
+  await expect(accountingError).toHaveAttribute("role","alert");
+  await expect(accountingError).toHaveText(`No se pudo cargar la contabilidad. ${fullAccountingError}`);
+  const errorGeometry=await accountingError.evaluate(element=>{
+    const box=element.getBoundingClientRect();
+    return {
+      left:box.left,right:box.right,viewport:window.innerWidth,
+      clippedX:element.scrollWidth>element.clientWidth+1,
+      clippedY:element.scrollHeight>element.clientHeight+1
+    };
+  });
+  expect(errorGeometry.left).toBeGreaterThanOrEqual(0);
+  expect(errorGeometry.right).toBeLessThanOrEqual(errorGeometry.viewport+1);
+  expect(errorGeometry.clippedX).toBe(false);
+  expect(errorGeometry.clippedY).toBe(false);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
+
+  failAccounting=false;
+  await page.locator("#refreshAccountingButton").click();
+  await expect(accountingError).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
 test("Worker+D1 confirma abonos, stock, BCV, FX, idempotencia y auditoría sin fugas", async () => {
   test.setTimeout(120_000);
   await withTemporaryWorker(async ({baseUrl,query,stop}) => {
@@ -1075,6 +1198,176 @@ test("Worker+D1 permite pendiente anónimo y exige identidad completa al primer 
     expect(query("SELECT COUNT(*) AS total FROM customers")).toEqual([{total:1}]);
     expect(query(`SELECT COUNT(*) AS total FROM audit_log WHERE entity_id='${saleId}' AND action='sale_payment'`)).toEqual([{total:1}]);
     expect(query(`SELECT COUNT(*) AS total,MAX(version) AS version FROM entity_mutation_claims WHERE entity_type='sale' AND entity_id='${saleId}'`)).toEqual([{total:1,version:1}]);
+    expect(query("SELECT je.id FROM journal_entries je JOIN journal_lines jl ON jl.journal_entry_id=je.id GROUP BY je.id HAVING SUM(jl.debit_functional_cents)<>SUM(jl.credit_functional_cents)")).toEqual([]);
+  });
+});
+
+test("Worker+D1 separa saldos al cierre de movimientos y conserva caja tras anular gasto", async () => {
+  test.setTimeout(120_000);
+  await withTemporaryWorker(async ({baseUrl,query,stop}) => {
+    let result=await apiJson(baseUrl,"/v1/setup",{
+      headers:{Authorization:"Bearer crm-integration-setup"},
+      body:{username:"owner-closing",password:"password-closing-12345",displayName:"Owner closing"}
+    });
+    expect(result.response.status,result.payload?.error).toBe(201);
+    result=await apiJson(baseUrl,"/v1/auth/login",{body:{username:"owner-closing",password:"password-closing-12345"}});
+    expect(result.response.status,result.payload?.error).toBe(200);
+    const cookie=String(result.response.headers.get("set-cookie")||"").split(";")[0];
+    const saleDate="2026-07-31",from="2026-08-01",to="2026-08-31";
+    const firstPaymentDate="2026-08-10",expenseDate="2026-08-15",voidDate="2026-08-20",overpaymentDate="2026-08-25";
+    const product={
+      id:"closing-cake",category:"cakes",name:"Torta de cierre",price:100,
+      image:"assets/ballerine-fontana-pro.jpg",description:"Prueba de corte contable",ingredients:"",
+      visible:true,status:"available",allowPreorder:false,requiresElectricity:false,sizes:[],variants:[]
+    };
+    result=await apiJson(baseUrl,"/v1/admin/catalog",{cookie,method:"PUT",body:{
+      state:{version:2,settings:{stockTodayOpen:true,productionWithElectricity:true},products:[product],builders:{}},
+      expectedRevision:0
+    }});
+    expect(result.response.status,result.payload?.error).toBe(200);
+    const sku="product:closing-cake:base:base";
+    result=await apiJson(baseUrl,`/v1/admin/inventory/${encodeURIComponent(sku)}`,{
+      cookie,method:"PUT",body:{onHand:5,trackStock:true,note:"Stock para corte contable"}
+    });
+    expect(result.response.status,result.payload?.error).toBe(200);
+
+    result=await apiJson(baseUrl,"/v1/admin/sales",{cookie,body:{
+      idempotencyKey:"closing-sale-before-period-01",soldAt:saleDate,channel:"Presencial",
+      customer:{name:"Cliente de cierre",phone:"0412 888 9900"},referenceCurrency:"USD",
+      items:[{
+        productId:product.id,sku,quantity:1,unitPriceCents:10_000,
+        inventoryUnits:[{sku,quantity:1}],imageUrl:product.image
+      }],
+      payments:[{currency:"USD",amountMinor:2_000,amountScale:2,method:"Efectivo",paymentDate:saleDate}]
+    }});
+    expect(result.response.status,result.payload?.error).toBe(201);
+    expect(result.payload).toMatchObject({status:"confirmed",paymentStatus:"partial",balanceCents:8_000});
+    const saleId=result.payload.saleId;
+
+    const readSummary=async ()=>{
+      const response=await apiJson(baseUrl,`/v1/admin/accounting/summary?from=${from}&to=${to}`,{cookie});
+      expect(response.response.status,response.payload?.error).toBe(200);
+      expect(response.payload).toMatchObject({from,to,functionalCurrency:"USD",journalBalanced:true,unbalancedJournalCount:0});
+      return response.payload;
+    };
+    const closingAccount=(summary,id)=>summary.accounts.find(account=>account.id===id);
+    const periodAccount=(summary,id)=>summary.accountMovements.find(account=>account.id===id);
+
+    // La venta es anterior a `from`, por tanto no es ingreso ni cobro del
+    // período, pero su saldo pendiente sí existe al cierre `to`.
+    let summary=await readSummary();
+    expect(summary.balancesAsOf).toMatchObject({
+      receivableFunctionalCents:8_000,cashBalanceFunctionalCents:2_000,
+      customerCreditFunctionalCents:0,recoverableFunctionalCents:0
+    });
+    expect(summary.period).toMatchObject({
+      incomeFunctionalCents:0,expenseFunctionalCents:0,netIncomeFunctionalCents:0,
+      collectedFunctionalCents:0,cashInflowFunctionalCents:0,cashOutflowFunctionalCents:0,netCashFunctionalCents:0
+    });
+    expect(summary.receivableFunctionalCents).toBe(8_000);
+    expect(closingAccount(summary,"asset-receivable-usd").balanceFunctionalCents).toBe(8_000);
+    expect(periodAccount(summary,"asset-receivable-usd").movementFunctionalCents).toBe(0);
+
+    const saleVersion=async ()=>{
+      const listed=await apiJson(baseUrl,"/v1/admin/sales",{cookie});
+      expect(listed.response.status,listed.payload?.error).toBe(200);
+      const saved=listed.payload.items.find(sale=>sale.id===saleId);
+      expect(saved).toBeTruthy();
+      return saved.mutationVersion;
+    };
+    result=await apiJson(baseUrl,`/v1/admin/sales/${saleId}/payments`,{cookie,body:{
+      idempotencyKey:"closing-payment-in-period-01",paymentDate:firstPaymentDate,expectedVersion:await saleVersion(),
+      payments:[{currency:"USD",amountMinor:5_000,amountScale:2,method:"Efectivo"}]
+    }});
+    expect(result.response.status,result.payload?.error).toBe(201);
+    expect(result.payload).toMatchObject({paymentStatus:"partial",balanceCents:3_000,customerCreditFunctionalCents:0});
+
+    summary=await readSummary();
+    expect(summary.balancesAsOf).toMatchObject({
+      receivableFunctionalCents:3_000,cashBalanceFunctionalCents:7_000,
+      customerCreditFunctionalCents:0,recoverableFunctionalCents:0
+    });
+    expect(summary.period).toMatchObject({
+      incomeFunctionalCents:0,expenseFunctionalCents:0,netIncomeFunctionalCents:0,
+      collectedFunctionalCents:5_000,cashInflowFunctionalCents:5_000,cashOutflowFunctionalCents:0,netCashFunctionalCents:5_000
+    });
+    expect(summary.receivableFunctionalCents).toBe(3_000);
+    expect(closingAccount(summary,"asset-receivable-usd").balanceFunctionalCents).toBe(3_000);
+    expect(periodAccount(summary,"asset-receivable-usd").movementFunctionalCents).toBe(-5_000);
+
+    result=await apiJson(baseUrl,"/v1/admin/expenses",{cookie,body:{
+      idempotencyKey:"closing-expense-in-period-01",expenseDate,category:"Ingredientes e insumos",
+      description:"Gasto pagado que luego se reclasifica",currency:"USD",amountMinor:2_500,amountScale:2,
+      method:"Efectivo",referenceCurrency:"USD",reference:"EXP-CLOSING"
+    }});
+    expect(result.response.status,result.payload?.error).toBe(201);
+    const expenseId=result.payload.expenseId;
+    summary=await readSummary();
+    expect(summary.period).toMatchObject({
+      expenseFunctionalCents:2_500,netIncomeFunctionalCents:-2_500,
+      collectedFunctionalCents:5_000,cashInflowFunctionalCents:5_000,cashOutflowFunctionalCents:2_500,netCashFunctionalCents:2_500
+    });
+    expect(summary.balancesAsOf.cashBalanceFunctionalCents).toBe(4_500);
+
+    const expenseList=await apiJson(baseUrl,`/v1/admin/expenses?from=${from}&to=${to}`,{cookie});
+    expect(expenseList.response.status,expenseList.payload?.error).toBe(200);
+    const expenseVersion=expenseList.payload.items.find(expense=>expense.id===expenseId)?.mutationVersion;
+    expect(expenseVersion).toBe(0);
+    result=await apiJson(baseUrl,`/v1/admin/expenses/${expenseId}/void`,{cookie,body:{
+      reason:"Proveedor no entregó; queda cuenta por recuperar",voidDate,expectedVersion:expenseVersion
+    }});
+    expect(result.response.status,result.payload?.error).toBe(200);
+    expect(result.payload).toMatchObject({status:"voided",refundRecorded:false,reclassifiedAsRecoverableFunctionalCents:2_500});
+
+    summary=await readSummary();
+    expect(summary.period).toMatchObject({
+      expenseFunctionalCents:0,netIncomeFunctionalCents:0,
+      collectedFunctionalCents:5_000,cashInflowFunctionalCents:5_000,cashOutflowFunctionalCents:2_500,netCashFunctionalCents:2_500
+    });
+    expect(summary.balancesAsOf).toMatchObject({
+      receivableFunctionalCents:3_000,cashBalanceFunctionalCents:4_500,
+      customerCreditFunctionalCents:0,recoverableFunctionalCents:2_500
+    });
+    expect(closingAccount(summary,"asset-cash-usd").balanceFunctionalCents).toBe(4_500);
+    expect(closingAccount(summary,"asset-recoverable-usd").balanceFunctionalCents).toBe(2_500);
+    expect(periodAccount(summary,"expense-operating-usd").movementFunctionalCents).toBe(0);
+    expect(periodAccount(summary,"asset-recoverable-usd").movementFunctionalCents).toBe(2_500);
+
+    // El segundo cobro supera el saldo por USD 10. El A/R cierra exactamente
+    // en cero y la diferencia se registra como crédito, nunca A/R negativo.
+    result=await apiJson(baseUrl,`/v1/admin/sales/${saleId}/payments`,{cookie,body:{
+      idempotencyKey:"closing-overpayment-in-period-01",paymentDate:overpaymentDate,expectedVersion:await saleVersion(),
+      payments:[{currency:"USD",amountMinor:4_000,amountScale:2,method:"Efectivo"}]
+    }});
+    expect(result.response.status,result.payload?.error).toBe(201);
+    expect(result.payload).toMatchObject({paymentStatus:"paid",balanceCents:0,overpaymentCents:1_000,customerCreditFunctionalCents:1_000});
+
+    summary=await readSummary();
+    expect(summary.receivableFunctionalCents).toBe(0);
+    expect(summary.customerCreditFunctionalCents).toBe(1_000);
+    expect(summary.balancesAsOf).toMatchObject({
+      receivableFunctionalCents:0,cashBalanceFunctionalCents:8_500,
+      customerCreditFunctionalCents:1_000,recoverableFunctionalCents:2_500
+    });
+    expect(summary.period).toMatchObject({
+      incomeFunctionalCents:0,expenseFunctionalCents:0,netIncomeFunctionalCents:0,
+      collectedFunctionalCents:9_000,cashInflowFunctionalCents:9_000,cashOutflowFunctionalCents:2_500,netCashFunctionalCents:6_500
+    });
+    expect(closingAccount(summary,"asset-receivable-usd").balanceFunctionalCents).toBe(0);
+    expect(closingAccount(summary,"liability-customer-credit-usd").balanceFunctionalCents).toBe(-1_000);
+    expect(periodAccount(summary,"asset-receivable-usd").movementFunctionalCents).toBe(-8_000);
+    expect(summary.netFunctionalCents).toBe(summary.period.netIncomeFunctionalCents);
+
+    await stop();
+
+    expect(query(`SELECT on_hand AS onHand,reserved FROM inventory_items WHERE sku='${sku}'`)).toEqual([{onHand:4,reserved:0}]);
+    expect(query(`SELECT COUNT(*) AS total FROM inventory_movements WHERE sale_id='${saleId}' AND movement_type='sale'`)).toEqual([{total:1}]);
+    expect(query(`SELECT COUNT(*) AS total FROM payments WHERE sale_id='${saleId}' AND status='confirmed'`)).toEqual([{total:3}]);
+    expect(query(`SELECT status,voided_at AS voidedAt FROM expenses WHERE id='${expenseId}'`)[0]).toMatchObject({status:"voided"});
+    expect(query(`SELECT entry_date AS entryDate,source_type AS sourceType FROM journal_entries WHERE source_id='${expenseId}' ORDER BY entry_date,source_type`)).toEqual([
+      {entryDate:expenseDate,sourceType:"expense"},
+      {entryDate:voidDate,sourceType:"reversal"}
+    ]);
     expect(query("SELECT je.id FROM journal_entries je JOIN journal_lines jl ON jl.journal_entry_id=je.id GROUP BY je.id HAVING SUM(jl.debit_functional_cents)<>SUM(jl.credit_functional_cents)")).toEqual([]);
   });
 });

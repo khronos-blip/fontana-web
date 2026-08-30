@@ -160,6 +160,37 @@ export function derivePaymentStatus(totalRefCents, paidRefCents) {
   return { status: "paid", balanceRefCents: 0, overpaymentRefCents: paid - total };
 }
 
+export function deriveAccountingAggregates({closingAccounts=[],periodAccounts=[],liquidAccountIds=[]}={}) {
+  const liquid=new Set(liquidAccountIds);
+  const closingById=new Map(closingAccounts.map(account=>[account.id,account]));
+  const debit=row=>Number(row?.debitFunctionalCents||0);
+  const credit=row=>Number(row?.creditFunctionalCents||0);
+  const debitBalance=row=>debit(row)-credit(row);
+  const periodIncome=periodAccounts.filter(account=>account.accountType==="income").reduce((sum,account)=>sum+credit(account)-debit(account),0);
+  const periodExpense=periodAccounts.filter(account=>account.accountType==="expense").reduce((sum,account)=>sum+debit(account)-credit(account),0);
+  const liquidPeriod=periodAccounts.filter(account=>liquid.has(account.id));
+  const cashInflowFunctionalCents=liquidPeriod.reduce((sum,account)=>sum+debit(account),0);
+  const cashOutflowFunctionalCents=liquidPeriod.reduce((sum,account)=>sum+credit(account),0);
+  const cashBalanceFunctionalCents=closingAccounts.filter(account=>liquid.has(account.id)).reduce((sum,account)=>sum+debitBalance(account),0);
+  const receivableFunctionalCents=debitBalance(closingById.get("asset-receivable-usd"));
+  const recoverableFunctionalCents=debitBalance(closingById.get("asset-recoverable-usd"));
+  const customerCreditRow=closingById.get("liability-customer-credit-usd");
+  const customerCreditFunctionalCents=credit(customerCreditRow)-debit(customerCreditRow);
+  return {
+    incomeFunctionalCents:periodIncome,
+    expenseFunctionalCents:periodExpense,
+    netIncomeFunctionalCents:periodIncome-periodExpense,
+    cashInflowFunctionalCents,
+    cashOutflowFunctionalCents,
+    netCashFunctionalCents:cashInflowFunctionalCents-cashOutflowFunctionalCents,
+    cashBalanceFunctionalCents,
+    receivableFunctionalCents,
+    receivableMovementFunctionalCents:debitBalance(periodAccounts.find(account=>account.id==="asset-receivable-usd")),
+    recoverableFunctionalCents,
+    customerCreditFunctionalCents
+  };
+}
+
 export function deriveSettlementAllocation({
   saleTotalReferenceCents,
   saleFunctionalTotalCents,

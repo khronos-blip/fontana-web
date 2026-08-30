@@ -199,7 +199,7 @@
   let customerSummary = {total:0,recurrent:0,newCustomers:0,withBalance:0};
   const customerDetails = new Map();
   let expenses = [];
-  let accountingSummary = {collectedFunctionalCents:0,receivableFunctionalCents:0,expenseFunctionalCents:0,netCashFunctionalCents:0,paymentsByCurrency:[],paymentsByMethod:[]};
+  let accountingSummary = {collectedFunctionalCents:0,receivableFunctionalCents:0,cashInflowFunctionalCents:0,cashOutflowFunctionalCents:0,netCashFunctionalCents:0,expenseFunctionalCents:0,paymentsByCurrency:[],paymentsByMethod:[]};
   let accountingRange = {from:"",to:""};
   let paymentCatalogSelection = new Map();
   let paymentDialogMode = "manual";
@@ -1259,19 +1259,39 @@
   }
 
   function calculatedAccounting(range=accountingRange.from?accountingRange:defaultAccountingRange()) {
-    const confirmed = sales.filter(isCommittedSale);
-    const periodSales=confirmed.filter(sale=>dateInRange(sale.soldAt||sale.sold_at,range));
-    const periodPayments=[];
-    confirmed.forEach(sale=>{
-      const payments=Array.isArray(sale.payments)&&sale.payments.length?sale.payments:[{currency:sale.currency||"USD",method:sale.paymentMethod||"Sin detalle",amountMinor:sale.totalRefCents??sale.totalCents,amountScale:2,functionalAmountCents:saleFunctionalPaidCents(sale),paymentDate:sale.soldAt||sale.sold_at}];
-      payments.filter(isActivePayment).filter(payment=>dateInRange(payment.paymentDate||payment.payment_date||payment.confirmedAt||payment.confirmed_at||sale.soldAt||sale.sold_at,range)).forEach(payment=>periodPayments.push(payment));
-    });
     const paymentFunctionalCents=payment=>Number(payment.functionalAmountCents??payment.functional_amount_cents??((payment.currency||"USD")==="USD"?(payment.amountMinor??payment.amount_minor??0):0));
+    const expenseFunctionalAmount=expense=>Number(expense.functionalAmountCents??expense.functional_amount_cents??((expense.currency||"USD")==="USD"?(expense.amountMinor??expense.amount_minor??0):0));
+    const voidDate=record=>String(record.voidDate||record.void_date||record.voidedAt||record.voided_at||"").slice(0,10);
+    const voidedBy=(record,to)=>isVoidedStatus(record.status)&&(!voidDate(record)||!to||voidDate(record)<=to);
+    const paymentDate=(payment,sale)=>payment.paymentDate||payment.payment_date||payment.confirmedAt||payment.confirmed_at||sale.soldAt||sale.sold_at;
+    const paymentsForSale=sale=>Array.isArray(sale.payments)&&sale.payments.length?sale.payments:[{currency:sale.currency||"USD",method:sale.paymentMethod||"Sin detalle",amountMinor:sale.totalRefCents??sale.totalCents,amountScale:2,functionalAmountCents:saleFunctionalPaidCents(sale),paymentDate:sale.soldAt||sale.sold_at}];
+    const ledgerSales=sales.filter(sale=>isCommittedSale(sale)||(isVoidedStatus(sale.status)&&paymentsForSale(sale).some(payment=>isActivePayment(payment)&&paymentFunctionalCents(payment)!==0)));
+    const periodPayments=[];
+    ledgerSales.forEach(sale=>paymentsForSale(sale).filter(isActivePayment).filter(payment=>dateInRange(paymentDate(payment,sale),range)).forEach(payment=>periodPayments.push(payment)));
     const collectedFunctionalCents = periodPayments.reduce((sum,payment)=>sum+paymentFunctionalCents(payment),0);
-    const soldFunctionalCents = periodSales.reduce((sum,sale)=>sum+saleFunctionalCents(sale),0);
-    const receivableFunctionalCents = Math.max(0,soldFunctionalCents-collectedFunctionalCents);
-    const activeExpenses = expenses.filter(expense=>!isVoidedStatus(expense.status)&&dateInRange(expense.expenseDate||expense.expense_date||expense.spentAt,range));
-    const expenseFunctionalCents = activeExpenses.reduce((sum,expense)=>sum+Number(expense.functionalAmountCents??expense.functional_amount_cents??(expense.currency==="USD"?expense.amountMinor:0)??0),0);
+    const cashInflowFunctionalCents=collectedFunctionalCents;
+    let incomeFunctionalCents=0,receivableFunctionalCents=0,customerCreditFunctionalCents=0;
+    ledgerSales.forEach(sale=>{
+      const soldAt=sale.soldAt||sale.sold_at;
+      const saleTotal=saleFunctionalCents(sale);
+      if(dateInRange(soldAt,range))incomeFunctionalCents+=saleTotal;
+      if(isVoidedStatus(sale.status)&&dateInRange(voidDate(sale),range))incomeFunctionalCents-=saleTotal;
+      if(!soldAt||range.to&&String(soldAt).slice(0,10)>range.to)return;
+      const paidAsOf=paymentsForSale(sale).filter(isActivePayment).filter(payment=>!range.to||String(paymentDate(payment,sale)||"").slice(0,10)<=range.to).reduce((sum,payment)=>sum+paymentFunctionalCents(payment),0);
+      if(voidedBy(sale,range.to)){customerCreditFunctionalCents+=paidAsOf;return;}
+      const balance=saleTotal-paidAsOf;
+      if(balance>=0)receivableFunctionalCents+=balance;else customerCreditFunctionalCents-=balance;
+    });
+    let expenseFunctionalCents=0;
+    expenses.forEach(expense=>{
+      const amount=expenseFunctionalAmount(expense),spentAt=expense.expenseDate||expense.expense_date||expense.spentAt;
+      if(dateInRange(spentAt,range))expenseFunctionalCents+=amount;
+      if(isVoidedStatus(expense.status)&&dateInRange(voidDate(expense),range))expenseFunctionalCents-=amount;
+    });
+    const cashOutflowFunctionalCents=expenses.filter(expense=>dateInRange(expense.expenseDate||expense.expense_date||expense.spentAt,range)).reduce((sum,expense)=>sum+expenseFunctionalAmount(expense),0);
+    const cashPaymentsAsOf=ledgerSales.flatMap(sale=>paymentsForSale(sale).filter(isActivePayment).map(payment=>({payment,sale}))).filter(({payment,sale})=>!range.to||String(paymentDate(payment,sale)||"").slice(0,10)<=range.to).reduce((sum,{payment})=>sum+paymentFunctionalCents(payment),0);
+    const cashExpensesAsOf=expenses.filter(expense=>!range.to||String(expense.expenseDate||expense.expense_date||expense.spentAt||"").slice(0,10)<=range.to).reduce((sum,expense)=>sum+expenseFunctionalAmount(expense),0);
+    const recoverableFunctionalCents=expenses.filter(expense=>voidedBy(expense,range.to)).reduce((sum,expense)=>sum+expenseFunctionalAmount(expense),0);
     const byCurrency = new Map();
     const byMethod = new Map();
     periodPayments.forEach(payment=>{
@@ -1280,11 +1300,12 @@
       const current=byCurrency.get(currency)||{currency,amountMinor:0,amountScale};current.amountMinor+=amountMinor;byCurrency.set(currency,current);
       byMethod.set(method,(byMethod.get(method)||0)+paymentFunctionalCents(payment));
     });
-    return {from:range.from,to:range.to,collectedFunctionalCents,receivableFunctionalCents,expenseFunctionalCents,netCashFunctionalCents:collectedFunctionalCents-expenseFunctionalCents,paymentsByCurrency:[...byCurrency.values()],paymentsByMethod:[...byMethod].map(([method,functionalAmountCents])=>({method,functionalAmountCents}))};
+    return {from:range.from,to:range.to,collectedFunctionalCents,cashInflowFunctionalCents,cashOutflowFunctionalCents,netCashFunctionalCents:cashInflowFunctionalCents-cashOutflowFunctionalCents,cashBalanceFunctionalCents:cashPaymentsAsOf-cashExpensesAsOf,receivableFunctionalCents,customerCreditFunctionalCents,recoverableFunctionalCents,incomeFunctionalCents,expenseFunctionalCents,netIncomeFunctionalCents:incomeFunctionalCents-expenseFunctionalCents,paymentsByCurrency:[...byCurrency.values()],paymentsByMethod:[...byMethod].map(([method,functionalAmountCents])=>({method,functionalAmountCents}))};
   }
 
   function normalizeAccountingSummary(payload) {
-    const fallback=calculatedAccounting(),source=payload?.summary||payload||{};
+    const fallback=calculatedAccounting(),source=payload?.summary||payload||{},period=source.period||{},balancesAsOf=source.balancesAsOf||{};
+    const numeric=(...values)=>{for(const value of values){if(value===null||value===undefined||value==="")continue;const parsed=Number(value);if(Number.isFinite(parsed))return parsed;}return 0;};
     const hasCollectionRows=Array.isArray(source.collectionsByCurrencyAndMethod),collectionRows=hasCollectionRows?source.collectionsByCurrencyAndMethod:[];
     const currencyMap=new Map(),methodMap=new Map();
     collectionRows.forEach(row=>{
@@ -1292,14 +1313,26 @@
       const current=currencyMap.get(currency)||{currency,amountMinor:0,amountScale};current.amountMinor+=amountMinor;currencyMap.set(currency,current);
       methodMap.set(method,(methodMap.get(method)||0)+functional);
     });
-    const collectedFunctionalCents=Number(source.collectedFunctionalCents??(hasCollectionRows?collectionRows.reduce((sum,row)=>sum+Number(row.functionalAmountCents??row.functional_amount_cents??0),0):fallback.collectedFunctionalCents));
+    const collectedFunctionalCents=numeric(source.collectedFunctionalCents,period.collectedFunctionalCents,hasCollectionRows?collectionRows.reduce((sum,row)=>sum+Number(row.functionalAmountCents??row.functional_amount_cents??0),0):undefined,fallback.collectedFunctionalCents);
     const receivableAccount=(source.accounts||[]).find(account=>account.id==="asset-receivable-usd"||account.code==="1100");
-    const receivableFunctionalCents=Math.max(0,Number(source.receivableFunctionalCents??receivableAccount?.balanceFunctionalCents??fallback.receivableFunctionalCents));
-    const expenseFunctionalCents=Number(source.expenseFunctionalCents??fallback.expenseFunctionalCents);
-    return {...fallback,...source,collectedFunctionalCents,receivableFunctionalCents,expenseFunctionalCents,netCashFunctionalCents:collectedFunctionalCents-expenseFunctionalCents,paymentsByCurrency:hasCollectionRows?[...currencyMap.values()]:fallback.paymentsByCurrency,paymentsByMethod:hasCollectionRows?[...methodMap].map(([method,functionalAmountCents])=>({method,functionalAmountCents})):fallback.paymentsByMethod};
+    const receivableFunctionalCents=numeric(source.receivableFunctionalCents,balancesAsOf.receivableFunctionalCents,receivableAccount?.balanceFunctionalCents,fallback.receivableFunctionalCents);
+    const cashInflowFunctionalCents=numeric(source.cashInflowFunctionalCents,period.cashInflowFunctionalCents,fallback.cashInflowFunctionalCents);
+    const cashOutflowFunctionalCents=numeric(source.cashOutflowFunctionalCents,period.cashOutflowFunctionalCents,fallback.cashOutflowFunctionalCents);
+    const netCashFunctionalCents=numeric(source.netCashFunctionalCents,period.netCashFunctionalCents,fallback.netCashFunctionalCents);
+    const incomeFunctionalCents=numeric(source.incomeFunctionalCents,period.incomeFunctionalCents,fallback.incomeFunctionalCents);
+    const expenseFunctionalCents=numeric(source.expenseFunctionalCents,period.expenseFunctionalCents,fallback.expenseFunctionalCents);
+    const netIncomeFunctionalCents=numeric(source.netIncomeFunctionalCents,source.netFunctionalCents,period.netIncomeFunctionalCents,period.netFunctionalCents,fallback.netIncomeFunctionalCents);
+    const cashBalanceFunctionalCents=numeric(source.cashBalanceFunctionalCents,balancesAsOf.cashBalanceFunctionalCents,fallback.cashBalanceFunctionalCents);
+    const customerCreditFunctionalCents=numeric(source.customerCreditFunctionalCents,balancesAsOf.customerCreditFunctionalCents,fallback.customerCreditFunctionalCents);
+    const recoverableFunctionalCents=numeric(source.recoverableFunctionalCents,balancesAsOf.recoverableFunctionalCents,fallback.recoverableFunctionalCents);
+    const paymentsByCurrency=Array.isArray(source.paymentsByCurrency)?source.paymentsByCurrency:hasCollectionRows?[...currencyMap.values()]:fallback.paymentsByCurrency;
+    const paymentsByMethod=Array.isArray(source.paymentsByMethod)?source.paymentsByMethod:hasCollectionRows?[...methodMap].map(([method,functionalAmountCents])=>({method,functionalAmountCents})):fallback.paymentsByMethod;
+    return {...fallback,...source,from:source.from??period.from??fallback.from,to:source.to??period.to??fallback.to,collectedFunctionalCents,receivableFunctionalCents,cashInflowFunctionalCents,cashOutflowFunctionalCents,netCashFunctionalCents,cashBalanceFunctionalCents,customerCreditFunctionalCents,recoverableFunctionalCents,incomeFunctionalCents,expenseFunctionalCents,netIncomeFunctionalCents,paymentsByCurrency,paymentsByMethod};
   }
 
   async function loadAccounting() {
+    const errorBox=$("#accountingError");
+    if(errorBox){errorBox.hidden=true;errorBox.textContent="";}
     try {
       if(!accountingRange.from||!accountingRange.to)accountingRange=defaultAccountingRange();
       const rangeForm=$("#accountingRangeForm");
@@ -1315,7 +1348,9 @@
       }
       renderAccounting();
     } catch (error) {
-      if (error.status===401) showLogin("Tu sesión venció."); else toast("No se pudo cargar la contabilidad.");
+      const message=error.status===401?"Tu sesión venció.":`No se pudo cargar la contabilidad. ${error.message||"Intenta nuevamente."}`;
+      if(errorBox){errorBox.textContent=message;errorBox.hidden=false;}
+      if (error.status===401) showLogin(message); else toast(message);
     }
   }
 
@@ -1323,9 +1358,14 @@
     if (!$("#accountingStats")) return;
     const summary={...calculatedAccounting(),...accountingSummary};
     const from=summary.from||accountingRange.from,to=summary.to||accountingRange.to;
-    $("#accountingPeriodLabel").textContent=`Período: ${from} al ${to}`;
-    const collected=Number(summary.collectedFunctionalCents??0),receivable=Number(summary.receivableFunctionalCents??0),expense=Number(summary.expenseFunctionalCents??0),net=Number(summary.netCashFunctionalCents??(collected-expense));
-    $("#accountingStats").innerHTML=[[collected,"Cobros reales · USD funcional"],[receivable,"Por cobrar · USD funcional"],[expense,"Gastos · USD funcional"],[net,"Flujo neto · USD funcional"]].map(([value,label])=>`<article class="stat"><b>${escapeHtml(functionalMoney(value))}</b><span>${escapeHtml(label)}</span></article>`).join("");
+    $("#accountingPeriodLabel").textContent=`Movimientos: ${from} al ${to} · Saldos acumulados al cierre: ${to}`;
+    const cards=[
+      {metric:"collections-period",scope:"period",value:Number(summary.collectedFunctionalCents??0),label:"Cobros de clientes · período · USD funcional"},
+      {metric:"cash-outflow-period",scope:"period",value:Number(summary.cashOutflowFunctionalCents??0),label:"Salidas reales de caja · período · USD funcional"},
+      {metric:"net-cash-period",scope:"period",value:Number(summary.netCashFunctionalCents??0),label:"Flujo neto de caja · período · USD funcional"},
+      {metric:"receivable-as-of",scope:"as-of",value:Number(summary.receivableFunctionalCents??0),label:`Saldo por cobrar · al cierre ${to} · USD funcional`}
+    ];
+    $("#accountingStats").innerHTML=cards.map(card=>`<article class="stat accounting-stat" data-accounting-metric="${card.metric}" data-accounting-scope="${card.scope}"><b>${escapeHtml(functionalMoney(card.value))}</b><span>${escapeHtml(card.label)}</span></article>`).join("");
     const currencyRows=summary.paymentsByCurrency||summary.byCurrency||[];
     const methodRows=summary.paymentsByMethod||summary.byMethod||[];
     const breakdown=[...currencyRows.map(row=>({label:`Cobrado en ${row.currency}`,detail:"Monto nominal recibido",amount:`${row.currency}\u00a0${formatMinorAmount(row.amountMinor??row.amount_minor,row.amountScale??row.amount_scale??2)}`})),...methodRows.map(row=>({label:row.method||row.paymentMethod,detail:"Equivalente funcional guardado",amount:functionalMoney(row.functionalAmountCents??row.functional_amount_cents??0)}))];

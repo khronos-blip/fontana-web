@@ -143,13 +143,14 @@
 
         <section class="view" data-panel="accounting">
           <div class="page-head"><div><span class="eyebrow">Control operativo</span><h1>Contabilidad</h1><p>Consulta cobros, cuentas pendientes y gastos usando la tasa histórica guardada en cada movimiento.</p></div><button class="primary" id="newExpenseButton" type="button">+ Registrar gasto</button></div>
-          <div class="accounting-notice" role="note"><b>Registro administrativo</b><span>Estos movimientos ayudan a conciliar Fontana; los cierres fiscales e impuestos deben validarse con el contador.</span></div>
+          <div class="accounting-notice" role="note"><b>Período y cierre</b><span>Las entradas, salidas y el flujo muestran movimientos entre las fechas elegidas. El saldo por cobrar acumula todo hasta la fecha de cierre. Anular un gasto no registra que el dinero regresó; los cierres fiscales deben validarse con el contador.</span></div>
           <form id="accountingRangeForm" class="accounting-range" aria-label="Período contable">
             <label>Desde<input name="from" type="date" required></label>
             <label>Hasta<input name="to" type="date" required></label>
             <button class="ghost compact" type="submit">Aplicar período</button>
             <output id="accountingPeriodLabel" aria-live="polite"></output>
           </form>
+          <div id="accountingError" class="accounting-error" role="alert" aria-live="assertive" hidden></div>
           <div class="stats accounting-stats" id="accountingStats"></div>
           <div class="accounting-grid">
             <article class="panel"><div class="panel-head"><div><span class="eyebrow">Cobros reales</span><h2>Por moneda y método</h2></div></div><div id="paymentBreakdown" class="breakdown-list"></div></article>

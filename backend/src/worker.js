@@ -12,6 +12,7 @@ import {
   SUPPORTED_REFERENCE_CURRENCIES,
   canonicalJson,
   caracasDate,
+  deriveAccountingAggregates,
   derivePaymentStatus,
   deriveSettlementAllocation,
   functionalUsdCentsForPayment,
@@ -44,6 +45,10 @@ const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const RESERVATION_TTL_SECONDS = 30 * 60;
 const MAX_ORDER_ITEMS = 40;
 const MAX_ITEM_QUANTITY = 100;
+const LIQUID_ACCOUNT_IDS = [
+  "asset-cash-ves","asset-cash-usd","asset-cash-eur",
+  "asset-bank-ves","asset-bank-usd","asset-bank-eur","asset-digital-usd"
+];
 
 const encoder = new TextEncoder();
 
@@ -1830,23 +1835,25 @@ async function voidSale(request,env,url) {
   const saleId=url.pathname.split("/").filter(Boolean)[3]||"";
   const body=await request.json().catch(()=>({}));
   const reason=cleanText(body.reason,500);
-  if(!/^[a-f0-9-]{36}$/.test(saleId)||reason.length<8)return json({error:"Venta o motivo de anulación inválido."},400);
+  const voidDate=cleanText(body.voidDate||caracasDate(),10);
+  if(!/^[a-f0-9-]{36}$/.test(saleId)||reason.length<8||!isIsoDate(voidDate))return json({error:"Venta, fecha o motivo de anulación inválido."},400);
   const guard=await prepareMutationGuard(env,"sale",saleId,body.expectedVersion);
   if(guard.error)return guard.error;
   const sale=await env.DB.prepare("SELECT id,status,sold_at AS soldAt,total_cents AS totalCents,functional_total_cents AS functionalTotalCents,order_id AS orderId FROM sales WHERE id=?").bind(saleId).first();
   if(!sale)return json({error:"Venta no encontrada"},404);
   if(sale.status==="cancelled")return json({error:"La venta ya está anulada."},409);
+  if(voidDate<sale.soldAt)return json({error:"La fecha de anulación no puede ser anterior a la venta."},400);
   const now=new Date().toISOString(),statements=[mutationClaimStatement(env,guard,"sale_void",body.idempotencyKey||"",session.username,now)];
   const saleEntries=await env.DB.prepare("SELECT id FROM journal_entries WHERE source_type='sale' AND source_id=? AND status='posted'").bind(saleId).all();
   for(const entry of saleEntries.results||[]){
     const lines=await env.DB.prepare("SELECT account_id AS accountId,debit_functional_cents AS debit,credit_functional_cents AS credit,original_currency AS originalCurrency,original_amount_minor AS originalAmountMinor,original_amount_scale AS originalAmountScale,memo FROM journal_lines WHERE journal_entry_id=?").bind(entry.id).all();
-    statements.push(...balancedJournalStatements(env,{entryDate:sale.soldAt,sourceType:"reversal",sourceId:saleId,description:`Anulación de venta ${saleId}`,username:session.username,now,reversalOfId:entry.id,lines:(lines.results||[]).map(line=>({...line,debit:Number(line.credit),credit:Number(line.debit)}))}));
+    statements.push(...balancedJournalStatements(env,{entryDate:voidDate,sourceType:"reversal",sourceId:saleId,description:`Anulación de venta ${saleId}`,username:session.username,now,reversalOfId:entry.id,lines:(lines.results||[]).map(line=>({...line,debit:Number(line.credit),credit:Number(line.debit)}))}));
     statements.push(env.DB.prepare("UPDATE journal_entries SET status='reversed',reversed_by=?,reversed_at=?,reversal_reason=? WHERE id=?").bind(session.username,now,reason,entry.id));
   }
   const paidRows=await env.DB.prepare("SELECT reference_amount_cents AS referenceAmountCents,functional_amount_cents AS functionalAmountCents FROM payments WHERE sale_id=? AND status='confirmed' ORDER BY confirmed_at,id").bind(saleId).all();
   let paidFunctional=0,paidReference=0,appliedFunctional=0,carryingApplied=0,fxGain=0,fxLoss=0;
   for(const payment of paidRows.results||[]){const allocation=deriveSettlementAllocation({saleTotalReferenceCents:Number(sale.totalCents),saleFunctionalTotalCents:Number(sale.functionalTotalCents),paidBeforeReferenceCents:paidReference,paymentReferenceCents:Number(payment.referenceAmountCents),paymentFunctionalCents:Number(payment.functionalAmountCents)});if(allocation){appliedFunctional+=allocation.appliedPaymentFunctionalCents;carryingApplied+=allocation.carryingReceivableCreditCents;fxGain+=allocation.fxGainFunctionalCents;fxLoss+=allocation.fxLossFunctionalCents;}paidReference+=Number(payment.referenceAmountCents);paidFunctional+=Number(payment.functionalAmountCents);}
-  if(appliedFunctional>0){const lines=[];if(carryingApplied>0)lines.push({accountId:"asset-receivable-usd",debit:carryingApplied,originalCurrency:"USD",originalAmountMinor:carryingApplied});if(fxGain>0)lines.push({accountId:"income-fx-gain-usd",debit:fxGain,originalCurrency:"USD",originalAmountMinor:fxGain});if(fxLoss>0)lines.push({accountId:"expense-fx-loss-usd",credit:fxLoss,originalCurrency:"USD",originalAmountMinor:fxLoss});lines.push({accountId:"liability-customer-credit-usd",credit:appliedFunctional,originalCurrency:"USD",originalAmountMinor:appliedFunctional});statements.push(...balancedJournalStatements(env,{entryDate:sale.soldAt,sourceType:"adjustment",sourceId:saleId,description:`Crédito del cliente por venta anulada ${saleId}`,username:session.username,now,lines}));}
+  if(appliedFunctional>0){const lines=[];if(carryingApplied>0)lines.push({accountId:"asset-receivable-usd",debit:carryingApplied,originalCurrency:"USD",originalAmountMinor:carryingApplied});if(fxGain>0)lines.push({accountId:"income-fx-gain-usd",debit:fxGain,originalCurrency:"USD",originalAmountMinor:fxGain});if(fxLoss>0)lines.push({accountId:"expense-fx-loss-usd",credit:fxLoss,originalCurrency:"USD",originalAmountMinor:fxLoss});lines.push({accountId:"liability-customer-credit-usd",credit:appliedFunctional,originalCurrency:"USD",originalAmountMinor:appliedFunctional});statements.push(...balancedJournalStatements(env,{entryDate:voidDate,sourceType:"adjustment",sourceId:saleId,description:`Crédito del cliente por venta anulada ${saleId}`,username:session.username,now,lines}));}
   let restoredStock=false;
   if(body.restoreStock===true){
     const movements=await env.DB.prepare("SELECT sku,-SUM(delta_on_hand) AS quantity FROM inventory_movements WHERE sale_id=? AND movement_type='sale' GROUP BY sku HAVING quantity>0").bind(saleId).all();
@@ -1854,9 +1861,9 @@ async function voidSale(request,env,url) {
   }
   statements.push(env.DB.prepare("UPDATE sales SET status='cancelled',payment_status='voided',voided_at=?,voided_by=?,void_reason=?,updated_by=?,updated_at=? WHERE id=? AND status<>'cancelled'").bind(now,session.username,reason,session.username,now,saleId));
   if(sale.orderId)statements.push(env.DB.prepare("UPDATE stock_orders SET status='cancelled',voided_at=?,voided_by=?,void_reason=?,updated_at=? WHERE id=? AND status='confirmed'").bind(now,session.username,reason,now,sale.orderId));
-  statements.push(structuredAuditStatement(env,session.username,"sale_void","sale",saleId,{reason,restoredStock,customerCreditFunctionalCents:paidFunctional},now));
+  statements.push(structuredAuditStatement(env,session.username,"sale_void","sale",saleId,{reason,voidDate,restoredStock,customerCreditFunctionalCents:paidFunctional},now));
   try{await env.DB.batch(statements);}catch(error){if(isMutationConflict(error))return staleStateResponse(guard.currentVersion+1);throw error;}
-  return json({ok:true,saleId,status:"cancelled",restoredStock,refundRecorded:false,customerCreditFunctionalCents:paidFunctional,mutationVersion:guard.nextVersion,message:paidFunctional?"El cobro quedó como crédito del cliente; no se registró un reembolso inexistente.":"Venta anulada sin cobros."});
+  return json({ok:true,saleId,status:"cancelled",voidDate,restoredStock,refundRecorded:false,customerCreditFunctionalCents:paidFunctional,mutationVersion:guard.nextVersion,message:paidFunctional?"El cobro quedó como crédito del cliente; no se registró un reembolso inexistente.":"Venta anulada sin cobros."});
 }
 
 async function listExpenses(request,env,url){
@@ -1898,26 +1905,30 @@ async function createExpense(request,env){
 
 async function voidExpense(request,env,url){
   const session=await requireSession(request,env);if(session instanceof Response)return session;
-  const id=url.pathname.split("/").filter(Boolean)[3]||"",body=await request.json().catch(()=>({})),reason=cleanText(body.reason,500);
-  if(!/^[a-f0-9-]{36}$/.test(id)||reason.length<8)return json({error:"Gasto o motivo inválido."},400);
+  const id=url.pathname.split("/").filter(Boolean)[3]||"",body=await request.json().catch(()=>({})),reason=cleanText(body.reason,500),voidDate=cleanText(body.voidDate||caracasDate(),10);
+  if(!/^[a-f0-9-]{36}$/.test(id)||reason.length<8||!isIsoDate(voidDate))return json({error:"Gasto, fecha o motivo inválido."},400);
   const guard=await prepareMutationGuard(env,"expense",id,body.expectedVersion);
   if(guard.error)return guard.error;
   const expense=await env.DB.prepare("SELECT id,status,expense_date AS expenseDate,functional_amount_cents AS functionalAmountCents,currency,amount_minor AS amountMinor FROM expenses WHERE id=?").bind(id).first();
   if(!expense)return json({error:"Gasto no encontrado"},404);if(expense.status==="voided")return json({error:"El gasto ya está anulado."},409);
-  const now=new Date().toISOString(),amount=Number(expense.functionalAmountCents),statements=[mutationClaimStatement(env,guard,"expense_void",body.idempotencyKey||"",session.username,now),...balancedJournalStatements(env,{entryDate:expense.expenseDate,sourceType:"reversal",sourceId:id,description:`Reclasificación de gasto anulado ${id}`,username:session.username,now,lines:[
+  if(voidDate<expense.expenseDate)return json({error:"La fecha de anulación no puede ser anterior al gasto."},400);
+  const now=new Date().toISOString(),amount=Number(expense.functionalAmountCents),statements=[mutationClaimStatement(env,guard,"expense_void",body.idempotencyKey||"",session.username,now),...balancedJournalStatements(env,{entryDate:voidDate,sourceType:"reversal",sourceId:id,description:`Reclasificación de gasto anulado ${id}`,username:session.username,now,lines:[
     {accountId:"asset-recoverable-usd",debit:amount,originalCurrency:expense.currency,originalAmountMinor:Number(expense.amountMinor)},
     {accountId:"expense-operating-usd",credit:amount,originalCurrency:expense.currency,originalAmountMinor:Number(expense.amountMinor)}
   ]})];
   statements.push(env.DB.prepare("UPDATE expenses SET status='voided',voided_by=?,voided_at=?,void_reason=? WHERE id=? AND status='posted'").bind(session.username,now,reason,id));
-  statements.push(structuredAuditStatement(env,session.username,"expense_void","expense",id,{reason,reclassifiedAsRecoverableFunctionalCents:amount},now));try{await env.DB.batch(statements);}catch(error){if(isMutationConflict(error))return staleStateResponse(guard.currentVersion+1);throw error;}
-  return json({ok:true,id,status:"voided",refundRecorded:false,reclassifiedAsRecoverableFunctionalCents:amount,mutationVersion:guard.nextVersion,message:"El desembolso no se fingió como devuelto; quedó como monto por recuperar."});
+  statements.push(structuredAuditStatement(env,session.username,"expense_void","expense",id,{reason,voidDate,reclassifiedAsRecoverableFunctionalCents:amount},now));try{await env.DB.batch(statements);}catch(error){if(isMutationConflict(error))return staleStateResponse(guard.currentVersion+1);throw error;}
+  return json({ok:true,id,status:"voided",voidDate,refundRecorded:false,reclassifiedAsRecoverableFunctionalCents:amount,mutationVersion:guard.nextVersion,message:"El desembolso no se fingió como devuelto; quedó como monto por recuperar."});
 }
 
 async function getAccountingSummary(request,env,url){
   const session=await requireSession(request,env);if(session instanceof Response)return session;
   const today=caracasDate(),from=cleanText(url.searchParams.get("from")||`${today.slice(0,7)}-01`,10),to=cleanText(url.searchParams.get("to")||today,10);
   if(!isIsoDate(from)||!isIsoDate(to)||from>to)return json({error:"Rango de fechas inválido"},400);
-  const [accounts,payments,sales,expenses,unbalanced]=await Promise.all([
+  const [closingAccounts,periodAccounts,payments,sales,expenses,periodUnbalanced,asOfUnbalanced]=await Promise.all([
+    env.DB.prepare(`SELECT a.id,a.code,a.name,a.account_type AS accountType,a.currency,COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.debit_functional_cents ELSE 0 END),0) AS debitFunctionalCents,COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.credit_functional_cents ELSE 0 END),0) AS creditFunctionalCents
+      FROM accounts a LEFT JOIN journal_lines jl ON jl.account_id=a.id LEFT JOIN journal_entries je ON je.id=jl.journal_entry_id AND je.entry_date<=?
+      GROUP BY a.id ORDER BY a.code`).bind(to).all(),
     env.DB.prepare(`SELECT a.id,a.code,a.name,a.account_type AS accountType,a.currency,COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.debit_functional_cents ELSE 0 END),0) AS debitFunctionalCents,COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.credit_functional_cents ELSE 0 END),0) AS creditFunctionalCents
       FROM accounts a LEFT JOIN journal_lines jl ON jl.account_id=a.id LEFT JOIN journal_entries je ON je.id=jl.journal_entry_id AND je.entry_date>=? AND je.entry_date<=?
       GROUP BY a.id ORDER BY a.code`).bind(from,to).all(),
@@ -1925,16 +1936,21 @@ async function getAccountingSummary(request,env,url){
       WHERE status='confirmed' AND payment_date>=? AND payment_date<=? GROUP BY paid_currency,method ORDER BY paid_currency,method`).bind(from,to).all(),
     env.DB.prepare("SELECT currency,SUM(total_cents) AS amountCents,SUM(functional_total_cents) AS functionalAmountCents,COUNT(*) AS count FROM sales WHERE status='confirmed' AND sold_at>=? AND sold_at<=? GROUP BY currency").bind(from,to).all(),
     env.DB.prepare("SELECT currency,SUM(amount_minor) AS amountMinor,SUM(functional_amount_cents) AS functionalAmountCents,COUNT(*) AS count FROM expenses WHERE status='posted' AND expense_date>=? AND expense_date<=? GROUP BY currency").bind(from,to).all(),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM (SELECT je.id FROM journal_entries je JOIN journal_lines jl ON jl.journal_entry_id=je.id WHERE je.entry_date>=? AND je.entry_date<=? GROUP BY je.id HAVING SUM(jl.debit_functional_cents)<>SUM(jl.credit_functional_cents))`).bind(from,to).first()
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM (SELECT je.id FROM journal_entries je JOIN journal_lines jl ON jl.journal_entry_id=je.id WHERE je.entry_date>=? AND je.entry_date<=? GROUP BY je.id HAVING SUM(jl.debit_functional_cents)<>SUM(jl.credit_functional_cents))`).bind(from,to).first(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM (SELECT je.id FROM journal_entries je JOIN journal_lines jl ON jl.journal_entry_id=je.id WHERE je.entry_date<=? GROUP BY je.id HAVING SUM(jl.debit_functional_cents)<>SUM(jl.credit_functional_cents))`).bind(to).first()
   ]);
-  const accountItems=(accounts.results||[]).map(account=>({...account,debitFunctionalCents:Number(account.debitFunctionalCents||0),creditFunctionalCents:Number(account.creditFunctionalCents||0),balanceFunctionalCents:Number(account.debitFunctionalCents||0)-Number(account.creditFunctionalCents||0)}));
-  const income=accountItems.filter(account=>account.accountType==="income").reduce((sum,account)=>sum-account.balanceFunctionalCents,0),expense=accountItems.filter(account=>account.accountType==="expense").reduce((sum,account)=>sum+account.balanceFunctionalCents,0);
-  const receivable=accountItems.find(account=>account.id==="asset-receivable-usd")?.balanceFunctionalCents||0;
+  const normalizeAccounts=(rows,movement=false)=>(rows||[]).map(account=>{const debitFunctionalCents=Number(account.debitFunctionalCents||0),creditFunctionalCents=Number(account.creditFunctionalCents||0),net=debitFunctionalCents-creditFunctionalCents;return {...account,debitFunctionalCents,creditFunctionalCents,...(movement?{movementFunctionalCents:net}:{balanceFunctionalCents:net})};});
+  const accountItems=normalizeAccounts(closingAccounts.results),accountMovements=normalizeAccounts(periodAccounts.results,true);
+  const aggregates=deriveAccountingAggregates({closingAccounts:accountItems,periodAccounts:accountMovements,liquidAccountIds:LIQUID_ACCOUNT_IDS});
   const collections=payments.results||[],paymentsByCurrency={},paymentsByMethod={};let collectedFunctionalCents=0;
   for(const row of collections){const functional=Number(row.functionalAmountCents||0),nominal=Number(row.amountMinor||0);collectedFunctionalCents+=functional;paymentsByCurrency[row.currency]=(paymentsByCurrency[row.currency]||0)+nominal;paymentsByMethod[row.method]=(paymentsByMethod[row.method]||0)+functional;}
-  return json({from,to,functionalCurrency:"USD",incomeFunctionalCents:income,expenseFunctionalCents:expense,netFunctionalCents:income-expense,receivableFunctionalCents:receivable,collectedFunctionalCents,
-    incomeRefCents:income,expenseRefCents:expense,netRefCents:income-expense,receivableRefCents:receivable,
-    accounts:accountItems,collectionsByCurrencyAndMethod:collections,paymentsByCurrency,paymentsByMethod,salesByCurrency:sales.results||[],expensesByCurrency:expenses.results||[],journalBalanced:Number(unbalanced?.count||0)===0,unbalancedJournalCount:Number(unbalanced?.count||0)});
+  const balancesAsOf={asOf:to,functionalCurrency:"USD",receivableFunctionalCents:aggregates.receivableFunctionalCents,cashBalanceFunctionalCents:aggregates.cashBalanceFunctionalCents,customerCreditFunctionalCents:aggregates.customerCreditFunctionalCents,recoverableFunctionalCents:aggregates.recoverableFunctionalCents};
+  const period={from,to,functionalCurrency:"USD",incomeFunctionalCents:aggregates.incomeFunctionalCents,expenseFunctionalCents:aggregates.expenseFunctionalCents,netIncomeFunctionalCents:aggregates.netIncomeFunctionalCents,cashInflowFunctionalCents:aggregates.cashInflowFunctionalCents,cashOutflowFunctionalCents:aggregates.cashOutflowFunctionalCents,netCashFunctionalCents:aggregates.netCashFunctionalCents,receivableMovementFunctionalCents:aggregates.receivableMovementFunctionalCents,collectedFunctionalCents};
+  const unbalancedJournalCount=Number(periodUnbalanced?.count||0),asOfUnbalancedJournalCount=Number(asOfUnbalanced?.count||0);
+  return json({from,to,functionalCurrency:"USD",...balancesAsOf,...period,
+    netFunctionalCents:aggregates.netIncomeFunctionalCents,
+    incomeRefCents:aggregates.incomeFunctionalCents,expenseRefCents:aggregates.expenseFunctionalCents,netRefCents:aggregates.netIncomeFunctionalCents,receivableRefCents:aggregates.receivableFunctionalCents,netCashRefCents:aggregates.netCashFunctionalCents,
+    balancesAsOf,period,accounts:accountItems,accountMovements,collectionsByCurrencyAndMethod:collections,paymentsByCurrency,paymentsByMethod,salesByCurrency:sales.results||[],expensesByCurrency:expenses.results||[],journalBalanced:unbalancedJournalCount===0,unbalancedJournalCount,asOfJournalBalanced:asOfUnbalancedJournalCount===0,asOfUnbalancedJournalCount});
 }
 
 async function getActivity(request, env) {
