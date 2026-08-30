@@ -5485,14 +5485,18 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
   await page.emulateMedia({ reducedMotion:"reduce" });
   const viewports = [
     { width:320, height:568 },
+    { width:360, height:640 },
+    { width:375, height:667 },
     { width:568, height:320 },
     { width:390, height:844 },
+    { width:640, height:844 },
     { width:667, height:375 },
     { width:641, height:800 },
     { width:768, height:1024 },
     { width:844, height:390 },
     { width:959, height:768 },
     { width:960, height:768 },
+    { width:1024, height:768 },
     { width:1366, height:600 },
     { width:1366, height:900 }
   ];
@@ -5528,7 +5532,7 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
         };
         const front = element.querySelector(".product-front"), inner = element.querySelector(".product-flip-inner");
         const body = front.querySelector(".product-body"), top = body.querySelector(".product-top"), footer = body.querySelector(".product-footer");
-        const title = top.querySelector("h3"), price = top.querySelector(".price"), image = front.querySelector(".product-media img");
+        const title = top.querySelector("h3"), price = top.querySelector(".price"), media = front.querySelector(".product-media"), image = media.querySelector("img");
         const bodyChildren = [...body.children].filter(visible), topChildren = [...top.children].filter(visible), footerChildren = [...footer.children].filter(visible);
         const measured = [element, inner, front, body, footer, ...footerChildren];
         return {
@@ -5542,12 +5546,15 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
           outsideFooter: footerChildren.filter(child => !fits(child, footer)).map(child => child.className || child.tagName),
           titlePriceOverlap: overlaps(title, price),
           footerOverlap: footerChildren.length > 1 && overlaps(footerChildren[0], footerChildren[1]),
+          mediaSquare:Math.abs(media.getBoundingClientRect().width - media.getBoundingClientRect().height) <= 1,
+          naturalImage:[image.naturalWidth, image.naturalHeight],
           image: { fit:getComputedStyle(image).objectFit, position:getComputedStyle(image).objectPosition, transform:getComputedStyle(image).transform },
           pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
         };
       });
       expect(compact, `${expectedProduct.id} compacta en ${viewport.width}x${viewport.height}`).toEqual({
         overflow:[], outsideBody:[], outsideTop:[], outsideFooter:[], titlePriceOverlap:false, footerOverlap:false,
+        mediaSquare:true, naturalImage:[1200, 1200],
         image:{ fit:"contain", position:"50% 50%", transform:"none" }, pageOverflow:0
       });
 
@@ -5560,15 +5567,7 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
       await expect(ingredientPanel).toBeVisible();
       await expect(ingredientPanel).toContainText(expectedProduct.ingredients);
       const expandedBox = await card.boundingBox();
-      const landscapeShort = viewport.height <= 650 && viewport.width > viewport.height;
-      const maximumExpandedHeight = landscapeShort
-        ? Math.min(viewport.height - 32, 500)
-        : viewport.width >= 960
-        ? Math.min(viewport.height - 96, 500)
-        : viewport.width <= 640
-        ? Math.min(viewport.height - 32, 520)
-        : Math.min(viewport.height - 120, 560);
-      expect(expandedBox.height, `${expectedProduct.id} usa una altura compacta en ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(maximumExpandedHeight + 1);
+      expect(expandedBox.height, `${expectedProduct.id} queda dentro del alto útil en ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(viewport.height - 20 + 1);
       if (viewport.width >= 960) {
         expect(expandedBox.width, `${expectedProduct.id} usa un ancho compacto en escritorio`).toBeLessThanOrEqual(901);
       }
@@ -5595,6 +5594,11 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
         const measured = [element, inner, back, media, body, footer, ingredientSource, ...footerChildren].filter(visible);
         const viewport = window.visualViewport || { offsetLeft:0, offsetTop:0, width:window.innerWidth, height:window.innerHeight };
         const cardBox = element.getBoundingClientRect();
+        const mediaBox = media.getBoundingClientRect();
+        const mediaRatio = mediaBox.width / mediaBox.height;
+        const naturalRatio = image.naturalWidth / image.naturalHeight;
+        const renderedWidth = mediaRatio > naturalRatio ? mediaBox.height * naturalRatio : mediaBox.width;
+        const renderedHeight = mediaRatio > naturalRatio ? mediaBox.height : mediaBox.width / naturalRatio;
         return {
           insideViewport: cardBox.left >= viewport.offsetLeft - 1
             && cardBox.right <= viewport.offsetLeft + viewport.width + 1
@@ -5613,6 +5617,10 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
           titlePriceOverlap: overlaps(title, price),
           footerOverlap: footerChildren.length > 1 && overlaps(footerChildren[0], footerChildren[1]),
           ingredientsVisible: visible(ingredientSource) && ingredientSource.textContent.includes(expectedIngredients),
+          layout:element.classList.contains("bottega-stack") ? "stack" : element.classList.contains("bottega-side") ? "side" : "missing",
+          mediaSquare:Math.abs(mediaBox.width - mediaBox.height) <= 1,
+          fullImageCentered:Math.abs(mediaBox.width - renderedWidth) <= 1 && Math.abs(mediaBox.height - renderedHeight) <= 1,
+          naturalImage:[image.naturalWidth, image.naturalHeight],
           bodyOverflowY:getComputedStyle(body).overflowY,
           scrollPosition:{ bodyTop:body.scrollTop, bodyLeft:body.scrollLeft, cardTop:element.scrollTop, cardLeft:element.scrollLeft },
           image:{ fit:getComputedStyle(image).objectFit, position:getComputedStyle(image).objectPosition, transform:getComputedStyle(image).transform },
@@ -5622,13 +5630,101 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
       expect(expanded, `${expectedProduct.id} expandida en ${viewport.width}x${viewport.height}`).toEqual({
         insideViewport:true, overflow:[], outsideCard:[], outsideBody:[], outsideTop:[], outsideFooter:[], blockOverlaps:[],
         titlePriceOverlap:false, footerOverlap:false, ingredientsVisible:true, bodyOverflowY:"hidden",
+        layout:viewport.width <= 640 && viewport.height > viewport.width ? "stack" : "side",
+        mediaSquare:true, fullImageCentered:true, naturalImage:[1200, 1200],
         scrollPosition:{ bodyTop:0, bodyLeft:0, cardTop:0, cardLeft:0 },
-        image:{ fit:"cover", position:"50% 50%", transform:"none" }, pageOverflow:0
+        image:{ fit:"contain", position:"50% 50%", transform:"none" }, pageOverflow:0
       });
 
       await closeProductCard(page);
       await expect(card).not.toHaveClass(/product-expanded/);
     }
+  }
+});
+
+test("Bottega móvil conserva la imagen completa durante la animación real", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.emulateMedia({ reducedMotion:"no-preference" });
+  const viewports = [
+    { width:375, height:667 },
+    { width:390, height:844 },
+    { width:430, height:932 }
+  ];
+  const productId = "bottega-de-cecco-penne-rigate";
+
+  const sampleMotion = async card => page.evaluate(async id => {
+    const frames = [];
+    const startedAt = performance.now();
+    while (performance.now() - startedAt < 980) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const element = document.querySelector(`.product[data-product-id="${id}"]`);
+      if (!element?.classList.contains("product-expanded")) continue;
+      const media = element.querySelector(".product-expanded-media");
+      const image = media?.querySelector("img");
+      const back = element.querySelector(".product-back");
+      const cardBox = element.getBoundingClientRect();
+      const viewport = window.visualViewport || { offsetLeft:0, offsetTop:0, width:innerWidth, height:innerHeight };
+      frames.push({
+        backVisible:getComputedStyle(back).visibility === "visible",
+        animating:element.classList.contains("product-expanded-animating"),
+        insideViewport:cardBox.left >= viewport.offsetLeft - 1
+          && cardBox.right <= viewport.offsetLeft + viewport.width + 1
+          && cardBox.top >= viewport.offsetTop - 1
+          && cardBox.bottom <= viewport.offsetTop + viewport.height + 1,
+        mediaSquare:Math.abs(media.clientWidth - media.clientHeight) <= 1,
+        image:{
+          fit:getComputedStyle(image).objectFit,
+          position:getComputedStyle(image).objectPosition,
+          natural:[image.naturalWidth, image.naturalHeight]
+        }
+      });
+    }
+    return frames;
+  }, productId);
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    await page.getByRole("button", { name:"Bottega", exact:true }).click();
+    const card = page.locator(`.product[data-product-id="${productId}"]`);
+    await card.scrollIntoViewIfNeeded();
+    const compactStyles = await card.evaluate(element => {
+      const front = element.querySelector(".product-front");
+      return {
+        title:getComputedStyle(front.querySelector("h3")).fontSize,
+        padding:getComputedStyle(front.querySelector(".product-body")).padding,
+        seals:getComputedStyle(front.querySelector(".product-dietary-seals")).margin
+      };
+    });
+
+    await card.locator(".product-media").first().click();
+    const openingFrames = await sampleMotion(card);
+    await expect(card).toHaveClass(/product-expanded-open/);
+    await expect(card).not.toHaveClass(/product-expanded-animating/);
+    const snapshotStyles = await card.evaluate(element => {
+      const snapshot = element.querySelector(".product-front-snapshot");
+      return {
+        title:getComputedStyle(snapshot.querySelector("h3")).fontSize,
+        padding:getComputedStyle(snapshot.querySelector(".product-body")).padding,
+        seals:getComputedStyle(snapshot.querySelector(".product-dietary-seals")).margin
+      };
+    });
+    expect(snapshotStyles, `el frente no salta en ${viewport.width}x${viewport.height}`).toEqual(compactStyles);
+    const openingBackFrames = openingFrames.filter(frame => frame.backVisible);
+    expect(openingBackFrames.length).toBeGreaterThan(4);
+    expect(openingBackFrames.every(frame => frame.insideViewport && frame.mediaSquare
+      && frame.image.fit === "contain" && frame.image.position === "50% 50%"
+      && frame.image.natural[0] === 1200 && frame.image.natural[1] === 1200),
+    `apertura completa en ${viewport.width}x${viewport.height}`).toBe(true);
+
+    await card.locator(".product-expanded-media").click();
+    const closingFrames = await sampleMotion(card);
+    const closingBackFrames = closingFrames.filter(frame => frame.backVisible);
+    expect(closingBackFrames.length).toBeGreaterThan(4);
+    expect(closingBackFrames.every(frame => frame.insideViewport && frame.mediaSquare
+      && frame.image.fit === "contain" && frame.image.position === "50% 50%"),
+    `cierre completo en ${viewport.width}x${viewport.height}`).toBe(true);
+    await expect(card).not.toHaveClass(/product-expanded/);
   }
 });
 
@@ -5666,6 +5762,7 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
       const back = element.querySelector(".product-back");
       const media = back.querySelector(".product-expanded-media");
       const body = back.querySelector(".product-expanded-body");
+      const image = media.querySelector("img");
       const bodyChildren = [...body.children].filter(visible);
       const visual = window.visualViewport || { offsetLeft:0, offsetTop:0, width:window.innerWidth, height:window.innerHeight };
       const box = element.getBoundingClientRect();
@@ -5680,6 +5777,9 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
           .map(node => node.className || node.tagName),
         outside:[back, media, body].filter(node => !fits(node, element)).map(node => node.className),
         outsideBody:bodyChildren.filter(node => !fits(node, body)).map(node => node.className || node.tagName),
+        layout:element.classList.contains("bottega-stack") ? "stack" : element.classList.contains("bottega-side") ? "side" : "missing",
+        mediaSquare:Math.abs(media.getBoundingClientRect().width - media.getBoundingClientRect().height) <= 1,
+        image:{fit:getComputedStyle(image).objectFit,position:getComputedStyle(image).objectPosition,natural:[image.naturalWidth,image.naturalHeight]},
         bodyOverflowY:getComputedStyle(body).overflowY,
         ingredientsVisible:visible(body.querySelector(".product-expanded-ingredients"))
           && body.querySelector(".product-expanded-ingredients")?.textContent.includes("Olivas"),
@@ -5690,6 +5790,8 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
     }, viewport);
     expect(metrics, label).toEqual({
       viewport:[viewport.width, viewport.height], insideViewport:true, overflow:[], outside:[], outsideBody:[],
+      layout:viewport.width <= 640 && viewport.height > viewport.width ? "stack" : "side",
+      mediaSquare:true, image:{fit:"contain",position:"50% 50%",natural:[1200,1200]},
       bodyOverflowY:"hidden", ingredientsVisible:true, focusInside:true, pageOverflow:0,
       expectedViewport:viewport
     });

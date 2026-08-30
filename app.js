@@ -1358,36 +1358,69 @@
         const viewportTop = viewport?.offsetTop || 0;
         const mobile = window.matchMedia("(max-width: 640px)").matches;
         const desktop = window.matchMedia("(min-width: 960px)").matches;
-        const shortBottegaViewport = isBottega && viewportHeight <= 650 && viewportWidth > viewportHeight;
-        const horizontalMargin = shortBottegaViewport ? 16 : mobile ? 28 : desktop ? 48 : 80;
-        const verticalMargin = shortBottegaViewport ? 16 : mobile ? (isBottega ? 16 : 52) : desktop ? 48 : 60;
+        if (isBottega) {
+          const stack = mobile && viewportHeight > viewportWidth;
+          const compact = (stack && viewportHeight <= 700) || (!stack && (!desktop || viewportHeight < 532));
+          let width;
+          let height;
+          let mediaSize;
+          let detailsWidth;
+          let detailsHeight;
+          if (stack) {
+            const horizontalMargin = viewportHeight <= 600 ? 10 : 20;
+            const desiredDetailsHeight = viewportHeight <= 600 ? 234 : 328;
+            const maximumHeight = viewportHeight - 20;
+            width = Math.min(viewportWidth - (horizontalMargin * 2), 350);
+            mediaSize = width - 2;
+            detailsHeight = Math.min(desiredDetailsHeight, maximumHeight - mediaSize - 2);
+            if (detailsHeight < (compact ? 234 : 260)) {
+              const minimumDetailsHeight = Math.min(compact ? 234 : 260, maximumHeight - 182);
+              mediaSize = Math.max(180, maximumHeight - minimumDetailsHeight - 2);
+              width = mediaSize + 2;
+              detailsHeight = maximumHeight - mediaSize - 2;
+            }
+            detailsWidth = mediaSize;
+            height = mediaSize + detailsHeight + 2;
+          } else {
+            const horizontalMargin = viewportWidth >= 900 && viewportWidth < 960 ? 32 : 16;
+            width = Math.min(900, viewportWidth - (horizontalMargin * 2));
+            const innerWidth = width - 2;
+            if (desktop) {
+              mediaSize = Math.min(498, viewportHeight - 34);
+            } else {
+              const roundedTarget = Math.floor(((innerWidth * (viewportHeight >= viewportWidth ? .49 : .5)) + 5) / 10) * 10;
+              const desiredSize = Math.max(250, Math.min(440, roundedTarget));
+              const heightCap = (viewportHeight - 32) - (viewportHeight <= 340 ? 38 : 16);
+              mediaSize = Math.floor(Math.min(desiredSize, heightCap) / 10) * 10;
+            }
+            mediaSize = Math.max(180, Math.min(mediaSize, innerWidth - 180));
+            detailsWidth = innerWidth - mediaSize;
+            detailsHeight = mediaSize;
+            height = mediaSize + 2;
+          }
+          return {
+            width:Math.round(width),
+            height:Math.round(height),
+            left:viewportLeft + ((viewportWidth - width) / 2),
+            top:viewportTop + ((viewportHeight - height) / 2),
+            mediaSize:Math.round(mediaSize),
+            detailsWidth:Math.round(detailsWidth),
+            detailsHeight:Math.round(detailsHeight),
+            layout:stack ? "stack" : "side",
+            compact
+          };
+        }
+        const horizontalMargin = mobile ? 28 : desktop ? 48 : 80;
+        const verticalMargin = mobile ? 52 : desktop ? 48 : 60;
         const availableWidth = viewportWidth - (horizontalMargin * 2);
         const availableHeight = viewportHeight - (verticalMargin * 2);
-        const bottegaWidth = desktop
-          ? Math.min(availableWidth, 900)
-          : mobile
-          ? Math.min(availableWidth, Math.max(280, rect.width * 1.55))
-          : Math.min(availableWidth, 620);
-        const bottegaHeight = desktop
-          ? Math.min(availableHeight, 500)
-          : mobile
-          ? Math.min(availableHeight, 520)
-          : Math.min(availableHeight, 560);
-        const width = Math.round(shortBottegaViewport
-          ? Math.min(availableWidth, desktop ? 900 : 820)
-          : isBottega
-          ? bottegaWidth
-          : desktop
+        const width = Math.round(desktop
           ? Math.min(availableWidth, 1040)
           : Math.min(
               availableWidth,
               Math.max(mobile ? 280 : 520, rect.width * (mobile ? 1.55 : 1.42))
             ));
-        const height = Math.round(shortBottegaViewport
-          ? Math.min(availableHeight, 500)
-          : isBottega
-          ? bottegaHeight
-          : desktop
+        const height = Math.round(desktop
           ? Math.min(availableHeight, 640)
           : Math.min(
               availableHeight,
@@ -1406,6 +1439,14 @@
         card.style.setProperty("--product-expanded-height", `${geometry.height}px`);
         card.style.setProperty("--product-expanded-left", `${geometry.left}px`);
         card.style.setProperty("--product-expanded-top", `${geometry.top}px`);
+        if (isBottega) {
+          card.style.setProperty("--bm", `${geometry.mediaSize}px`);
+          card.style.setProperty("--bdw", `${geometry.detailsWidth}px`);
+          card.style.setProperty("--bdh", `${geometry.detailsHeight}px`);
+          card.classList.toggle("bottega-stack", geometry.layout === "stack");
+          card.classList.toggle("bottega-side", geometry.layout === "side");
+          back.classList.toggle("bottega-compact", Boolean(geometry.compact));
+        }
       };
 
       const settleExpandedAfterViewportChange = () => {
@@ -1461,11 +1502,20 @@
         const liftScaleY = startScaleY + ((1 - startScaleY) * 0.28);
         const edgeScaleX = startScaleX + ((1 - startScaleX) * 0.66);
         const edgeScaleY = startScaleY + ((1 - startScaleY) * 0.66);
+        const snapshotScaleX = targetWidth / rect.width;
+        const snapshotScaleY = targetHeight / rect.height;
+        const edgeScale = Math.min(edgeScaleX, edgeScaleY);
         const startTransform = `perspective(1800px) translate3d(${startX}px, ${startY}px, 0) scale(${startScaleX}, ${startScaleY}) rotateX(0deg) rotateY(0deg) rotateZ(0deg)`;
         const liftTransform = `perspective(1800px) translate3d(${startX * 0.84}px, ${startY * 0.84}px, 26px) scale(${liftScaleX}, ${liftScaleY}) rotateX(1.2deg) rotateY(-12deg) rotateZ(-0.4deg)`;
-        const frontEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(89.8deg) rotateZ(-1.1deg)`;
-        const backEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
-        const settleTransform = `perspective(1800px) translate3d(${startX * 0.04}px, ${startY * 0.04}px, 14px) scale(.97, .97) rotateX(.35deg) rotateY(7deg) rotateZ(.18deg)`;
+        const frontEdgeTransform = isBottega
+          ? `perspective(1800px) translate3d(0, 0, 0) scale(${edgeScale}) rotateX(0deg) rotateY(89.8deg) rotateZ(0deg)`
+          : `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(89.8deg) rotateZ(-1.1deg)`;
+        const backEdgeTransform = isBottega
+          ? `perspective(1800px) translate3d(0, 0, 0) scale(${edgeScale}) rotateX(0deg) rotateY(-89.8deg) rotateZ(0deg)`
+          : `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
+        const settleTransform = isBottega
+          ? "perspective(1800px) translate3d(0, 0, 0) scale(.97) rotateX(0deg) rotateY(7deg) rotateZ(0deg)"
+          : `perspective(1800px) translate3d(${startX * 0.04}px, ${startY * 0.04}px, 14px) scale(.97, .97) rotateX(.35deg) rotateY(7deg) rotateZ(.18deg)`;
         applyExpandedGeometry(geometry);
         card.style.setProperty("--product-start-transform", startTransform);
         card.style.setProperty("--product-target-transform", targetTransform);
@@ -1496,7 +1546,7 @@
         frontSnapshot.style.height = `${card.clientHeight}px`;
         frontSnapshot.style.flex = "0 0 auto";
         frontSnapshot.style.transformOrigin = "top left";
-        frontSnapshot.style.transform = `scale(${targetWidth / rect.width}, ${targetHeight / rect.height})`;
+        frontSnapshot.style.transform = `scale(${snapshotScaleX}, ${snapshotScaleY})`;
         frontSnapshot.setAttribute("aria-expanded", "true");
         frontSnapshot.setAttribute("aria-hidden", "true");
         frontSnapshot.inert = true;
@@ -1577,9 +1627,14 @@
           card.style.removeProperty("--product-expanded-height");
           card.style.removeProperty("--product-expanded-left");
           card.style.removeProperty("--product-expanded-top");
+          card.style.removeProperty("--bm");
+          card.style.removeProperty("--bdw");
+          card.style.removeProperty("--bdh");
           card.style.removeProperty("--product-start-transform");
           card.style.removeProperty("--product-target-transform");
           card.style.removeProperty("transform");
+          card.classList.remove("bottega-stack", "bottega-side");
+          back.classList.remove("bottega-compact");
           hideModalBackdropWithoutFlash(backdrop, closingBackdropMotion);
           media.classList.remove("product-expanded-media");
           media.setAttribute("aria-label", `Ampliar ${title}`);
