@@ -5386,40 +5386,229 @@ test("el carrito Bottega reconcilia la disponibilidad vigente antes del checkout
   await expect(page.locator("#drawer")).not.toContainText("2 días");
 });
 
-test("las imágenes Bottega se encuadran completas en compacto y expandido", async ({ page }) => {
-  for (const viewport of [{ width:390, height:844 }, { width:1366, height:900 }]) {
+test("las 11 tarjetas Bottega contienen toda su información en compacto y expandido", async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.emulateMedia({ reducedMotion:"reduce" });
+  const viewports = [
+    { width:320, height:568 },
+    { width:568, height:320 },
+    { width:390, height:844 },
+    { width:667, height:375 },
+    { width:641, height:800 },
+    { width:768, height:1024 },
+    { width:844, height:390 },
+    { width:959, height:768 },
+    { width:960, height:768 },
+    { width:1366, height:600 },
+    { width:1366, height:900 }
+  ];
+
+  for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await openPreview(page);
     await page.getByRole("button", { name: "Bottega", exact: true }).click();
+    const group = page.locator('.catalog-group[data-catalog-group="bottega"]');
+    const grid = group.locator(".catalog-group-grid");
     const cards = page.locator('.catalog-group[data-catalog-group="bottega"] .product[data-category="bottega"]');
     await expect(cards).toHaveCount(expectedBottegaProducts.length);
-    expect(await cards.locator(".product-media img").evaluateAll(images => images.every(image => (
-      getComputedStyle(image).objectFit === "contain"
-        && getComputedStyle(image).objectPosition === "50% 50%"
-    )))).toBe(true);
+    await page.evaluate(() => document.fonts?.ready);
+    await expect(grid).not.toHaveClass(/product-height-syncing/);
+    expect(await cards.evaluateAll(elements => elements.map(element => element.dataset.productId))).toEqual(
+      expectedBottegaProducts.map(product => product.id)
+    );
 
-    const card = cards.first();
-    await openProductCard(page, card);
-    await expect(card).toHaveClass(/product-expanded-open/);
-    await expect(card).not.toHaveClass(/product-expanded-animating/, { timeout:1500 });
-    await expect(card.locator(".product-back .product-expanded-media img")).toHaveCSS("object-fit", "contain");
-    await expect(card.locator(".product-back .product-expanded-media img")).toHaveCSS("object-position", "50% 50%");
-    const layout = await card.evaluate(element => {
-      const cardBox = element.getBoundingClientRect();
-      const viewportWidth = window.visualViewport?.width || window.innerWidth;
-      const viewportHeight = window.visualViewport?.height || window.innerHeight;
-      return {
-        insideViewport: cardBox.left >= -1
-          && cardBox.right <= viewportWidth + 1
-          && cardBox.top >= -1
-          && cardBox.bottom <= viewportHeight + 1,
-        pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth
-      };
-    });
-    expect(layout.insideViewport).toBe(true);
-    expect(layout.pageFits).toBe(true);
-    await closeProductCard(page);
+    for (const expectedProduct of expectedBottegaProducts) {
+      const card = group.locator(`.product[data-category="bottega"][data-product-id="${expectedProduct.id}"]`);
+      await card.scrollIntoViewIfNeeded();
+      await expect.poll(() => card.locator(".product-front .product-media img").evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
+      const compact = await card.evaluate(element => {
+        const visible = node => node && getComputedStyle(node).display !== "none" && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0;
+        const fits = (child, parent) => {
+          const inner = child.getBoundingClientRect(), outer = parent.getBoundingClientRect();
+          return inner.left >= outer.left - 1 && inner.right <= outer.right + 1 && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+        };
+        const overlaps = (left, right) => {
+          const a = left.getBoundingClientRect(), b = right.getBoundingClientRect();
+          return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1
+            && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+        };
+        const front = element.querySelector(".product-front"), inner = element.querySelector(".product-flip-inner");
+        const body = front.querySelector(".product-body"), top = body.querySelector(".product-top"), footer = body.querySelector(".product-footer");
+        const title = top.querySelector("h3"), price = top.querySelector(".price"), image = front.querySelector(".product-media img");
+        const bodyChildren = [...body.children].filter(visible), topChildren = [...top.children].filter(visible), footerChildren = [...footer.children].filter(visible);
+        const measured = [element, inner, front, body, footer, ...footerChildren];
+        return {
+          overflow: measured.filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1).map(node => ({
+            node:node.className || node.tagName,
+            client:[node.clientWidth, node.clientHeight],
+            scroll:[node.scrollWidth, node.scrollHeight]
+          })),
+          outsideBody: bodyChildren.filter(child => !fits(child, body)).map(child => child.className || child.tagName),
+          outsideTop: topChildren.filter(child => !fits(child, top)).map(child => child.className || child.tagName),
+          outsideFooter: footerChildren.filter(child => !fits(child, footer)).map(child => child.className || child.tagName),
+          titlePriceOverlap: overlaps(title, price),
+          footerOverlap: footerChildren.length > 1 && overlaps(footerChildren[0], footerChildren[1]),
+          image: { fit:getComputedStyle(image).objectFit, position:getComputedStyle(image).objectPosition, transform:getComputedStyle(image).transform },
+          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+        };
+      });
+      expect(compact, `${expectedProduct.id} compacta en ${viewport.width}x${viewport.height}`).toEqual({
+        overflow:[], outsideBody:[], outsideTop:[], outsideFooter:[], titlePriceOverlap:false, footerOverlap:false,
+        image:{ fit:"contain", position:"50% 50%", transform:"none" }, pageOverflow:0
+      });
+
+      await openProductCard(page, card);
+      await expect(card).toHaveClass(/product-expanded-open/);
+      await expect(card).not.toHaveClass(/product-expanded-animating/);
+      const safety = card.locator(".product-back .product-safety");
+      const mobileOrTablet = viewport.width < 960;
+      if (mobileOrTablet) {
+        await expect(safety).toBeVisible();
+        await safety.locator("summary").click();
+        await expect(safety).toHaveAttribute("open", "");
+      } else {
+        await expect(safety).toBeHidden();
+        await expect(card.locator(".product-back .product-expanded-ingredients")).toBeVisible();
+      }
+
+      const expanded = await card.evaluate((element, expectedIngredients) => {
+        const visible = node => node && getComputedStyle(node).display !== "none" && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0;
+        const fits = (child, parent) => {
+          const inner = child.getBoundingClientRect(), outer = parent.getBoundingClientRect();
+          return inner.left >= outer.left - 1 && inner.right <= outer.right + 1 && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+        };
+        const overlaps = (left, right) => {
+          const a = left.getBoundingClientRect(), b = right.getBoundingClientRect();
+          return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1
+            && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+        };
+        const back = element.querySelector(".product-back"), inner = element.querySelector(".product-flip-inner");
+        const media = back.querySelector(".product-expanded-media"), body = back.querySelector(".product-expanded-body");
+        const top = body.querySelector(".product-top"), footer = body.querySelector(".product-footer");
+        const title = top.querySelector("h3"), price = top.querySelector(".price"), image = media.querySelector("img");
+        const safety = body.querySelector(".product-safety"), ingredientPanel = body.querySelector(".product-expanded-ingredients");
+        const ingredientSource = visible(ingredientPanel) ? ingredientPanel : safety;
+        const bodyChildren = [...body.children].filter(visible), topChildren = [...top.children].filter(visible), footerChildren = [...footer.children].filter(visible);
+        const ordered = bodyChildren.map(node => ({ node, box:node.getBoundingClientRect() })).sort((a, b) => a.box.top - b.box.top);
+        const measured = [element, inner, back, media, body, footer, ingredientSource, ...footerChildren].filter(visible);
+        const viewport = window.visualViewport || { offsetLeft:0, offsetTop:0, width:window.innerWidth, height:window.innerHeight };
+        const cardBox = element.getBoundingClientRect();
+        return {
+          insideViewport: cardBox.left >= viewport.offsetLeft - 1
+            && cardBox.right <= viewport.offsetLeft + viewport.width + 1
+            && cardBox.top >= viewport.offsetTop - 1
+            && cardBox.bottom <= viewport.offsetTop + viewport.height + 1,
+          overflow: measured.filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1).map(node => ({
+            node:node.className || node.tagName,
+            client:[node.clientWidth, node.clientHeight],
+            scroll:[node.scrollWidth, node.scrollHeight]
+          })),
+          outsideCard: [back, media, body].filter(node => !fits(node, element)).map(node => node.className),
+          outsideBody: bodyChildren.filter(child => !fits(child, body)).map(child => child.className || child.tagName),
+          outsideTop: topChildren.filter(child => !fits(child, top)).map(child => child.className || child.tagName),
+          outsideFooter: footerChildren.filter(child => !fits(child, footer)).map(child => child.className || child.tagName),
+          blockOverlaps: ordered.slice(0, -1).filter((entry, index) => overlaps(entry.node, ordered[index + 1].node)).map(entry => entry.node.className || entry.node.tagName),
+          titlePriceOverlap: overlaps(title, price),
+          footerOverlap: footerChildren.length > 1 && overlaps(footerChildren[0], footerChildren[1]),
+          ingredientsVisible: visible(ingredientSource) && ingredientSource.textContent.includes(expectedIngredients),
+          bodyOverflowY:getComputedStyle(body).overflowY,
+          scrollPosition:{ bodyTop:body.scrollTop, bodyLeft:body.scrollLeft, cardTop:element.scrollTop, cardLeft:element.scrollLeft },
+          image:{ fit:getComputedStyle(image).objectFit, position:getComputedStyle(image).objectPosition, transform:getComputedStyle(image).transform },
+          pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth
+        };
+      }, expectedProduct.ingredients);
+      expect(expanded, `${expectedProduct.id} expandida en ${viewport.width}x${viewport.height}`).toEqual({
+        insideViewport:true, overflow:[], outsideCard:[], outsideBody:[], outsideTop:[], outsideFooter:[], blockOverlaps:[],
+        titlePriceOverlap:false, footerOverlap:false, ingredientsVisible:true, bodyOverflowY:"hidden",
+        scrollPosition:{ bodyTop:0, bodyLeft:0, cardTop:0, cardLeft:0 },
+        image:{ fit:"contain", position:"50% 50%", transform:"none" }, pageOverflow:0
+      });
+
+      if (mobileOrTablet) {
+        await safety.locator("summary").click();
+        await expect(safety).not.toHaveAttribute("open", "");
+      }
+      await closeProductCard(page);
+      await expect(card).not.toHaveClass(/product-expanded/);
+    }
   }
+});
+
+test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni foco", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width:390, height:844 });
+  await openPreview(page);
+  await page.getByRole("button", { name:"Bottega", exact:true }).click();
+  const card = page.locator('.catalog-group[data-catalog-group="bottega"] .product[data-product-id="bottega-de-cecco-aceite-oliva-classico"]');
+  await card.scrollIntoViewIfNeeded();
+  const source = card.locator(".product-front .product-media");
+  const initialScrollY = await page.evaluate(() => window.scrollY);
+
+  await source.click();
+  await expect(card).toHaveClass(/product-expanded/);
+  await page.setViewportSize({ width:844, height:390 });
+  await expect(card).toHaveClass(/product-expanded-open/);
+  await expect(card).not.toHaveClass(/product-expanded-animating/);
+  await expect.poll(() => card.evaluate(element => element.getBoundingClientRect().right <= 845 && element.getBoundingClientRect().bottom <= 391)).toBe(true);
+
+  const safety = card.locator(".product-back .product-safety");
+  await expect(safety).toBeVisible();
+  await safety.locator("summary").click();
+  await expect(safety).toHaveAttribute("open", "");
+  await expect(safety.locator("summary")).toBeFocused();
+
+  const expectExpandedFit = async (viewport, label) => {
+    const metrics = await card.evaluate((element, expectedViewport) => {
+      const visible = node => node && getComputedStyle(node).display !== "none" && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0;
+      const fits = (child, parent) => {
+        const inner = child.getBoundingClientRect(), outer = parent.getBoundingClientRect();
+        return inner.left >= outer.left - 1 && inner.right <= outer.right + 1 && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+      };
+      const back = element.querySelector(".product-back");
+      const media = back.querySelector(".product-expanded-media");
+      const body = back.querySelector(".product-expanded-body");
+      const bodyChildren = [...body.children].filter(visible);
+      const visual = window.visualViewport || { offsetLeft:0, offsetTop:0, width:window.innerWidth, height:window.innerHeight };
+      const box = element.getBoundingClientRect();
+      return {
+        viewport:[window.innerWidth, window.innerHeight],
+        insideViewport:box.left >= visual.offsetLeft - 1
+          && box.right <= visual.offsetLeft + visual.width + 1
+          && box.top >= visual.offsetTop - 1
+          && box.bottom <= visual.offsetTop + visual.height + 1,
+        overflow:[element, back, media, body, ...bodyChildren]
+          .filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1)
+          .map(node => node.className || node.tagName),
+        outside:[back, media, body].filter(node => !fits(node, element)).map(node => node.className),
+        outsideBody:bodyChildren.filter(node => !fits(node, body)).map(node => node.className || node.tagName),
+        bodyOverflowY:getComputedStyle(body).overflowY,
+        ingredientsOpen:Boolean(body.querySelector(".product-safety[open]")),
+        ingredientsVisible:body.querySelector(".product-safety")?.textContent.includes("Olivas"),
+        focusInside:element.contains(document.activeElement),
+        pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        expectedViewport
+      };
+    }, viewport);
+    expect(metrics, label).toEqual({
+      viewport:[viewport.width, viewport.height], insideViewport:true, overflow:[], outside:[], outsideBody:[],
+      bodyOverflowY:"hidden", ingredientsOpen:true, ingredientsVisible:true, focusInside:true, pageOverflow:0,
+      expectedViewport:viewport
+    });
+  };
+
+  await expectExpandedFit({ width:844, height:390 }, "Bottega abierta en paisaje");
+  await page.setViewportSize({ width:390, height:844 });
+  await expect(card).toHaveClass(/product-expanded-open/);
+  await expect(card).not.toHaveClass(/product-expanded-animating/);
+  await expect.poll(() => card.evaluate(element => element.getBoundingClientRect().right <= 391 && element.getBoundingClientRect().bottom <= 845)).toBe(true);
+  await expect(safety).toHaveAttribute("open", "");
+  await expect(safety.locator("summary")).toBeFocused();
+  await expectExpandedFit({ width:390, height:844 }, "Bottega abierta de vuelta en retrato");
+
+  await page.keyboard.press("Escape");
+  await expect(card).not.toHaveClass(/product-expanded/);
+  await expect(source).toBeFocused();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(initialScrollY);
 });
 
 test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotados", async ({ page }) => {

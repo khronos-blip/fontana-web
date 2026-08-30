@@ -1241,6 +1241,7 @@
     let activePlaceholder = null;
     let restoreTarget = null;
     let activeCloser = null;
+    let activeGeometryRefresh = null;
     let activeScrollState = null;
     const backdrop = document.createElement("div");
     backdrop.className = "product-flip-backdrop";
@@ -1250,6 +1251,9 @@
     document.addEventListener("keydown", event => {
       if (event.key === "Escape") activeCloser?.();
     });
+    const refreshActiveGeometry = () => activeGeometryRefresh?.();
+    window.addEventListener("resize", refreshActiveGeometry);
+    window.visualViewport?.addEventListener("resize", refreshActiveGeometry);
 
     const isInteractiveTarget = target => Boolean(target.closest("button, a, input, select, textarea, label, summary, details"));
 
@@ -1268,6 +1272,7 @@
       const media = $(".product-media", card);
       const body = $(".product-body", card);
       const title = $(".product-top h3", body)?.textContent?.trim() || card.dataset.name || "Producto Fontana";
+      const isBottega = card.dataset.category === "bottega";
       if (!media || !body) return;
 
       const inner = document.createElement("div");
@@ -1292,7 +1297,11 @@
       let backdropMotion = null;
       let faceMotions = [];
       let motionKeyframes = null;
+      let sourceCardRect = null;
+      let geometryFrame = 0;
+      let motionEpoch = 0;
       const motionDuration = 860;
+      const targetTransform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
 
       const cancelFaceMotions = () => {
         faceMotions.forEach(animation => animation.cancel());
@@ -1341,6 +1350,78 @@
         syncProductCardHeights();
       };
 
+      const resolveExpandedGeometry = rect => {
+        const viewport = window.visualViewport;
+        const viewportWidth = viewport?.width || window.innerWidth;
+        const viewportHeight = viewport?.height || window.innerHeight;
+        const viewportLeft = viewport?.offsetLeft || 0;
+        const viewportTop = viewport?.offsetTop || 0;
+        const mobile = window.matchMedia("(max-width: 640px)").matches;
+        const desktop = window.matchMedia("(min-width: 960px)").matches;
+        const shortBottegaViewport = isBottega && viewportHeight <= 650 && viewportWidth > viewportHeight;
+        const horizontalMargin = shortBottegaViewport ? 16 : mobile ? 28 : desktop ? 48 : 80;
+        const verticalMargin = shortBottegaViewport ? 16 : mobile ? (isBottega ? 16 : 52) : desktop ? 48 : 60;
+        const width = Math.round(shortBottegaViewport
+          ? Math.min(viewportWidth - (horizontalMargin * 2), desktop ? 1040 : 820)
+          : desktop
+          ? Math.min(viewportWidth - (horizontalMargin * 2), 1040)
+          : Math.min(
+              viewportWidth - (horizontalMargin * 2),
+              Math.max(mobile ? 280 : 520, rect.width * (mobile ? 1.55 : 1.42))
+            ));
+        const height = Math.round(shortBottegaViewport
+          ? Math.min(viewportHeight - (verticalMargin * 2), 640)
+          : desktop
+          ? Math.min(viewportHeight - (verticalMargin * 2), 640)
+          : Math.min(
+              viewportHeight - (verticalMargin * 2),
+              Math.max(mobile ? 560 : 600, rect.height * (mobile ? 1.34 : 1.12))
+            ));
+        return {
+          width,
+          height,
+          left:viewportLeft + ((viewportWidth - width) / 2),
+          top:viewportTop + ((viewportHeight - height) / 2)
+        };
+      };
+
+      const applyExpandedGeometry = geometry => {
+        card.style.setProperty("--product-expanded-width", `${geometry.width}px`);
+        card.style.setProperty("--product-expanded-height", `${geometry.height}px`);
+        card.style.setProperty("--product-expanded-left", `${geometry.left}px`);
+        card.style.setProperty("--product-expanded-top", `${geometry.top}px`);
+      };
+
+      const settleExpandedAfterViewportChange = () => {
+        geometryFrame = 0;
+        if (
+          activeCard !== card
+          || !card.classList.contains("product-expanded")
+          || card.classList.contains("product-expanded-closing")
+          || !sourceCardRect
+        ) return;
+        const focusWasInside = card.contains(document.activeElement);
+        motionEpoch += 1;
+        cardMotion?.cancel();
+        cardMotion = null;
+        cancelFaceMotions();
+        motionKeyframes = null;
+        applyExpandedGeometry(resolveExpandedGeometry(sourceCardRect));
+        card.style.transform = targetTransform;
+        card.classList.add("product-expanded-open", "product-flipped");
+        card.classList.remove("product-expanded-animating");
+        front.setAttribute("aria-hidden", "true");
+        back.setAttribute("aria-hidden", "false");
+        media.setAttribute("aria-expanded", "true");
+        backdrop.classList.add("visible");
+        if (!focusWasInside) back.focus({ preventScroll:true });
+      };
+
+      const scheduleExpandedGeometryRefresh = () => {
+        if (geometryFrame) cancelAnimationFrame(geometryFrame);
+        geometryFrame = requestAnimationFrame(settleExpandedAfterViewportChange);
+      };
+
       const open = trigger => {
         if (
           activeCard
@@ -1350,25 +1431,12 @@
         ) return;
         restoreTarget = trigger || media;
         const rect = card.getBoundingClientRect();
-        const mobile = window.matchMedia("(max-width: 640px)").matches;
-        const desktop = window.matchMedia("(min-width: 960px)").matches;
-        const viewportHeight = window.visualViewport?.height || window.innerHeight;
-        const horizontalMargin = mobile ? 28 : desktop ? 48 : 80;
-        const verticalMargin = mobile ? 52 : desktop ? 48 : 60;
-        const targetWidth = Math.round(desktop
-          ? Math.min(window.innerWidth - (horizontalMargin * 2), 1040)
-          : Math.min(
-              window.innerWidth - (horizontalMargin * 2),
-              Math.max(mobile ? 280 : 520, rect.width * (mobile ? 1.55 : 1.42))
-            ));
-        const targetHeight = Math.round(desktop
-          ? Math.min(viewportHeight - (verticalMargin * 2), 640)
-          : Math.min(
-              viewportHeight - (verticalMargin * 2),
-              Math.max(mobile ? 560 : 600, rect.height * (mobile ? 1.34 : 1.12))
-            ));
-        const targetX = (window.innerWidth - targetWidth) / 2;
-        const targetY = (viewportHeight - targetHeight) / 2;
+        sourceCardRect = { width:rect.width, height:rect.height };
+        const geometry = resolveExpandedGeometry(sourceCardRect);
+        const targetWidth = geometry.width;
+        const targetHeight = geometry.height;
+        const targetX = geometry.left;
+        const targetY = geometry.top;
         const startX = rect.left + (rect.width / 2) - (targetX + (targetWidth / 2));
         const startY = rect.top + (rect.height / 2) - (targetY + (targetHeight / 2));
         const startScaleX = rect.width / targetWidth;
@@ -1382,11 +1450,7 @@
         const frontEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(89.8deg) rotateZ(-1.1deg)`;
         const backEdgeTransform = `perspective(1800px) translate3d(${startX * 0.34}px, ${startY * 0.34}px, 86px) scale(${edgeScaleX}, ${edgeScaleY}) rotateX(2.8deg) rotateY(-89.8deg) rotateZ(-1.1deg)`;
         const settleTransform = `perspective(1800px) translate3d(${startX * 0.04}px, ${startY * 0.04}px, 14px) scale(.97, .97) rotateX(.35deg) rotateY(7deg) rotateZ(.18deg)`;
-        const targetTransform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
-        card.style.setProperty("--product-expanded-width", `${targetWidth}px`);
-        card.style.setProperty("--product-expanded-height", `${targetHeight}px`);
-        card.style.setProperty("--product-expanded-left", `${targetX}px`);
-        card.style.setProperty("--product-expanded-top", `${targetY}px`);
+        applyExpandedGeometry(geometry);
         card.style.setProperty("--product-start-transform", startTransform);
         card.style.setProperty("--product-target-transform", targetTransform);
         motionKeyframes = [
@@ -1406,6 +1470,8 @@
         card.before(activePlaceholder);
         activeCard = card;
         activeCloser = close;
+        activeGeometryRefresh = isBottega ? scheduleExpandedGeometryRefresh : null;
+        const epoch = ++motionEpoch;
         frontSnapshot = document.createElement("div");
         frontSnapshot.className = "product-front-snapshot";
         // Match the card's inner box, not its outer border box. This prevents
@@ -1443,10 +1509,10 @@
         back.setAttribute("aria-hidden", "false");
         media.setAttribute("aria-expanded", "true");
         requestAnimationFrame(() => {
-          if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
+          if (epoch !== motionEpoch || activeCard !== card || card.classList.contains("product-expanded-closing")) return;
           card.classList.add("product-expanded-animating");
           requestAnimationFrame(() => {
-            if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
+            if (epoch !== motionEpoch || activeCard !== card || card.classList.contains("product-expanded-closing")) return;
             backdrop.classList.add("visible");
             card.classList.add("product-expanded-open", "product-flipped");
             if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1462,7 +1528,7 @@
             });
             animateFaceSwap(true);
             cardMotion.finished.then(() => {
-              if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
+              if (epoch !== motionEpoch || activeCard !== card || card.classList.contains("product-expanded-closing")) return;
               card.classList.remove("product-expanded-animating");
               back.focus({ preventScroll: true });
             }).catch(() => {});
@@ -1472,8 +1538,11 @@
 
       const close = (immediate = false) => {
         if (activeCard !== card || card.classList.contains("product-expanded-closing")) return;
+        motionEpoch += 1;
         card.classList.add("product-expanded-closing", "product-expanded-animating");
         const restore = () => {
+          if (geometryFrame) cancelAnimationFrame(geometryFrame);
+          geometryFrame = 0;
           cardMotion?.cancel();
           cardMotion = null;
           const closingBackdropMotion = backdropMotion;
@@ -1484,6 +1553,8 @@
           activePlaceholder = null;
           activeCard = null;
           activeCloser = null;
+          activeGeometryRefresh = null;
+          sourceCardRect = null;
           card.classList.add("product-flip-restoring");
           card.classList.remove("product-expanded", "product-expanded-open", "product-flipped", "product-expanded-closing", "product-expanded-animating");
           card.style.removeProperty("--product-expanded-width");

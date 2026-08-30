@@ -16,8 +16,24 @@ function fingerprint(contents) {
 
 function compactInlineStyles(html) {
   return html.replace(/<style>([\s\S]*?)<\/style>/g, (_match, styles) => (
-    `<style>${styles.replace(/\s+/g, " ").trim()}</style>`
+    `<style>${styles
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\s*([{};])\s*/g, "$1")
+      .replace(/\[([-\w]+)="([_a-zA-Z][-\w]*)"\]/g, "[$1=$2]")
+      .replace(/;}/g, "}")
+      .trim()}</style>`
   ));
+}
+
+function compactStructuredData(html) {
+  return html.replace(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g, (tag, json) => {
+    try {
+      return `<script type="application/ld+json">${JSON.stringify(JSON.parse(json))}</script>`;
+    } catch {
+      return tag;
+    }
+  });
 }
 
 function escapeHtml(value) {
@@ -325,7 +341,7 @@ let html = sourceHtml
   .replaceAll("https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg", `${site.origin}${site.defaultSocialImage}`)
   .replace('<meta property="og:image:width" content="1448">', '<meta property="og:image:width" content="1200">')
   .replace('<meta property="og:image:height" content="1086">', '<meta property="og:image:height" content="630">');
-html = compactInlineStyles(enhanceHomepageImages(html));
+html = compactStructuredData(compactInlineStyles(enhanceHomepageImages(html)));
 await writeFile(`${outputDirectory}/index.html`, html);
 
 let adminHtml = await readFile("admin/index.html", "utf8");
