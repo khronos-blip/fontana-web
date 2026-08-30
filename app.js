@@ -245,14 +245,21 @@
     $$("#products > .product").forEach(product => product.remove());
     const configuredProducts = Array.isArray(config.dynamicCatalog) ? config.dynamicCatalog : [];
     const managedIds = new Set(adminState.products.map(product => product.id));
-    // A product that exists only in the static fallback cannot yet be
-    // validated or reserved by the Worker. Keep it available in local/offline
-    // previews, but do not expose a broken checkout in verified production.
-    const newlyConfiguredProducts = localMode || !adminStateVerified
-      ? configuredProducts.filter(product => !managedIds.has(product.id))
-      : [];
+    // Bottega must remain visible while the owner finishes publishing its
+    // inventory definitions. In verified production these fallback cards are
+    // consultation-only until the Worker catalogue contains their IDs, so a
+    // visible product can never create an invalid reservation.
+    const newlyConfiguredProducts = configuredProducts
+      .filter(product => !managedIds.has(product.id)
+        && (localMode || !adminStateVerified || product.category === "bottega"))
+      .map(product => ({
+        ...product,
+        catalogManaged: localMode
+      }));
     config.dynamicCatalog = [
-      ...adminState.products.filter(product => !product.deleted && product.visible !== false),
+      ...adminState.products
+        .filter(product => !product.deleted && product.visible !== false)
+        .map(product => ({...product, catalogManaged:true})),
       ...newlyConfiguredProducts
     ].map(product => {
       const normalized = {...product, image:optimizedProductImage(product.image)};
@@ -3023,6 +3030,8 @@
     const allowedCategories = new Set(["cakes", "snacks", "salado", "beverages", "bottega"]);
     const cards = products.map((product, index) => {
       const category = allowedCategories.has(product.category) ? product.category : "snacks";
+      const catalogManaged = product.catalogManaged !== false;
+      const pendingCatalogPublication = category === "bottega" && !catalogManaged;
       const productId = String(product.id || index + 1).replace(/[^a-z0-9_-]/gi, "-");
       const id = `catalog-${productId}`;
       const name = String(product.name || "Producto Fontana");
@@ -3084,13 +3093,13 @@
       const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => { const statusClass = badge === "TEMPORALMENTE NO DISPONIBLE" || badge === "AGOTADO" ? " status-unavailable" : badge === "PRE-ORDER" ? " status-preorder" : ""; return `<span class="product-tag${index ? " secondary" : ""}${statusClass}">${escapeHtml(badge)}</span>`; }).join("")}</div>` : "";
       const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
       const quoteText = category === "bottega"
-        ? `Hola Fontana sin gluten 💜 Quisiera consultar el precio y la disponibilidad de ${name}.`
+        ? `Hola Fontana sin gluten 💜 Quisiera consultar la disponibilidad de ${name}${hasPrice ? ` (${money(price)})` : ""}.`
         : `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
-      const quoteButton = !hasPrice && whatsappNumber
-        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">Consultar por WhatsApp</a>`
+      const quoteButton = (!hasPrice || pendingCatalogPublication) && whatsappNumber
+        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">${pendingCatalogPublication ? "Consultar disponibilidad" : "Consultar por WhatsApp"}</a>`
         : "";
       const footerCopy = category === "bottega" ? bottegaAvailabilityLabel : product.weight || product.availabilityLabel;
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${immediate}" data-stock-state="${bottegaAvailability || "pending"}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${immediate}" data-stock-state="${bottegaAvailability || "pending"}" data-catalog-managed="${catalogManaged}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${catalogManaged && hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
@@ -3177,6 +3186,9 @@
   }
 
   function productSelection(card) {
+    if (card.dataset.catalogManaged === "false") {
+      return { error:"Disponibilidad por confirmar. Consulta este producto por WhatsApp." };
+    }
     const selectedVariant = $(".product-variant", card)?.value || "";
     const sizeSelect = $(".product-size", card);
     const selectedSize = sizeSelect?.value || "";

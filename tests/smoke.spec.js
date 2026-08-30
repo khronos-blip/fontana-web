@@ -5733,7 +5733,7 @@ test("el panel administrador lista y conserva los 11 Bottega con precio, marca y
   expect(savedProduct).toEqual({category:"bottega",price:10,brand:"De Cecco · Bottega"});
 });
 
-test("Bottega queda pendiente en el panel y no aparece en producción antes de publicarse en D1", async ({ page }) => {
+test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mientras D1 no lo publica", async ({ page }) => {
   await page.goto("/admin/");
   await page.getByRole("button", { name:"Entrar al panel" }).click();
   await page.getByRole("button", { name:"Guardar cambios" }).click();
@@ -5745,6 +5745,7 @@ test("Bottega queda pendiente en el panel y no aparece en producción antes de p
   });
 
   const apiOrigin = "http://fontana.localhost:8767";
+  const orderRequests = {validate:0,reserve:0};
   await page.route("https://api.fontanasingluten.com/v1/**", async route => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
@@ -5760,6 +5761,13 @@ test("Bottega queda pendiente en el panel y no aparece en producción antes de p
     }
     let payload = {};
     if (pathname === "/v1/catalog") payload = {state:publishedState};
+    else if (pathname === "/v1/orders/validate") {
+      orderRequests.validate += 1;
+      payload = {error:"invalid_product"};
+    } else if (pathname === "/v1/orders/reserve") {
+      orderRequests.reserve += 1;
+      payload = {error:"invalid_product"};
+    }
     else if (pathname === "/v1/auth/login") payload = {ok:true,username:"fontana-test",displayName:"Fontana",role:"owner"};
     else if (pathname === "/v1/admin/catalog") payload = {state:publishedState,revision:7};
     else if (pathname === "/v1/admin/operations") payload = {electricityEnabled:true,updatedAt:null,updatedBy:"fontana-test",affectedCount:0};
@@ -5772,9 +5780,44 @@ test("Bottega queda pendiente en el panel y no aparece en producción antes de p
 
   await page.goto(`${apiOrigin}/`);
   await expect(page.locator("#products")).toHaveClass(/catalog-organized/);
-  await expect(page.locator('.catalog-group[data-catalog-group="bottega"]')).toHaveCount(0);
-  await expect(page.locator('[data-product-id^="bottega-"]')).toHaveCount(0);
-  expect(await page.evaluate(() => window.FONTANA_CONFIG.dynamicCatalog.some(product => product.category === "bottega"))).toBe(false);
+  await page.getByRole("button", {name:"Bottega",exact:true}).click();
+  const fallbackCards = page.locator('.catalog-group[data-catalog-group="bottega"] .product[data-category="bottega"]');
+  await expect(fallbackCards).toHaveCount(expectedBottegaProducts.length);
+  await expect(fallbackCards.locator(".price")).toHaveText(Array(expectedBottegaProducts.length).fill("REF\u00a010,00"));
+  await expect(fallbackCards).toContainText(Array(expectedBottegaProducts.length).fill("DISPONIBILIDAD POR CONFIRMAR"));
+  expect(await fallbackCards.evaluateAll(cards => cards.every(card => card.dataset.catalogManaged === "false"))).toBe(true);
+  await expect(fallbackCards.locator(".add")).toHaveCount(0);
+  const consultationLinks = fallbackCards.locator('.product-quote');
+  await expect(consultationLinks).toHaveCount(expectedBottegaProducts.length);
+  await expect(consultationLinks).toHaveText(Array(expectedBottegaProducts.length).fill("Consultar disponibilidad"));
+  expect(await consultationLinks.evaluateAll(links => links.every(link => (
+    link.href.startsWith("https://wa.me/")
+      && link.target === "_blank"
+      && link.rel.split(/\s+/).includes("noopener")
+  )))).toBe(true);
+  expect(await page.evaluate(() => window.FONTANA_CONFIG.dynamicCatalog
+    .filter(product => product.category === "bottega")
+    .every(product => product.price === 10))).toBe(true);
+
+  await page.evaluate(productId => {
+    const product = window.FONTANA_CONFIG.dynamicCatalog.find(item => item.id === productId);
+    localStorage.setItem("fontana-cart-v1", JSON.stringify([{
+      id:product.id,
+      productId:product.id,
+      category:product.category,
+      name:product.name,
+      price:product.price,
+      image:product.image,
+      choices:"DISPONIBILIDAD POR CONFIRMAR",
+      inventory:{kind:"product",productId:product.id,size:"",variant:"",preorder:false,availability:"pending"},
+      qty:1
+    }]));
+  }, expectedBottegaProducts[0].id);
+  await page.reload();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item-unavailable")).toHaveCount(1);
+  await expect(page.locator("#continueCheckout")).toBeDisabled();
+  expect(orderRequests).toEqual({validate:0,reserve:0});
 
   await page.goto(`${apiOrigin}/admin/`);
   await page.locator("#loginUsername").fill("fontana-test");
@@ -5786,6 +5829,74 @@ test("Bottega queda pendiente en el panel y no aparece en producción antes de p
   const pendingRows = page.locator("#productList .product-row");
   await expect(pendingRows).toHaveCount(expectedBottegaProducts.length);
   await expect(pendingRows.locator(".badges")).toContainText(Array(expectedBottegaProducts.length).fill("REF 10,00"));
+});
+
+test("Bottega publicada por la API respeta el stock real disponible o en cero", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", {name:"Entrar al panel"}).click();
+  await page.getByRole("button", {name:"Guardar cambios"}).click();
+  const productIds = expectedBottegaProducts.slice(0, 2).map(product => product.id);
+  const publishedState = await page.evaluate(ids => {
+    const state = JSON.parse(localStorage.getItem("fontana-admin-catalog-v1") || "{}");
+    state.products = (state.products || []).filter(product => (
+      product.category !== "bottega" || ids.includes(product.id)
+    )).map(product => {
+      if (product.id === ids[0]) return {...product,stockTracked:true,status:"available",allowPreorder:false};
+      if (product.id === ids[1]) return {...product,stockTracked:true,status:"sold-out",allowPreorder:false};
+      return product;
+    });
+    state.operations = {verified:true,electricityEnabled:true};
+    return state;
+  }, productIds);
+
+  const apiOrigin = "http://fontana.localhost:8767";
+  let validationRequests = 0;
+  await page.route("https://api.fontanasingluten.com/v1/**", async route => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const headers = {
+      "access-control-allow-origin":apiOrigin,
+      "access-control-allow-methods":"GET, POST, OPTIONS",
+      "access-control-allow-headers":"content-type"
+    };
+    if (request.method() === "OPTIONS") {
+      await route.fulfill({status:204,headers});
+      return;
+    }
+    if (pathname === "/v1/catalog") {
+      await route.fulfill({status:200,contentType:"application/json",headers,body:JSON.stringify({state:publishedState})});
+      return;
+    }
+    if (pathname === "/v1/orders/validate") {
+      validationRequests += 1;
+      await route.fulfill({status:200,contentType:"application/json",headers,body:JSON.stringify({ok:true})});
+      return;
+    }
+    await route.fulfill({status:404,contentType:"application/json",headers,body:JSON.stringify({error:"not_found"})});
+  });
+
+  await page.goto(`${apiOrigin}/`);
+  await page.getByRole("button", {name:"Bottega",exact:true}).click();
+  const group = page.locator('.catalog-group[data-catalog-group="bottega"]');
+  const immediate = group.locator(`[data-product-id="${productIds[0]}"]`);
+  const soldOut = group.locator(`[data-product-id="${productIds[1]}"]`);
+  const unpublished = group.locator(`.product[data-category="bottega"]:not([data-product-id="${productIds[0]}"]):not([data-product-id="${productIds[1]}"])`);
+
+  await expect(group.locator('.product[data-category="bottega"]')).toHaveCount(expectedBottegaProducts.length);
+  await expect(immediate).toContainText("ENTREGA INMEDIATA");
+  await expect(immediate.locator(".add")).toBeVisible();
+  await immediate.locator(".add").click();
+  await expect.poll(() => validationRequests).toBe(1);
+  await expect.poll(() => page.evaluate(productId => {
+    const cart = JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]");
+    return cart.find(item => item.inventory?.productId === productId)?.inventory?.availability;
+  }, productIds[0])).toBe("immediate");
+
+  await expect(soldOut).toContainText("AGOTADO");
+  await expect(soldOut.locator(".add")).toHaveCount(0);
+  await expect(unpublished).toHaveCount(expectedBottegaProducts.length - productIds.length);
+  await expect(unpublished).toContainText(Array(expectedBottegaProducts.length - productIds.length).fill("DISPONIBILIDAD POR CONFIRMAR"));
+  await expect(unpublished.locator(".add")).toHaveCount(0);
 });
 
 test("el panel controla los sellos visibles de cada producto", async ({ page }, testInfo) => {
