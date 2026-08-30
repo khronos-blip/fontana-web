@@ -5623,7 +5623,7 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
         insideViewport:true, overflow:[], outsideCard:[], outsideBody:[], outsideTop:[], outsideFooter:[], blockOverlaps:[],
         titlePriceOverlap:false, footerOverlap:false, ingredientsVisible:true, bodyOverflowY:"hidden",
         scrollPosition:{ bodyTop:0, bodyLeft:0, cardTop:0, cardLeft:0 },
-        image:{ fit:"contain", position:"50% 50%", transform:"none" }, pageOverflow:0
+        image:{ fit:"cover", position:"50% 50%", transform:"none" }, pageOverflow:0
       });
 
       await closeProductCard(page);
