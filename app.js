@@ -1798,16 +1798,15 @@
         // from the gesture that came before it.
         suppressClickUntil = 0;
         resetWheelGesture();
-        const interruptedTarget = cancelMotion();
         pointer = {
           id: event.pointerId,
           startX: event.clientX,
           startY: event.clientY,
           startPosition: position,
-          baseTarget: interruptedTarget,
+          baseTarget: motion?.target ?? intendedTarget,
           width,
           axis: null,
-          interrupted: Math.abs(interruptedTarget - position) > .001
+          startedDuringMotion: Boolean(motion)
         };
       };
       const movePointer = event => {
@@ -1816,15 +1815,15 @@
         const dy = event.clientY - pointer.startY;
         if (!pointer.axis) {
           if (Math.hypot(dx, dy) < 8) return;
-          if (Math.abs(dy) >= Math.abs(dx)) {
+          // Page scrolling wins when a touch is even moderately diagonal.
+          // Only a clearly horizontal gesture should move the flavor ring.
+          if (Math.abs(dy) >= Math.abs(dx) * .8) {
             pointer.axis = "vertical";
-            if (pointer.interrupted) {
-              animateTo(pointer.baseTarget);
-              pointer.interrupted = false;
-            }
             return;
           }
           pointer.axis = "horizontal";
+          pointer.baseTarget = cancelMotion();
+          pointer.startPosition = position;
           suppressClickUntil = performance.now() + 500;
           setState("dragging");
           try { track.setPointerCapture(event.pointerId); } catch (_error) {}
@@ -1841,12 +1840,10 @@
           if (track.hasPointerCapture?.(activePointer.id)) track.releasePointerCapture(activePointer.id);
         } catch (_error) {}
         if (activePointer.axis !== "horizontal") {
-          if (activePointer.interrupted) {
+          if (activePointer.startedDuringMotion && activePointer.axis !== "vertical") {
             suppressClickUntil = performance.now() + 500;
-            animateTo(activePointer.baseTarget);
-          } else if (!motion) {
-            setState("idle");
           }
+          if (!motion) setState("idle");
           return;
         }
         suppressClickUntil = performance.now() + 500;
@@ -1889,7 +1886,10 @@
           : event.deltaX;
         const dx = rawX * unit;
         const dy = event.deltaY * unit;
-        if (Math.abs(dx) < 1 || Math.abs(dx) <= Math.abs(dy) * .9) return;
+        if (
+          Math.abs(dx) < 1
+          || (!event.shiftKey && Math.abs(dx) <= Math.abs(dy) * 1.2)
+        ) return;
         event.preventDefault();
         const now = performance.now();
         const magnitude = Math.abs(dx);
@@ -2954,7 +2954,7 @@
         const verticalDelta = shiftWheel ? 0 : event.deltaY * unit;
         if (
           Math.abs(horizontalDelta) < 1
-          || (!shiftWheel && Math.abs(horizontalDelta) <= Math.abs(verticalDelta))
+          || (!shiftWheel && Math.abs(horizontalDelta) <= Math.abs(verticalDelta) * 1.2)
         ) return;
 
         event.preventDefault();

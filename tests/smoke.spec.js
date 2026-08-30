@@ -2232,6 +2232,8 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
     expect(vertical).toEqual([{ defaultPrevented: false, dispatched: true }]);
     const verticalDiagonal = await dispatchWheelBurst(overlay, [{ deltaX: 20, deltaY: 60 }]);
     expect(verticalDiagonal).toEqual([{ defaultPrevented: false, dispatched: true }]);
+    const balancedDiagonal = await dispatchWheelBurst(overlay, [{ deltaX: 66, deltaY: 60 }]);
+    expect(balancedDiagonal).toEqual([{ defaultPrevented: false, dispatched: true }]);
     const pinch = await dispatchWheelBurst(overlay, [{ deltaX: 80, ctrlKey: true }]);
     expect(pinch).toEqual([{ defaultPrevented: false, dispatched: true }]);
     await page.waitForTimeout(120);
@@ -4406,6 +4408,20 @@ test("el carrusel compacto móvil responde a contacto táctil real en Fonkies y 
       await expectCenteredCurrentCard(track, item.card, 0);
       await expect(overlay).toHaveCount(0);
 
+      await track.scrollIntoViewIfNeeded();
+      const diagonalScrollBefore = await page.evaluate(() => scrollY);
+      await touchGesture(track, {
+        startX: .6,
+        endX: .5,
+        startY: .68,
+        endY: .5,
+        steps: 8,
+        stepDelayMs: 14
+      });
+      await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(diagonalScrollBefore + 20);
+      await expectCenteredCurrentCard(track, item.card, 0);
+      await expect(overlay).toHaveCount(0);
+
       await touchGesture(track, {
         startX: .78,
         endX: .44,
@@ -4745,6 +4761,47 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await cards.nth(expectedIndex).focus();
 
+    await dispatchGesture(track, item.card, "forward");
+    expectedIndex = modulo(expectedIndex + 1, cardCount);
+    await page.waitForTimeout(40);
+    const uninterruptedMotion = await track.evaluate(async element => {
+      const signature = () => [...element.children].map(card => card.style.transform).join("|");
+      const box = element.getBoundingClientRect();
+      const x = box.left + (box.width * .5);
+      const y = box.top + (box.height * .5);
+      const pointerId = 910;
+      const eventOptions = (clientX, clientY, buttons) => ({
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX,
+        clientY,
+        button: 0,
+        buttons,
+        bubbles: true,
+        cancelable: true
+      });
+      const beforeContact = signature();
+      element.dispatchEvent(new PointerEvent("pointerdown", eventOptions(x, y, 1)));
+      await new Promise(resolve => setTimeout(resolve, 80));
+      const duringContact = signature();
+      await new Promise(resolve => setTimeout(resolve, 320));
+      element.dispatchEvent(new PointerEvent("pointerup", eventOptions(x, y, 0)));
+      const current = element.querySelector('[aria-current="true"]');
+      const click = new MouseEvent("click", { bubbles: true, cancelable: true, clientX: x, clientY: y });
+      const clickPrevented = current ? !current.dispatchEvent(click) : false;
+      return {
+        beforeContact,
+        duringContact,
+        clickPrevented,
+        overlayCount: document.querySelectorAll(".builder-flavor-flip-card").length
+      };
+    });
+    expect(uninterruptedMotion.duringContact).not.toBe(uninterruptedMotion.beforeContact);
+    expect(uninterruptedMotion.clickPrevented).toBe(true);
+    expect(uninterruptedMotion.overlayCount).toBe(0);
+    await expectRestingIndex(track, item.card, expectedIndex);
+
     const inertiaOnly = await dispatchWheelTimeline(track, [
       { deltaX: 90, waitAfter: 8 },
       { deltaX: 72, waitAfter: 8 },
@@ -4860,6 +4917,24 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
     });
     expect(verticalWheel.propagated).toBe(true);
     expect(verticalWheel.after).toBe(verticalWheel.before);
+
+    const diagonalWheel = await track.evaluate(element => {
+      const before = element.dataset.galleryIndex;
+      const event = new WheelEvent("wheel", {
+        deltaX: 110,
+        deltaY: 100,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        bubbles: true,
+        cancelable: true
+      });
+      return {
+        propagated: element.dispatchEvent(event),
+        before,
+        after: element.dataset.galleryIndex
+      };
+    });
+    expect(diagonalWheel.propagated).toBe(true);
+    expect(diagonalWheel.after).toBe(diagonalWheel.before);
 
     const pinchWheel = await track.evaluate(element => {
       const before = element.dataset.galleryIndex;
