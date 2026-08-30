@@ -214,7 +214,6 @@
     .product{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--cream);transition:box-shadow .25s ease,border-color .25s ease;position:relative}
     .product:hover{box-shadow:var(--shadow)}
     .product.hidden{display:none}
-    .product-flip-ready{overflow:hidden;transform-style:preserve-3d}
     .product-flip-inner{position:relative;width:100%;transform:none;transition:height .35s ease}
     .catalog-group-grid.product-height-syncing .product-flip-inner{transition:none!important}
     .product-face{position:absolute;inset:0 0 auto;width:100%;overflow:hidden;background:var(--cream);transform:none}
@@ -242,7 +241,7 @@
     .product-expanded-body .product-top h3{font-size:2rem}
     .product-expanded-body p{min-height:0;font-size:.9rem;line-height:1.55}
     .product-media{aspect-ratio:1.05;overflow:hidden;background:var(--lilac-soft);position:relative;flex-shrink:0}
-    .product-media img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;transition:.5s ease}
+    .product-media img{display:block;width:100%;height:100%;object-fit:cover}
     .product[data-id="pistacho-clasico"] .product-media img,
     .product[data-product-id="pistacho-clasico"] .product-media img{object-position:50% 50%;transform:scale(1.25)}
     .product[data-category="bottega"] .product-media{background:linear-gradient(180deg,#f7f1eb 0%,#eadce9 100%)}
@@ -329,7 +328,8 @@
     .fonkie-gallery-card img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;object-position:50% 50%}
     .fonkie-gallery-card span{position:absolute;left:14px;right:14px;bottom:14px;padding:9px 12px;border-radius:11px;background:rgba(79,22,81,.88);color:#fff;font-size:.77rem;font-weight:800;text-align:center;backdrop-filter:blur(8px)}
     .fonkie-gallery-track[data-gallery-loop],.builder-gallery-track[data-gallery-loop]{position:relative;display:block;aspect-ratio:1;overflow:hidden;scroll-snap-type:none;touch-action:pan-y pinch-zoom;user-select:none;-webkit-user-select:none}
-    .fonkie-gallery-track[data-gallery-loop]>.fonkie-gallery-card,.builder-gallery-track[data-gallery-loop]>.builder-gallery-card{position:absolute;inset:0;width:100%;height:100%;margin:0;scroll-snap-align:none;will-change:transform}
+    .fonkie-gallery-track[data-gallery-loop]>.fonkie-gallery-card,.builder-gallery-track[data-gallery-loop]>.builder-gallery-card{position:absolute;inset:0;width:100%;height:100%;margin:0;scroll-snap-align:none}
+    [data-gallery-state]:not([data-gallery-state="idle"])>*{will-change:transform}
     .fonkie-gallery-card[role="button"],.builder-gallery-card[role="button"]{cursor:zoom-in}
     .fonkie-gallery-card[role="button"]:focus-visible,.builder-gallery-card[role="button"]:focus-visible{outline:3px solid var(--acid);outline-offset:-3px}
     .builder-flavor-flip-backdrop{position:fixed;inset:0;z-index:1010;background:rgba(28,8,30,.54);opacity:0;transition:opacity .42s ease;touch-action:none}

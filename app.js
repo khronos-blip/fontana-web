@@ -4586,20 +4586,26 @@
     }
   }
 
+  function catalogItemMatchesFilter(product, filter) {
+    const category = product.dataset.category;
+    return filter === "all"
+      || (filter === "foncake" && category === "cakes")
+      || (filter === "fonkies" && category === "fonkies")
+      || (filter === "fomb" && category === "fomb")
+      || (filter === "salado" && category === "salado")
+      || (filter === "beverages" && category === "beverages")
+      || (filter === "bottega" && category === "bottega")
+      || (filter === "promo" && product.dataset.promo === "true")
+      || (filter === "immediate" && product.dataset.immediate === "true");
+  }
+
   function filterProducts(filter) {
     const catalogItems = $$(".product, .fonkie-builder, .builder-panel");
+    if (filter !== "all") {
+      primeCatalogImages(catalogItems.filter(product => catalogItemMatchesFilter(product, filter)));
+    }
     catalogItems.forEach(product => {
-      const category = product.dataset.category;
-      const matches = filter === "all"
-        || (filter === "foncake" && category === "cakes")
-        || (filter === "fonkies" && category === "fonkies")
-        || (filter === "fomb" && category === "fomb")
-        || (filter === "salado" && category === "salado")
-        || (filter === "beverages" && category === "beverages")
-        || (filter === "bottega" && category === "bottega")
-        || (filter === "promo" && product.dataset.promo === "true")
-        || (filter === "immediate" && product.dataset.immediate === "true");
-      product.classList.toggle("hidden", !matches);
+      product.classList.toggle("hidden", !catalogItemMatchesFilter(product, filter));
     });
     const visibleCount = catalogItems.filter(product => !product.classList.contains("hidden")).length;
     const emptyState = $("#emptyFilterState");
@@ -4617,19 +4623,81 @@
     syncCatalogGroups();
   }
 
+  const catalogImageSelector = ".product-media img, .fonkie-gallery-card img, .builder-gallery-card img";
+
+  function stabilizeCatalogImage(image) {
+    if (image.dataset.catalogImageStability === "true") return;
+    image.dataset.catalogImageStability = "true";
+    let revealEpoch = 0;
+    const reveal = () => {
+      if (!image.complete || image.naturalWidth <= 0) return;
+      const epoch = ++revealEpoch;
+      let decoded;
+      try {
+        decoded = typeof image.decode === "function" ? image.decode() : Promise.resolve();
+      } catch (_error) {
+        decoded = Promise.resolve();
+      }
+      Promise.resolve(decoded).catch(() => {}).then(() => {
+        if (epoch !== revealEpoch || !image.isConnected || image.naturalWidth <= 0) return;
+        requestAnimationFrame(() => {
+          if (epoch !== revealEpoch || !image.isConnected) return;
+          image.classList.remove("catalog-image-pending");
+          image.style.removeProperty("opacity");
+        });
+      });
+    };
+    if (!image.complete || image.naturalWidth <= 0) {
+      image.classList.add("catalog-image-pending");
+      image.style.opacity = "0";
+    }
+    image.addEventListener("load", reveal);
+    image.addEventListener("error", () => {
+      image.classList.add("catalog-image-pending");
+      image.style.opacity = "0";
+    });
+    if (image.complete && image.naturalWidth > 0) reveal();
+  }
+
+  function setupCatalogImageStability() {
+    $$(catalogImageSelector).forEach(stabilizeCatalogImage);
+  }
+
+  function primeCatalogImages(items) {
+    items.forEach(item => {
+      $$(catalogImageSelector, item).forEach(image => {
+        stabilizeCatalogImage(image);
+        if (!image.complete || image.naturalWidth <= 0) image.loading = "eager";
+      });
+    });
+  }
+
   applyAdminCatalog();
   applyAdminBuilders();
   renderDynamicCatalog();
   setupCatalogGroups();
+  setupCatalogImageStability();
   const stockTodayFilter = $('.filter[data-filter="immediate"]');
   if (stockTodayFilter && !stockTodayOpen) stockTodayFilter.hidden = true;
   setupProductQuantityControls();
-  $$(".filter").forEach(button => button.addEventListener("click", () => {
-    $$(".filter").forEach(item => item.classList.remove("active"));
-    button.classList.add("active");
-    button.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-    filterProducts(button.dataset.filter);
-  }));
+  $$(".filter").forEach(button => {
+    const prime = () => {
+      const filter = button.dataset.filter;
+      if (filter === "all") return;
+      const items = $$(".product, .fonkie-builder, .builder-panel")
+        .filter(product => catalogItemMatchesFilter(product, filter));
+      primeCatalogImages(items);
+    };
+    button.addEventListener("pointerenter", prime);
+    button.addEventListener("pointerdown", prime);
+    button.addEventListener("focus", prime);
+    button.addEventListener("click", () => {
+      $$(".filter").forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+      button.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      filterProducts(button.dataset.filter);
+    });
+  });
 
   function setupMenuIntro() {
     const intro = $(".menu-intro");
