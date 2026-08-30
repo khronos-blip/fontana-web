@@ -7,6 +7,24 @@ import {
 
 import { fombPricingMatchesRequest, resolveFombPricing } from "./pricing.mjs";
 import {
+  BCV_RATE_SCALE,
+  SUPPORTED_PAYMENT_CURRENCIES,
+  SUPPORTED_REFERENCE_CURRENCIES,
+  canonicalJson,
+  caracasDate,
+  derivePaymentStatus,
+  deriveSettlementAllocation,
+  functionalUsdCentsForPayment,
+  functionalUsdCentsForReference,
+  isIsoDate,
+  normalizePhone,
+  parseBcvHtml,
+  paymentScale,
+  rateValueDateAllowed,
+  referenceCentsForPayment,
+  validScaledInteger
+} from "./accounting.mjs";
+import {
   applyPublicBuilderAvailability,
   applyPublicProductAvailability,
   builderFlavorInventoryKey,
@@ -66,11 +84,24 @@ export default {
       else if (url.pathname === "/v1/admin/inventory" && request.method === "GET") response = await getInventory(request, env);
       else if (url.pathname.startsWith("/v1/admin/inventory/") && request.method === "PUT") response = await updateInventory(request, env, url);
       else if (url.pathname === "/v1/admin/orders" && request.method === "GET") response = await listOrders(request, env);
+      else if (/^\/v1\/admin\/orders\/[a-f0-9-]{36}\/confirm-payment$/.test(url.pathname) && request.method === "POST") response = await confirmOrderPayment(request, env, url);
+      else if (/^\/v1\/admin\/orders\/[a-f0-9-]{36}\/payments$/.test(url.pathname) && request.method === "POST") response = await addOrderPayment(request, env, url);
       else if (url.pathname.startsWith("/v1/admin/orders/") && request.method === "POST") response = await changeOrderStatus(request, env, url);
+      else if (url.pathname === "/v1/admin/customers" && request.method === "GET") response = await listCustomers(request, env, url);
+      else if (url.pathname.startsWith("/v1/admin/customers/") && request.method === "GET") response = await getCustomer(request, env, url);
+      else if (url.pathname === "/v1/admin/exchange-rates" && request.method === "GET") response = await listExchangeRates(request, env, url);
+      else if (url.pathname === "/v1/admin/exchange-rates/refresh" && request.method === "POST") response = await forceRefreshExchangeRates(request, env);
+      else if (url.pathname === "/v1/admin/exchange-rates/manual" && request.method === "POST") response = await createManualExchangeRate(request, env);
       else if (url.pathname === "/v1/admin/sales" && request.method === "GET") response = await listSales(request, env);
       else if (url.pathname === "/v1/admin/sales" && request.method === "POST") response = await createSale(request, env);
+      else if (/^\/v1\/admin\/sales\/[a-f0-9-]{36}\/payments$/.test(url.pathname) && request.method === "POST") response = await addSalePayment(request, env, url);
+      else if (/^\/v1\/admin\/sales\/[a-f0-9-]{36}\/void$/.test(url.pathname) && request.method === "POST") response = await voidSale(request, env, url);
       else if (url.pathname.startsWith("/v1/admin/sales/") && request.method === "PUT") response = await updateSale(request, env, url);
       else if (url.pathname.startsWith("/v1/admin/sales/") && request.method === "DELETE") response = await deleteSale(request, env, url);
+      else if (url.pathname === "/v1/admin/expenses" && request.method === "GET") response = await listExpenses(request, env, url);
+      else if (url.pathname === "/v1/admin/expenses" && request.method === "POST") response = await createExpense(request, env);
+      else if (/^\/v1\/admin\/expenses\/[a-f0-9-]{36}\/void$/.test(url.pathname) && request.method === "POST") response = await voidExpense(request, env, url);
+      else if (url.pathname === "/v1/admin/accounting/summary" && request.method === "GET") response = await getAccountingSummary(request, env, url);
       else if (url.pathname === "/v1/admin/images" && request.method === "POST") response = await uploadImage(request, env);
       else if (url.pathname === "/v1/admin/activity" && request.method === "GET") response = await getActivity(request, env);
       else response = json({ error: "Ruta no encontrada" }, 404);
@@ -81,7 +112,7 @@ export default {
     }
   },
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(expireReservations(env));
+    ctx.waitUntil(Promise.allSettled([expireReservations(env), refreshBcvRatesIfDue(env)]));
   }
 };
 
@@ -299,7 +330,7 @@ export function resolveReservationCart(state, requestedItems, operations) {
       if (!definition) throw new Error("invalid_product");
       const unitPriceCents = Math.round(Number(size?.price ?? product.price) * 100);
       const optionSummary = [size?.name, variant?.name, preorder ? "PRE-ORDER" : ""].filter(Boolean).join(" · ");
-      snapshotItems.push({kind,productId:product.id,name:product.name,quantity,unitPriceCents,optionSummary,size:size?.name||"",variant:variant?.name||"",preorder});
+      snapshotItems.push({kind,productId:product.id,name:product.name,quantity,unitPriceCents,optionSummary,imageUrl:snapshotImageUrl(product.image),size:size?.name||"",variant:variant?.name||"",preorder});
       if (!preorder) addDemand(definition, quantity);
       continue;
     }
@@ -330,7 +361,7 @@ export function resolveReservationCart(state, requestedItems, operations) {
       const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
       const preorder = Boolean(requested.preorder && unavailable && preorderAllowed);
       if (unavailable && !preorder) throw new Error("unavailable_product");
-      return { name, inventoryKey, quantity: selected.quantity, preorder };
+      return { name, inventoryKey, quantity: selected.quantity, imageUrl: snapshotImageUrl(flavor.image), preorder };
     });
     const preorder = resolvedFlavors.some(item => item.preorder);
     const selectedTotal = resolvedFlavors.reduce((sum,item) => sum + item.quantity, 0);
@@ -353,7 +384,7 @@ export function resolveReservationCart(state, requestedItems, operations) {
     const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
     const name = `${kind === "fonkies" ? "Caja de Fonkies" : "Caja de Fomb"} · ${selectedTotal} unidades`;
     const optionSummary = resolvedFlavors.map(item => `${item.quantity} ${item.name}${item.preorder ? " (Pre-Order)" : ""}`).join(", ");
-    snapshotItems.push({kind,productId,name,quantity,unitPriceCents,optionSummary,flavors:resolvedFlavors,boxSize,extraCount,preorder});
+    snapshotItems.push({kind,productId,name,quantity,unitPriceCents,optionSummary,imageUrl:resolvedFlavors.find(item=>item.imageUrl)?.imageUrl||snapshotImageUrl(builder.image),flavors:resolvedFlavors,boxSize,extraCount,preorder});
     for (const selected of resolvedFlavors.filter(item => !item.preorder)) {
       const definition = definitionMap.get(`builder:${kind}:${selected.inventoryKey}`);
       if (!definition) throw new Error("invalid_option");
@@ -494,7 +525,7 @@ async function reserveOrder(request, env) {
     if (message.includes("UNIQUE")) return json({error:"Esta solicitud ya fue procesada. Revisa tus pedidos."},409);
     throw error;
   }
-  return json({ok:true,id,orderCode,totalCents:cart.totalCents,reservedUntil:new Date(expiresAt*1000).toISOString(),expiresAt},201);
+  return json({ok:true,id,orderCode,totalCents:cart.totalCents,reservedUntil:new Date(expiresAt*1000).toISOString(),expiresAt,mutationVersion:0},201);
 }
 
 async function getImage(url, env) {
@@ -820,16 +851,19 @@ async function expireReservations(env) {
   const result = await env.DB.prepare("SELECT id FROM stock_orders WHERE status = 'reserved' AND expires_at <= ? ORDER BY expires_at LIMIT 100").bind(nowSeconds).all();
   let expired = 0;
   for (const order of result.results || []) {
+    const guard=await prepareMutationGuard(env,"stock_order",order.id);
+    const fresh=await env.DB.prepare("SELECT status,expires_at AS expiresAt FROM stock_orders WHERE id=?").bind(order.id).first();
+    if(!fresh||fresh.status!=="reserved"||Number(fresh.expiresAt)>nowSeconds)continue;
     const lines = await env.DB.prepare("SELECT sku, reserved_quantity AS reservedQuantity FROM stock_order_items WHERE order_id = ? AND sku IS NOT NULL AND reserved_quantity > 0").bind(order.id).all();
     const now = new Date().toISOString();
-    const statements = [];
+    const statements = [mutationClaimStatement(env,guard,"order_expire","","system",now)];
     for (const line of lines.results || []) {
       statements.push(env.DB.prepare("UPDATE inventory_items SET reserved = reserved - ?, updated_at = ?, updated_by = 'system' WHERE sku = ?").bind(Number(line.reservedQuantity),now,line.sku));
       statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku, order_id, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, ?, 'release', 0, ?, 'Reserva vencida', 'system', ?)").bind(line.sku,order.id,-Number(line.reservedQuantity),now));
     }
     statements.push(env.DB.prepare("UPDATE stock_orders SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'reserved'").bind(now,order.id));
     try { await env.DB.batch(statements); expired += 1; }
-    catch (error) { if (!String(error?.message||error).includes("UNIQUE")) console.error("No se pudo vencer la reserva",order.id,error); }
+    catch (error) { if (!isMutationConflict(error)&&!String(error?.message||error).includes("UNIQUE")&&!String(error?.message||error).includes("inventory_unavailable")) console.error("No se pudo vencer la reserva",order.id,error); }
   }
   return expired;
 }
@@ -838,8 +872,12 @@ async function listOrders(request, env) {
   const session = await requireSession(request, env);
   if (session instanceof Response) return session;
   await expireReservations(env);
-  const result = await env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, currency, customer_name AS customerName, customer_phone AS customerPhone, fulfillment, requested_date AS requestedDate, payment_method AS paymentMethod, snapshot_json AS snapshotJson, created_at AS createdAt, updated_at AS updatedAt, confirmed_by AS confirmedBy, cancelled_by AS cancelledBy FROM stock_orders ORDER BY created_at DESC LIMIT 500").all();
-  const items = (result.results||[]).map(row=>{let snapshot={};try{snapshot=JSON.parse(row.snapshotJson||"{}");}catch{} const {snapshotJson,...order}=row;return {...order,expiresAt:Number(order.expiresAt),items:snapshot.items||[],customer:snapshot.customer||{}};});
+  const [result,paymentRows]=await Promise.all([
+    env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, currency, customer_id AS customerId, customer_name AS customerName, customer_phone AS customerPhone, fulfillment, requested_date AS requestedDate, payment_method AS paymentMethod, snapshot_json AS snapshotJson, created_at AS createdAt, updated_at AS updatedAt, confirmed_by AS confirmedBy, cancelled_by AS cancelledBy,voided_at AS voidedAt,void_reason AS voidReason,COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='stock_order' AND entity_id=stock_orders.id),0) AS mutationVersion FROM stock_orders ORDER BY created_at DESC LIMIT 500").all(),
+    env.DB.prepare("SELECT p.order_id AS orderId,p.id,p.status,p.method,p.paid_currency AS currency,p.amount_minor AS amountMinor,p.amount_scale AS amountScale,p.reference_amount_cents AS referenceAmountCents,p.functional_amount_cents AS functionalAmountCents,p.payment_date AS paymentDate,p.transaction_reference AS reference,s.id AS saleId,s.payment_status AS paymentStatus FROM payments p JOIN sales s ON s.id=p.sale_id WHERE p.order_id IS NOT NULL ORDER BY p.confirmed_at").all()
+  ]);
+  const paymentsByOrder=new Map();for(const payment of paymentRows.results||[]){if(!paymentsByOrder.has(payment.orderId))paymentsByOrder.set(payment.orderId,[]);paymentsByOrder.get(payment.orderId).push(payment);}
+  const items = (result.results||[]).map(row=>{let snapshot={};try{snapshot=JSON.parse(row.snapshotJson||"{}");}catch{} const {snapshotJson,...order}=row;const payments=paymentsByOrder.get(row.id)||[];return {...order,expiresAt:Number(order.expiresAt),items:snapshot.items||[],customer:snapshot.customer||{},payments,saleId:payments[0]?.saleId||null,paymentStatus:payments[0]?.paymentStatus||(order.status==="confirmed"?"legacy":"unpaid")};});
   return json({items,summary:{reserved:items.filter(item=>item.status==="reserved").length,confirmed:items.filter(item=>item.status==="confirmed").length,expired:items.filter(item=>item.status==="expired").length}});
 }
 
@@ -850,40 +888,170 @@ async function changeOrderStatus(request, env, url) {
   const id = parts[3] || "";
   const action = parts[4] || "";
   if (!/^[a-f0-9-]{36}$/.test(id) || !["confirm","cancel","extend"].includes(action)) return json({error:"Acción de pedido inválida"},400);
-  const order = await env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, customer_name AS customerName, payment_method AS paymentMethod, requested_date AS requestedDate, snapshot_json AS snapshotJson FROM stock_orders WHERE id = ?").bind(id).first();
+  if (action === "confirm") return json({
+    error:"Confirma el pago indicando monto, moneda, método y tasa cuando corresponda.",
+    code:"payment_required",
+    confirmPaymentUrl:`/v1/admin/orders/${id}/confirm-payment`
+  },422);
+  const body=await request.json().catch(()=>({}));
+  const guard=await prepareMutationGuard(env,"stock_order",id,body.expectedVersion);
+  if(guard.error)return guard.error;
+  const order = await env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt FROM stock_orders WHERE id = ?").bind(id).first();
   if (!order) return json({error:"Pedido no encontrado"},404);
   if (action === "extend") {
     if (order.status !== "reserved") return json({error:"Solo se pueden extender reservas activas"},409);
     const expiresAt = Math.floor(Date.now()/1000)+RESERVATION_TTL_SECONDS;
-    await env.DB.prepare("UPDATE stock_orders SET expires_at = ?, updated_at = ? WHERE id = ? AND status = 'reserved'").bind(expiresAt,new Date().toISOString(),id).run();
-    return json({ok:true,status:"reserved",expiresAt,reservedUntil:new Date(expiresAt*1000).toISOString()});
+    const now=new Date().toISOString();
+    try{await env.DB.batch([
+      mutationClaimStatement(env,guard,"order_extend",body.idempotencyKey||"",session.username,now),
+      env.DB.prepare("UPDATE stock_orders SET expires_at = ?, updated_at = ? WHERE id = ? AND status = 'reserved'").bind(expiresAt,now,id),
+      structuredAuditStatement(env,session.username,"order_extend","stock_order",id,{orderCode:order.orderCode,expiresAt},now)
+    ]);}catch(error){if(isMutationConflict(error))return staleStateResponse(guard.currentVersion+1);throw error;}
+    return json({ok:true,status:"reserved",expiresAt,reservedUntil:new Date(expiresAt*1000).toISOString(),mutationVersion:guard.nextVersion});
   }
   if (order.status !== "reserved") return json({error:`El pedido ya está ${order.status}.`},409);
   if (Number(order.expiresAt)<=Math.floor(Date.now()/1000)) { await expireReservations(env); return json({error:"La reserva venció y el stock fue liberado."},409); }
   const lines = await env.DB.prepare("SELECT sku, reserved_quantity AS reservedQuantity FROM stock_order_items WHERE order_id = ? AND sku IS NOT NULL AND reserved_quantity > 0").bind(id).all();
   const now = new Date().toISOString();
-  const statements = [];
+  const statements = [mutationClaimStatement(env,guard,"order_cancel",body.idempotencyKey||"",session.username,now)];
   for (const line of lines.results||[]) {
     const amount = Number(line.reservedQuantity);
-    if (action === "confirm") {
-      statements.push(env.DB.prepare("UPDATE inventory_items SET on_hand = on_hand - ?, reserved = reserved - ?, updated_at = ?, updated_by = ? WHERE sku = ?").bind(amount,amount,now,session.username,line.sku));
-      statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku, order_id, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, ?, 'sale', ?, ?, 'Pedido confirmado', ?, ?)").bind(line.sku,id,-amount,-amount,session.username,now));
-    } else {
-      statements.push(env.DB.prepare("UPDATE inventory_items SET reserved = reserved - ?, updated_at = ?, updated_by = ? WHERE sku = ?").bind(amount,now,session.username,line.sku));
-      statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku, order_id, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, ?, 'release', 0, ?, 'Pedido cancelado', ?, ?)").bind(line.sku,id,-amount,session.username,now));
-    }
+    statements.push(env.DB.prepare("UPDATE inventory_items SET reserved = reserved - ?, updated_at = ?, updated_by = ? WHERE sku = ?").bind(amount,now,session.username,line.sku));
+    statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku, order_id, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, ?, 'release', 0, ?, 'Pedido cancelado', ?, ?)").bind(line.sku,id,-amount,session.username,now));
   }
-  if (action === "confirm") {
-    let snapshot={};try{snapshot=JSON.parse(order.snapshotJson||"{}");}catch{}
-    const itemsText=(snapshot.items||[]).map(item=>`${item.quantity}× ${item.name}${item.optionSummary?` · ${item.optionSummary}`:""}`).join("; ")||`Pedido ${order.orderCode}`;
-    statements.push(env.DB.prepare("UPDATE stock_orders SET status = 'confirmed', confirmed_by = ?, updated_at = ? WHERE id = ? AND status = 'reserved'").bind(session.username,now,id));
-    statements.push(env.DB.prepare("INSERT INTO sales (id, sold_at, total_cents, currency, status, channel, payment_method, customer_name, items_text, notes, created_by, created_at, updated_by, updated_at, order_id) VALUES (?, ?, ?, 'USD', 'confirmed', 'WhatsApp', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(crypto.randomUUID(),now.slice(0,10),Number(order.totalCents),order.paymentMethod,order.customerName,itemsText,`Pedido ${order.orderCode}`,session.username,now,session.username,now,id));
-  } else statements.push(env.DB.prepare("UPDATE stock_orders SET status = 'cancelled', cancelled_by = ?, updated_at = ? WHERE id = ? AND status = 'reserved'").bind(session.username,now,id));
-  statements.push(env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, ?, ?, ?)").bind(session.username,action==="confirm"?"order_confirm":"order_cancel",order.orderCode,now));
+  statements.push(env.DB.prepare("UPDATE stock_orders SET status = 'cancelled', cancelled_by = ?, updated_at = ? WHERE id = ? AND status = 'reserved'").bind(session.username,now,id));
+  statements.push(structuredAuditStatement(env,session.username,"order_cancel","stock_order",id,{orderCode:order.orderCode},now));
   try { await env.DB.batch(statements); }
-  catch (error) { if (String(error?.message||error).includes("UNIQUE")) return json({error:"Este pedido ya fue procesado."},409); throw error; }
-  return json({ok:true,status:action==="confirm"?"confirmed":"cancelled"});
+  catch (error) { if (isMutationConflict(error)) return staleStateResponse(guard.currentVersion+1); if (String(error?.message||error).includes("UNIQUE")||String(error?.message||error).includes("inventory_unavailable")) return staleStateResponse(guard.currentVersion+1); throw error; }
+  return json({ok:true,status:"cancelled",mutationVersion:guard.nextVersion});
+}
+
+function functionalSaleTotal(totalCents,referenceCurrency,payments) {
+  if (referenceCurrency==="USD") return Number(totalCents);
+  const rated=payments.find(payment=>payment.rateBasis==="EUR"&&payment.rateScaled&&payment.functionalRateScaled&&payment.rateValueDate===payment.functionalRateValueDate);
+  return rated?functionalUsdCentsForReference({referenceAmountCents:Number(totalCents),referenceCurrency:"EUR",usdRateScaled:rated.functionalRateScaled,eurRateScaled:rated.rateScaled}):null;
+}
+
+async function resolveSaleValuation(env,totalCents,referenceCurrency,soldAt) {
+  if(referenceCurrency==="USD")return {functionalTotalCents:Number(totalCents),referenceRate:null,functionalRate:null};
+  let referenceRate=await rateForDate(env,"EUR",soldAt,{allowPrior:true});
+  if(!referenceRate){try{await refreshBcvRates(env);}catch{} referenceRate=await rateForDate(env,"EUR",soldAt,{allowPrior:true})||await latestObservedRate(env,"EUR",soldAt);}
+  const functionalRate=referenceRate?await rateForDate(env,"USD",referenceRate.valueDate):null;
+  const functionalTotalCents=referenceRate&&functionalRate?functionalUsdCentsForReference({referenceAmountCents:Number(totalCents),referenceCurrency,usdRateScaled:functionalRate.rateScaled,eurRateScaled:referenceRate.rateScaled}):null;
+  return {functionalTotalCents,referenceRate,functionalRate};
+}
+
+async function confirmOrderPayment(request,env,url) {
+  const session=await requireSession(request,env);
+  if (session instanceof Response) return session;
+  const id=url.pathname.split("/").filter(Boolean)[3]||"";
+  if (!/^[a-f0-9-]{36}$/.test(id)) return json({error:"Pedido inválido"},400);
+  const body=await request.json().catch(()=>({}));
+  const identity=await requestIdentity(env,body,`order_confirm_payment:${id}`);
+  if (identity.error) return identity.error;
+  if (identity.replay) return identity.replay;
+  const guard=await prepareMutationGuard(env,"stock_order",id,body.expectedVersion);
+  if(guard.error)return guard.error;
+  const order=await env.DB.prepare(`SELECT id,order_code AS orderCode,status,expires_at AS expiresAt,total_cents AS totalCents,
+    customer_name AS customerName,customer_phone AS customerPhone,fulfillment,requested_date AS requestedDate,payment_method AS paymentMethod,
+    address,allergy_summary AS allergySummary,notes,snapshot_json AS snapshotJson FROM stock_orders WHERE id=?`).bind(id).first();
+  if (!order) return json({error:"Pedido no encontrado"},404);
+  if (order.status!=="reserved") return json({error:`El pedido ya está ${order.status}.`,code:"order_already_processed"},409);
+  if (Number(order.expiresAt)<=Math.floor(Date.now()/1000)) {await expireReservations(env);return json({error:"La reserva venció y el stock fue liberado."},409);}
+  const referenceCurrency=String(body.referenceCurrency||"USD").toUpperCase();
+  if (!SUPPORTED_REFERENCE_CURRENCIES.has(referenceCurrency)) return json({error:"La base del pedido debe ser USD o EUR."},400);
+  if (!Array.isArray(body.payments)||!body.payments.length) return json({error:"Registra al menos un pago o abono confirmado.",code:"payment_required"},422);
+  const soldAt=cleanText(body.soldAt||caracasDate(),10);
+  if (!isIsoDate(soldAt)) return json({error:"Fecha de venta inválida"},400);
+  const paymentDate=cleanText(body.paymentDate||soldAt,10);
+  if(!isIsoDate(paymentDate))return json({error:"Fecha del pago inválida"},400);
+  const resolved=await resolvePaymentPayloads(env,body.payments.map(payment=>({...payment,paymentDate:payment.paymentDate||paymentDate})),referenceCurrency,session,paymentDate);
+  if (resolved.error) return json({error:resolved.error,code:"invalid_payment"},422);
+  const paymentState=derivePaymentStatus(Number(order.totalCents),resolved.payments.reduce((sum,payment)=>sum+payment.referenceAmountCents,0));
+  const valuation=await resolveSaleValuation(env,Number(order.totalCents),referenceCurrency,soldAt);
+  const functionalTotalCents=valuation.functionalTotalCents;
+  if (!paymentState||!functionalTotalCents) return json({error:"No se pudo convertir la venta a la moneda funcional USD."},422);
+  const customer=await normalizedCustomerRecord(env,body.customer,{name:order.customerName,phone:order.customerPhone},session,{required:true});
+  if (customer.error) return json({error:customer.error},400);
+  let snapshot={};try{snapshot=JSON.parse(order.snapshotJson||"{}");}catch{}
+  const snapshotItems=Array.isArray(snapshot.items)?snapshot.items:[];
+  if (!snapshotItems.length) return json({error:"El pedido no conserva sus productos; no puede confirmarse automáticamente."},409);
+  const saleId=crypto.randomUUID();
+  const now=new Date().toISOString();
+  const itemsText=snapshotItems.map(item=>`${item.quantity}× ${item.name}${item.optionSummary?` · ${item.optionSummary}`:""}`).join("; ");
+  const responsePayload={ok:true,status:"confirmed",paymentStatus:paymentState.status,saleId,customerId:customer.record.id,paymentIds:resolved.payments.map(payment=>payment.id),balanceCents:paymentState.balanceRefCents,overpaymentCents:paymentState.overpaymentRefCents,referenceCurrency,functionalCurrency:"USD",functionalTotalCents,mutationVersion:guard.nextVersion,replayed:false};
+  const statements=[mutationClaimStatement(env,guard,"order_confirm_payment",identity.key,session.username,now)];
+  for (const rate of resolved.newRates) statements.push(rateInsertStatement(env,rate,session.username,now));
+  statements.push(...customer.statements);
+  const stockStatements=[];
+  const stockLines=await env.DB.prepare("SELECT sku,reserved_quantity AS reservedQuantity FROM stock_order_items WHERE order_id=? AND sku IS NOT NULL AND reserved_quantity>0").bind(id).all();
+  for (const line of stockLines.results||[]) {
+    const quantity=Number(line.reservedQuantity);
+    stockStatements.push(env.DB.prepare("UPDATE inventory_items SET on_hand=on_hand-?,reserved=reserved-?,updated_at=?,updated_by=? WHERE sku=?").bind(quantity,quantity,now,session.username,line.sku));
+    stockStatements.push(env.DB.prepare("INSERT INTO inventory_movements (sku,order_id,sale_id,movement_type,delta_on_hand,delta_reserved,note,actor,created_at) VALUES (?,?,?,'sale',?,?,'Pedido confirmado',?,?)").bind(line.sku,id,saleId,-quantity,-quantity,session.username,now));
+  }
+  statements.push(env.DB.prepare("UPDATE stock_orders SET status='confirmed',customer_id=?,confirmed_by=?,updated_at=? WHERE id=? AND status='reserved'").bind(customer.record.id,session.username,now,id));
+  statements.push(env.DB.prepare(`INSERT INTO sales (id,sold_at,total_cents,currency,status,channel,payment_method,customer_name,customer_phone,items_text,notes,created_by,created_at,updated_by,updated_at,order_id,customer_id,reference_currency,functional_currency,functional_total_cents,payment_status,functional_exchange_rate_id,functional_exchange_rate_scaled,functional_exchange_rate_value_date,reference_exchange_rate_id,reference_exchange_rate_scaled,reference_exchange_rate_value_date)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .bind(saleId,soldAt,Number(order.totalCents),referenceCurrency,"confirmed",cleanText(body.channel||"WhatsApp",60),resolved.payments.map(payment=>payment.method).join(" + ").slice(0,60),customer.record.name,customer.record.phone,itemsText,cleanText(body.notes||order.notes,2000),session.username,now,session.username,now,id,customer.record.id,referenceCurrency,"USD",functionalTotalCents,paymentState.status,
+      valuation.functionalRate?.id||null,valuation.functionalRate?.rateScaled||null,valuation.functionalRate?.valueDate||null,
+      valuation.referenceRate?.id||null,valuation.referenceRate?.rateScaled||null,valuation.referenceRate?.valueDate||null));
+  statements.push(...stockStatements);
+  for (const item of snapshotItems) {
+    const quantity=Number(item.quantity||0);
+    const unitPrice=Number(item.unitPriceCents||0);
+    if (!Number.isSafeInteger(quantity)||quantity<=0||!Number.isSafeInteger(unitPrice)||unitPrice<0) throw new Error("invalid_order_snapshot");
+    statements.push(env.DB.prepare(`INSERT INTO sale_items (id,sale_id,product_id,sku,item_name_snapshot,option_summary_snapshot,image_url_snapshot,quantity,price_currency,unit_price_cents,line_total_cents,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),saleId,cleanText(item.productId,100)||null,null,cleanText(item.name,200),cleanText(item.optionSummary,1000),snapshotImageUrl(item.imageUrl),quantity,referenceCurrency,unitPrice,unitPrice*quantity,now));
+  }
+  statements.push(...saleJournalStatements(env,{id:saleId,soldAt,totalCents:Number(order.totalCents),referenceCurrency,functionalTotalCents},session.username,now));
+  let paidReference=0;
+  let customerCreditFunctionalCents=0;
+  for (const payment of resolved.payments) {
+    statements.push(paymentInsertStatement(env,payment,saleId,id,session.username,now));
+    const posting=paymentJournalStatements(env,payment,{id:saleId,soldAt,totalCents:Number(order.totalCents),functionalTotalCents,referenceCurrency},paidReference,session.username,now);
+    statements.push(...posting.statements);
+    customerCreditFunctionalCents+=posting.customerCredit;
+    paidReference+=payment.referenceAmountCents;
+  }
+  responsePayload.customerCreditFunctionalCents=customerCreditFunctionalCents;
+  statements.push(env.DB.prepare("INSERT INTO idempotency_keys (idempotency_key,operation,request_hash,target_id,response_json,created_by,created_at) VALUES (?,?,?,?,?,?,?)").bind(identity.key,`order_confirm_payment:${id}`,identity.requestHash,saleId,JSON.stringify(responsePayload),session.username,now));
+  statements.push(structuredAuditStatement(env,session.username,"order_confirm_payment","stock_order",id,{orderCode:order.orderCode,saleId,paymentStatus:paymentState.status,paymentIds:responsePayload.paymentIds,referenceCurrency,functionalTotalCents},now));
+  try {await env.DB.batch(statements);} catch(error) {
+    if(isMutationConflict(error)){
+      const retry=await requestIdentity(env,body,`order_confirm_payment:${id}`);
+      if(retry.replay)return retry.replay;
+      return staleStateResponse(guard.currentVersion+1);
+    }
+    if (String(error?.message||error).includes("UNIQUE")) {
+      const retry=await requestIdentity(env,body,`order_confirm_payment:${id}`);
+      if (retry.replay) return retry.replay;
+      return retry.error||json({error:"El pedido ya fue procesado."},409);
+    }
+    if (String(error?.message||error).includes("inventory_unavailable")) return json({error:"El inventario cambió y ya no alcanza para confirmar el pedido.",code:"stock_conflict"},409);
+    throw error;
+  }
+  return json(responsePayload,201);
+}
+
+async function addOrderPayment(request,env,url) {
+  const session=await requireSession(request,env);
+  if(session instanceof Response)return session;
+  const orderId=url.pathname.split("/").filter(Boolean)[3]||"";
+  if(!/^[a-f0-9-]{36}$/.test(orderId))return json({error:"Pedido inválido"},400);
+  const preview=await request.clone().json().catch(()=>({}));
+  const key=cleanText(preview.idempotencyKey,100);
+  if(key){
+    const prior=await env.DB.prepare("SELECT operation FROM idempotency_keys WHERE idempotency_key=?").bind(key).first();
+    if(prior?.operation===`order_confirm_payment:${orderId}`)return confirmOrderPayment(request,env,new URL(`${url.origin}/v1/admin/orders/${orderId}/confirm-payment`));
+  }
+  const order=await env.DB.prepare("SELECT status FROM stock_orders WHERE id=?").bind(orderId).first();
+  if (!order) return json({error:"Pedido no encontrado"},404);
+  if (order.status==="reserved") return confirmOrderPayment(request,env,new URL(`${url.origin}/v1/admin/orders/${orderId}/confirm-payment`));
+  if (order.status!=="confirmed") return json({error:`El pedido está ${order.status}.`},409);
+  const sale=await env.DB.prepare("SELECT id FROM sales WHERE order_id=?").bind(orderId).first();
+  if (!sale) return json({error:"No encontramos la venta asociada."},409);
+  return addSalePayment(request,env,new URL(`${url.origin}/v1/admin/sales/${sale.id}/payments`));
 }
 
 async function putCatalog(request, env) {
@@ -947,26 +1115,532 @@ async function uploadImage(request, env) {
   return json({ ok: true, id, url: imageUrl, size: file.size }, 201);
 }
 
+function cleanText(value, maximum = 500) {
+  return String(value || "").trim().slice(0, maximum);
+}
+
+function snapshotImageUrl(value) {
+  const url = cleanText(value, 1000);
+  if (!url || /^(?:data|javascript):/i.test(url)) return "";
+  return url;
+}
+
+function structuredAuditStatement(env, username, action, entityType, entityId, details, now = new Date().toISOString()) {
+  const detailsJson = JSON.stringify(details || {}).slice(0, 12000);
+  const summary = cleanText(details?.summary || `${entityType}:${entityId}`, 1000);
+  return env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(username, action, summary, now, entityType, entityId, detailsJson);
+}
+
+async function prepareMutationGuard(env,entityType,entityId,expectedVersion) {
+  const row=await env.DB.prepare("SELECT COALESCE(MAX(version),0) AS version FROM entity_mutation_claims WHERE entity_type=? AND entity_id=?").bind(entityType,entityId).first();
+  const currentVersion=Number(row?.version||0);
+  if(!Number.isSafeInteger(currentVersion)||currentVersion<0)throw new Error("invalid_mutation_version");
+  if(expectedVersion!==undefined&&expectedVersion!==null&&expectedVersion!==""){
+    const supplied=Number(expectedVersion);
+    if(!Number.isSafeInteger(supplied)||supplied<0)return {error:json({error:"La versión esperada no es válida.",code:"invalid_expected_version"},400)};
+    if(supplied!==currentVersion)return {error:staleStateResponse(currentVersion)};
+  }
+  return {entityType,entityId,currentVersion,nextVersion:currentVersion+1};
+}
+
+function mutationClaimStatement(env,guard,operation,requestKey,username,now) {
+  return env.DB.prepare("INSERT INTO entity_mutation_claims (entity_type,entity_id,version,operation,request_key,created_by,created_at) VALUES (?,?,?,?,?,?,?)")
+    .bind(guard.entityType,guard.entityId,guard.nextVersion,operation,cleanText(requestKey,100),username,now);
+}
+
+function isMutationConflict(error) {
+  return /entity_mutation_claims/i.test(String(error?.message||error))&&/UNIQUE|constraint/i.test(String(error?.message||error));
+}
+
+function staleStateResponse(currentVersion) {
+  return json({error:"El registro cambió mientras se procesaba la solicitud. Recarga y vuelve a intentarlo.",code:"stale_state",currentVersion:Number.isSafeInteger(Number(currentVersion))?Number(currentVersion):undefined},409);
+}
+
+async function requestIdentity(env, body, operation) {
+  const key = cleanText(body?.idempotencyKey, 100);
+  if (!/^[a-zA-Z0-9_-]{16,100}$/.test(key)) return { error: json({error:"Incluye una clave de idempotencia válida.",code:"invalid_idempotency_key"},400) };
+  const requestHash = await sha256(canonicalJson(body));
+  const existing = await env.DB.prepare("SELECT operation, request_hash AS requestHash, response_json AS responseJson FROM idempotency_keys WHERE idempotency_key = ?").bind(key).first();
+  if (existing) {
+    if (existing.operation !== operation || existing.requestHash !== requestHash) return { error: json({error:"Esa clave de idempotencia ya se usó con otros datos.",code:"idempotency_conflict"},409) };
+    let response={};try{response=JSON.parse(existing.responseJson||"{}");}catch{}
+    return { replay: json({...response,replayed:true}) };
+  }
+  return { key, requestHash };
+}
+
+async function normalizedCustomerRecord(env, raw, fallback, session, { required = true } = {}) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const name = cleanText(source.name || fallback?.name, 100);
+  const phone = cleanText(source.phone || fallback?.phone, 40);
+  const normalizedPhone = normalizePhone(phone);
+  if (required && (!name || !normalizedPhone)) return {error:"Indica nombre y teléfono válido del cliente."};
+  if (!name && !normalizedPhone) return {record:null,statements:[]};
+  if (!normalizedPhone) return {error:"El teléfono del cliente no es válido."};
+  const existing = await env.DB.prepare("SELECT id, email, default_address AS defaultAddress, internal_notes AS internalNotes FROM customers WHERE normalized_phone = ?").bind(normalizedPhone).first();
+  const id = existing?.id || `cus-${(await sha256(normalizedPhone)).slice(0,36)}`;
+  const now = new Date().toISOString();
+  const record = {
+    id,
+    normalizedPhone,
+    phone,
+    name,
+    email:cleanText(source.email || existing?.email,160),
+    defaultAddress:cleanText(source.address || source.defaultAddress || existing?.defaultAddress,500),
+    internalNotes:cleanText(source.notes || source.internalNotes || existing?.internalNotes,2000)
+  };
+  const statement = env.DB.prepare(`INSERT INTO customers (id, normalized_phone, phone, name, email, default_address, internal_notes, created_at, created_by, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(normalized_phone) DO UPDATE SET phone=excluded.phone, name=excluded.name,
+      email=CASE WHEN excluded.email <> '' THEN excluded.email ELSE customers.email END,
+      default_address=CASE WHEN excluded.default_address <> '' THEN excluded.default_address ELSE customers.default_address END,
+      internal_notes=CASE WHEN excluded.internal_notes <> '' THEN excluded.internal_notes ELSE customers.internal_notes END,
+      updated_at=excluded.updated_at, updated_by=excluded.updated_by`)
+    .bind(id,normalizedPhone,phone,name,record.email,record.defaultAddress,record.internalNotes,now,session.username,now,session.username);
+  return {record,statements:[statement]};
+}
+
+function publicRate(row, requestedDate = "") {
+  if (!row) return null;
+  return {
+    id:row.id,
+    currency:row.currency,
+    rateScaled:Number(row.rateScaled),
+    rateScale:Number(row.rateScale || BCV_RATE_SCALE),
+    valueDate:row.valueDate,
+    observedAt:row.observedAt,
+    sourceUrl:row.sourceUrl,
+    sourceKind:row.sourceKind,
+    status:row.validationStatus,
+    exact:Boolean(requestedDate && row.valueDate === requestedDate)
+  };
+}
+
+async function rateById(env, id) {
+  if (!id) return null;
+  return env.DB.prepare(`SELECT id, currency, rate_scaled AS rateScaled, rate_scale AS rateScale,
+    value_date AS valueDate, observed_at AS observedAt, source_url AS sourceUrl,
+    source_kind AS sourceKind, validation_status AS validationStatus
+    FROM exchange_rates WHERE id = ?`).bind(cleanText(id,120)).first();
+}
+
+async function rateForDate(env, currency, valueDate, { allowPrior = false } = {}) {
+  const comparator = allowPrior ? "<=" : "=";
+  const row=await env.DB.prepare(`SELECT id, currency, rate_scaled AS rateScaled, rate_scale AS rateScale,
+    value_date AS valueDate, observed_at AS observedAt, source_url AS sourceUrl,
+    source_kind AS sourceKind, validation_status AS validationStatus
+    FROM exchange_rates WHERE currency = ? AND value_date ${comparator} ?
+    ORDER BY value_date DESC, CASE validation_status WHEN 'official' THEN 0 ELSE 1 END, observed_at DESC LIMIT 1`)
+    .bind(currency,valueDate).first();
+  return row&&(!allowPrior||rateValueDateAllowed(valueDate,row.valueDate,{maxPastDays:3,maxFutureDays:0}))?row:null;
+}
+
+async function latestObservedRate(env,currency,requestedDate){
+  const row=await env.DB.prepare(`SELECT id,currency,rate_scaled AS rateScaled,rate_scale AS rateScale,value_date AS valueDate,observed_at AS observedAt,source_url AS sourceUrl,source_kind AS sourceKind,validation_status AS validationStatus
+    FROM exchange_rates WHERE currency=? ORDER BY observed_at DESC,value_date DESC LIMIT 1`).bind(currency).first();
+  if(!row)return null;
+  return rateValueDateAllowed(requestedDate,row.valueDate,{maxPastDays:3,maxFutureDays:3})?row:null;
+}
+
+function officialSourceUrl(value) {
+  const source = cleanText(value || "https://www.bcv.org.ve/",500);
+  try {
+    const url = new URL(source);
+    return url.protocol === "https:" && (url.hostname === "bcv.org.ve" || url.hostname.endsWith(".bcv.org.ve")) ? url.toString() : "";
+  } catch { return ""; }
+}
+
+async function manualRateRecord(raw, currency, session, now) {
+  if (session.role !== "owner") return {error:"Solo la cuenta propietaria puede confirmar una tasa manual."};
+  const source = raw?.manualRate && typeof raw.manualRate === "object" ? raw.manualRate : raw || {};
+  const rateScaled = validScaledInteger(source.rateScaled ?? raw?.exchangeRateScaled);
+  const valueDate = cleanText(source.valueDate || raw?.exchangeRateValueDate,10);
+  const reason = cleanText(source.reason || raw?.manualRateReason,500);
+  const sourceUrl = officialSourceUrl(source.sourceUrl || raw?.exchangeRateSourceUrl);
+  if (!rateScaled || !isIsoDate(valueDate) || reason.length < 8 || !sourceUrl) return {error:"La tasa manual necesita valor, Fecha Valor, enlace oficial del BCV y motivo."};
+  const id = crypto.randomUUID();
+  return {record:{id,currency,rateScaled,rateScale:BCV_RATE_SCALE,valueDate,observedAt:now,sourceUrl,sourceKind:"manual_official",validationStatus:"manual_confirmed",manualReason:reason}};
+}
+
+function rateInsertStatement(env, rate, username, now) {
+  return env.DB.prepare(`INSERT INTO exchange_rates (id, provider, currency, rate_scaled, rate_scale, rate_side, value_date, observed_at, source_url, source_kind, source_hash, manual_reason, validation_status, created_by, created_at, updated_at)
+    VALUES (?, 'BCV', ?, ?, 8, 'reference', ?, ?, ?, ?, '', ?, ?, ?, ?, ?)`)
+    .bind(rate.id,rate.currency,rate.rateScaled,rate.valueDate,rate.observedAt,rate.sourceUrl,rate.sourceKind,rate.manualReason||"",rate.validationStatus,username,now,now);
+}
+
+async function resolvePaymentPayloads(env, rawPayments, referenceCurrency, session, defaultValueDate) {
+  if (!Array.isArray(rawPayments) || rawPayments.length > 10) return {error:"Los pagos deben ser una lista de hasta 10 movimientos."};
+  const reference = String(referenceCurrency || "USD").toUpperCase();
+  if (!SUPPORTED_REFERENCE_CURRENCIES.has(reference)) return {error:"La base de referencia debe ser USD o EUR."};
+  const now = new Date().toISOString();
+  const payments=[];
+  const newRates=[];
+  for (const raw of rawPayments) {
+    const paymentDate=cleanText(raw?.paymentDate||raw?.soldAt||defaultValueDate,10);
+    if(!isIsoDate(paymentDate))return {error:"La fecha del pago no es válida."};
+    const currency = String(raw?.currency || "").toUpperCase();
+    const amountScale = paymentScale(currency, raw?.amountScale);
+    const amountMinor = validScaledInteger(raw?.amountMinor);
+    const method = cleanText(raw?.method,80);
+    if (!SUPPORTED_PAYMENT_CURRENCIES.has(currency) || !amountScale || !amountMinor || !method) return {error:"Cada pago necesita monto entero, moneda VES/USD/EUR y método."};
+    if ((currency === "USD" || currency === "EUR") && currency !== reference) return {error:`Un pago ${currency} no puede aplicarse directamente a una venta con base ${reference}.`};
+
+    let sourceRate=null;
+    let usdRate=null;
+    if (currency === "VES" || currency === "EUR") {
+      const expectedBasis = currency === "EUR" ? "EUR" : String(raw.rateBasis || raw.manualRate?.basis || reference).toUpperCase();
+      if (expectedBasis !== reference) return {error:`La base BCV del pago debe coincidir con ${reference}.`};
+      sourceRate = await rateById(env, raw.exchangeRateId);
+      if (sourceRate && sourceRate.currency !== expectedBasis) return {error:"La tasa seleccionada no coincide con la moneda base."};
+      if (!sourceRate && currency === "EUR") {
+        const lookupDate=cleanText(raw.exchangeRateValueDate||paymentDate,10);
+        sourceRate=await rateForDate(env,"EUR",lookupDate,{allowPrior:true})||await latestObservedRate(env,"EUR",lookupDate);
+      }
+      if (!sourceRate) {
+        const manual = await manualRateRecord(raw,expectedBasis,session,now);
+        if (manual.error) return manual;
+        sourceRate=manual.record;
+        newRates.push(sourceRate);
+      }
+      if(!rateValueDateAllowed(paymentDate,sourceRate.valueDate,{maxPastDays:3,maxFutureDays:3}))return {error:"La Fecha Valor de la tasa está demasiado lejos de la fecha del pago."};
+      if (sourceRate.currency === "USD") usdRate=sourceRate;
+      else {
+        usdRate=await rateForDate(env,"USD",sourceRate.valueDate);
+        if (!usdRate) return {error:`Falta la tasa oficial USD con Fecha Valor ${sourceRate.valueDate}; actualízala antes de confirmar.`};
+      }
+      if (raw.exchangeRateValueDate && raw.exchangeRateValueDate !== sourceRate.valueDate) return {error:"La Fecha Valor no coincide con la tasa seleccionada."};
+    }
+    const referenceAmountCents = referenceCentsForPayment({amountMinor,amountScale,currency,referenceCurrency:reference,rateBasis:sourceRate?.currency,rateScaled:sourceRate?.rateScaled});
+    const functionalAmountCents = functionalUsdCentsForPayment({amountMinor,amountScale,currency,usdRateScaled:usdRate?.rateScaled,eurRateScaled:sourceRate?.currency==="EUR"?sourceRate.rateScaled:null});
+    if (!referenceAmountCents || !functionalAmountCents) return {error:"El pago es demasiado pequeño, no cuadra con la base elegida o no tiene tasas suficientes."};
+    const suppliedReference = raw.referenceAmountCents === undefined ? null : validScaledInteger(raw.referenceAmountCents,{allowZero:true});
+    if (suppliedReference !== null && Math.abs(suppliedReference-referenceAmountCents)>1) return {error:"El equivalente indicado no coincide con la conversión exacta del servidor."};
+    payments.push({
+      id:crypto.randomUUID(),currency,amountMinor,amountScale,method,referenceCurrency:reference,referenceAmountCents,functionalAmountCents,
+      exchangeRateId:sourceRate?.id||null,rateBasis:sourceRate?.currency||null,rateScaled:sourceRate?.rateScaled||null,rateValueDate:sourceRate?.valueDate||null,
+      rateSourceUrl:sourceRate?.sourceUrl||"",rateSourceKind:sourceRate?.sourceKind||"",
+      functionalExchangeRateId:usdRate?.id||null,functionalRateScaled:usdRate?.rateScaled||null,functionalRateValueDate:usdRate?.valueDate||null,
+      paymentDate,transactionReference:cleanText(raw.reference || raw.transactionReference,160),notes:cleanText(raw.notes,1000)
+    });
+  }
+  return {payments,newRates:[...new Map(newRates.map(rate=>[rate.id,rate])).values()]};
+}
+
+function paymentAccountId(payment) {
+  const method = `${payment.method} ${payment.transactionReference}`.toLowerCase();
+  if (method.includes("efectivo") || method.includes("cash")) return `asset-cash-${payment.currency.toLowerCase()}`;
+  if (method.includes("zelle")) return "asset-digital-usd";
+  return `asset-bank-${payment.currency.toLowerCase()}`;
+}
+
+function balancedJournalStatements(env,{id=crypto.randomUUID(),entryDate,sourceType,sourceId,description,lines,username,now,reversalOfId=null}) {
+  const debit=lines.reduce((sum,line)=>sum+Number(line.debit||0),0);
+  const credit=lines.reduce((sum,line)=>sum+Number(line.credit||0),0);
+  if (!debit || debit!==credit || lines.some(line=>(line.debit>0)===(line.credit>0))) throw new Error("unbalanced_journal");
+  const statements=[env.DB.prepare("INSERT INTO journal_entries (id, entry_date, source_type, source_id, description, status, reversal_of_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, 'posted', ?, ?, ?)")
+    .bind(id,entryDate,sourceType,sourceId,description,reversalOfId,username,now)];
+  for (const line of lines) statements.push(env.DB.prepare(`INSERT INTO journal_lines (id, journal_entry_id, account_id, functional_currency, debit_functional_cents, credit_functional_cents, original_currency, original_amount_minor, original_amount_scale, memo)
+    VALUES (?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?)`)
+    .bind(crypto.randomUUID(),id,line.accountId,Number(line.debit||0),Number(line.credit||0),line.originalCurrency||"USD",Number(line.originalAmountMinor||0),Number(line.originalAmountScale||2),cleanText(line.memo,500)));
+  return statements;
+}
+
+function saleJournalStatements(env,sale,username,now) {
+  return balancedJournalStatements(env,{entryDate:sale.soldAt,sourceType:"sale",sourceId:sale.id,description:`Venta ${sale.id}`,username,now,lines:[
+    {accountId:"asset-receivable-usd",debit:sale.functionalTotalCents,originalCurrency:sale.referenceCurrency,originalAmountMinor:sale.totalCents},
+    {accountId:"income-sales-usd",credit:sale.functionalTotalCents,originalCurrency:sale.referenceCurrency,originalAmountMinor:sale.totalCents}
+  ]});
+}
+
+function paymentJournalStatements(env,payment,sale,paidBeforeReferenceCents,username,now) {
+  const allocation=deriveSettlementAllocation({saleTotalReferenceCents:sale.totalCents,saleFunctionalTotalCents:sale.functionalTotalCents,paidBeforeReferenceCents,paymentReferenceCents:payment.referenceAmountCents,paymentFunctionalCents:payment.functionalAmountCents});
+  if(!allocation)throw new Error("invalid_settlement_allocation");
+  const lines=[{accountId:paymentAccountId(payment),debit:payment.functionalAmountCents,originalCurrency:payment.currency,originalAmountMinor:payment.amountMinor,originalAmountScale:payment.amountScale}];
+  if(allocation.fxLossFunctionalCents>0)lines.push({accountId:"expense-fx-loss-usd",debit:allocation.fxLossFunctionalCents,originalCurrency:"USD",originalAmountMinor:allocation.fxLossFunctionalCents});
+  if(allocation.carryingReceivableCreditCents>0)lines.push({accountId:"asset-receivable-usd",credit:allocation.carryingReceivableCreditCents,originalCurrency:sale.referenceCurrency,originalAmountMinor:allocation.referenceAppliedCents});
+  if(allocation.customerCreditFunctionalCents>0)lines.push({accountId:"liability-customer-credit-usd",credit:allocation.customerCreditFunctionalCents,originalCurrency:sale.referenceCurrency,originalAmountMinor:allocation.overpaymentReferenceCents});
+  if(allocation.fxGainFunctionalCents>0)lines.push({accountId:"income-fx-gain-usd",credit:allocation.fxGainFunctionalCents,originalCurrency:"USD",originalAmountMinor:allocation.fxGainFunctionalCents});
+  return {statements:balancedJournalStatements(env,{entryDate:payment.paymentDate,sourceType:"payment",sourceId:payment.id,description:`Cobro de venta ${sale.id}`,username,now,lines}),customerCredit:allocation.customerCreditFunctionalCents,allocation};
+}
+
+function paymentInsertStatement(env,payment,saleId,orderId,username,now) {
+  return env.DB.prepare(`INSERT INTO payments (id, sale_id, order_id, status, method, paid_currency, amount_minor, amount_scale, reference_currency, reference_amount_cents,
+    functional_currency, functional_amount_cents, exchange_rate_id, rate_basis, exchange_rate_scaled, exchange_rate_scale, exchange_rate_value_date,
+    exchange_rate_source_url, exchange_rate_source_kind, functional_exchange_rate_id, functional_exchange_rate_scaled, functional_exchange_rate_value_date,
+    transaction_reference, notes, payment_date, confirmed_by, confirmed_at)
+    VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(payment.id,saleId,orderId||null,payment.method,payment.currency,payment.amountMinor,payment.amountScale,payment.referenceCurrency,payment.referenceAmountCents,payment.functionalAmountCents,
+      payment.exchangeRateId,payment.rateBasis,payment.rateScaled,payment.rateScaled?BCV_RATE_SCALE:null,payment.rateValueDate,payment.rateSourceUrl,payment.rateSourceKind,
+      payment.functionalExchangeRateId,payment.functionalRateScaled,payment.functionalRateValueDate,payment.transactionReference,payment.notes,payment.paymentDate,username,now);
+}
+
+async function refreshBcvRates(env) {
+  const attemptedAt=new Date().toISOString();
+  await env.DB.prepare("UPDATE exchange_rate_refresh_state SET last_attempt_at = ?, last_error = '' WHERE id = 'bcv-homepage'").bind(attemptedAt).run();
+  try {
+    const response=await fetch("https://www.bcv.org.ve/",{headers:{Accept:"text/html", "User-Agent":"FontanaInventory/1.0 (+https://fontanasingluten.com)"}});
+    if (!response.ok) throw new Error(`bcv_http_${response.status}`);
+    const html=await response.text();
+    const parsed=parseBcvHtml(html);
+    if (!parsed) throw new Error("bcv_parse_failed");
+    const today=Date.parse(`${caracasDate()}T00:00:00Z`);
+    const value=Date.parse(`${parsed.valueDate}T00:00:00Z`);
+    if (!Number.isFinite(value) || Math.abs(value-today)>7*86400000) throw new Error("bcv_value_date_out_of_range");
+    const sourceHash=await sha256(html);
+    const now=new Date().toISOString();
+    const statements=[];
+    for (const currency of ["USD","EUR"]) {
+      const id=`bcv-${currency.toLowerCase()}-${parsed.valueDate}-${sourceHash.slice(0,12)}`;
+      statements.push(env.DB.prepare(`INSERT OR IGNORE INTO exchange_rates (id, provider, currency, rate_scaled, rate_scale, rate_side, value_date, observed_at, source_url, source_kind, source_hash, manual_reason, validation_status, created_by, created_at, updated_at)
+        VALUES (?, 'BCV', ?, ?, 8, 'reference', ?, ?, 'https://www.bcv.org.ve/', 'official_html', ?, '', 'official', 'system', ?, ?)`)
+        .bind(id,currency,parsed.rates[currency],parsed.valueDate,now,sourceHash,now,now));
+    }
+    statements.push(env.DB.prepare("UPDATE exchange_rate_refresh_state SET last_success_at = ?, last_value_date = ?, last_error = '' WHERE id = 'bcv-homepage'").bind(now,parsed.valueDate));
+    await env.DB.batch(statements);
+    return {ok:true,valueDate:parsed.valueDate,rates:parsed.rates};
+  } catch (error) {
+    const message=cleanText(error?.message||error,500);
+    await env.DB.prepare("UPDATE exchange_rate_refresh_state SET last_error = ? WHERE id = 'bcv-homepage'").bind(message).run();
+    throw error;
+  }
+}
+
+async function refreshBcvRatesIfDue(env) {
+  const state=await env.DB.prepare("SELECT last_attempt_at AS lastAttemptAt FROM exchange_rate_refresh_state WHERE id = 'bcv-homepage'").first();
+  const last=Date.parse(state?.lastAttemptAt||"");
+  if (Number.isFinite(last) && Date.now()-last<4*60*60*1000) return {ok:true,skipped:true};
+  return refreshBcvRates(env);
+}
+
+async function listExchangeRates(request,env,url) {
+  const session=await requireSession(request,env);
+  if (session instanceof Response) return session;
+  const date=cleanText(url.searchParams.get("date")||caracasDate(),10);
+  if (!isIsoDate(date)) return json({error:"Fecha inválida"},400);
+  let [USD,EUR,state]=await Promise.all([
+    rateForDate(env,"USD",date,{allowPrior:true}),rateForDate(env,"EUR",date,{allowPrior:true}),
+    env.DB.prepare("SELECT last_attempt_at AS lastAttemptAt, last_success_at AS lastSuccessAt, last_value_date AS lastValueDate, last_error AS lastError FROM exchange_rate_refresh_state WHERE id = 'bcv-homepage'").first()
+  ]);
+  if (!USD||!EUR) {
+    try {await refreshBcvRates(env);} catch {}
+    [USD,EUR,state]=await Promise.all([
+      rateForDate(env,"USD",date,{allowPrior:true}),rateForDate(env,"EUR",date,{allowPrior:true}),
+      env.DB.prepare("SELECT last_attempt_at AS lastAttemptAt, last_success_at AS lastSuccessAt, last_value_date AS lastValueDate, last_error AS lastError FROM exchange_rate_refresh_state WHERE id = 'bcv-homepage'").first()
+    ]);
+  }
+  if(!USD)USD=await latestObservedRate(env,"USD",date);
+  if(!EUR)EUR=await latestObservedRate(env,"EUR",date);
+  return json({date,functionalCurrency:"USD",rates:{USD:publicRate(USD,date),EUR:publicRate(EUR,date)},refresh:state||{}},200,{"Cache-Control":"no-store"});
+}
+
+async function forceRefreshExchangeRates(request,env) {
+  const session=await requireSession(request,env);
+  if (session instanceof Response) return session;
+  try {
+    const refreshed=await refreshBcvRates(env);
+    const now=new Date().toISOString();
+    await env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at, entity_type, entity_id, details_json) VALUES (?, 'bcv_refresh', ?, ?, 'exchange_rate', ?, ?)")
+      .bind(session.username,`BCV ${refreshed.valueDate}`,now,refreshed.valueDate,JSON.stringify(refreshed)).run();
+    return json(refreshed);
+  } catch { return json({error:"No se pudo actualizar la fuente oficial del BCV. Conservamos las tasas anteriores.",code:"bcv_unavailable"},503); }
+}
+
+async function createManualExchangeRate(request,env) {
+  const session=await requireOwner(request,env);
+  if (session instanceof Response) return session;
+  const body=await request.json().catch(()=>({}));
+  const currency=String(body.currency||"").toUpperCase();
+  if (!SUPPORTED_REFERENCE_CURRENCIES.has(currency)) return json({error:"Moneda inválida"},400);
+  const manual=await manualRateRecord({manualRate:{...body,basis:currency}},currency,session,new Date().toISOString());
+  if (manual.error) return json({error:manual.error},400);
+  const now=new Date().toISOString();
+  await env.DB.batch([
+    rateInsertStatement(env,manual.record,session.username,now),
+    structuredAuditStatement(env,session.username,"exchange_rate_manual","exchange_rate",manual.record.id,{currency,valueDate:manual.record.valueDate,reason:manual.record.manualReason},now)
+  ]);
+  return json({ok:true,rate:publicRate(manual.record,manual.record.valueDate)},201);
+}
+
+async function listCustomers(request,env,url) {
+  const session=await requireSession(request,env);
+  if (session instanceof Response) return session;
+  const search=cleanText(url.searchParams.get("search"),100);
+  const limit=Math.min(500,Math.max(1,Number(url.searchParams.get("limit"))||200));
+  const like=`%${search.replace(/[\\%_]/g,"\\$&")}%`;
+  const result=await env.DB.prepare(`SELECT c.id, c.name, c.phone, c.normalized_phone AS normalizedPhone, c.email, c.default_address AS defaultAddress,
+    MIN(CASE WHEN s.status='confirmed' THEN s.sold_at END) AS firstPurchaseAt,
+    MAX(CASE WHEN s.status='confirmed' THEN s.sold_at END) AS lastPurchaseAt,
+    COUNT(CASE WHEN s.status='confirmed' THEN 1 END) AS confirmedSalesCount,
+    COALESCE(SUM(CASE WHEN s.status='confirmed' THEN s.functional_total_cents ELSE 0 END),0) AS lifetimeFunctionalUsdCents
+    FROM customers c LEFT JOIN sales s ON s.customer_id=c.id
+    WHERE c.archived_at IS NULL AND (?='' OR c.name LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR c.normalized_phone LIKE ? ESCAPE '\\')
+    GROUP BY c.id ORDER BY lastPurchaseAt DESC, c.updated_at DESC LIMIT ?`).bind(search,like,like,like,limit).all();
+  const [paymentStats,balanceRows]=await Promise.all([
+    env.DB.prepare("SELECT s.customer_id AS customerId,SUM(p.functional_amount_cents) AS collected FROM payments p JOIN sales s ON s.id=p.sale_id WHERE p.status='confirmed' AND s.customer_id IS NOT NULL GROUP BY s.customer_id").all(),
+    env.DB.prepare("SELECT s.id,s.customer_id AS customerId,s.total_cents AS totalCents,s.functional_total_cents AS functionalTotalCents,COALESCE(SUM(CASE WHEN p.status='confirmed' THEN p.reference_amount_cents ELSE 0 END),0) AS paidReferenceCents FROM sales s LEFT JOIN payments p ON p.sale_id=s.id WHERE s.status='confirmed' AND s.customer_id IS NOT NULL GROUP BY s.id").all()
+  ]);
+  const collectedMap=new Map((paymentStats.results||[]).map(row=>[row.customerId,Number(row.collected||0)])),outstandingMap=new Map();
+  for(const row of balanceRows.results||[]){const state=derivePaymentStatus(Number(row.totalCents),Number(row.paidReferenceCents));const carryingPaid=state?Number(row.functionalTotalCents||0)-Math.round(Number(row.functionalTotalCents||0)*state.balanceRefCents/Math.max(1,Number(row.totalCents))):0;const outstanding=Math.max(0,Number(row.functionalTotalCents||0)-carryingPaid);outstandingMap.set(row.customerId,(outstandingMap.get(row.customerId)||0)+outstanding);}
+  const items=(result.results||[]).map(item=>({...item,confirmedSalesCount:Number(item.confirmedSalesCount||0),lifetimeFunctionalUsdCents:Number(item.lifetimeFunctionalUsdCents||0),collectedFunctionalUsdCents:collectedMap.get(item.id)||0,outstandingFunctionalUsdCents:outstandingMap.get(item.id)||0,averageTicketFunctionalUsdCents:Number(item.confirmedSalesCount||0)?Math.round(Number(item.lifetimeFunctionalUsdCents||0)/Number(item.confirmedSalesCount)):0,recurrent:Number(item.confirmedSalesCount||0)>=2}));
+  return json({items,summary:{total:items.length,recurrent:items.filter(item=>item.recurrent).length,functionalCurrency:"USD"}});
+}
+
+async function getCustomer(request,env,url) {
+  const session=await requireSession(request,env);
+  if (session instanceof Response) return session;
+  const id=decodeURIComponent(url.pathname.split("/").pop()||"");
+  if (!/^cus-[a-zA-Z0-9_-]{20,50}$/.test(id)) return json({error:"Cliente inválido"},400);
+  const customer=await env.DB.prepare("SELECT id,name,phone,normalized_phone AS normalizedPhone,email,default_address AS defaultAddress,internal_notes AS internalNotes,created_at AS createdAt,updated_at AS updatedAt FROM customers WHERE id=? AND archived_at IS NULL").bind(id).first();
+  if (!customer) return json({error:"Cliente no encontrado"},404);
+  const saleRows=await env.DB.prepare(`SELECT id,sold_at AS soldAt,total_cents AS totalCents,currency,reference_currency AS referenceCurrency,functional_total_cents AS functionalTotalCents,status,payment_status AS paymentStatus,channel,notes,
+    COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='sale' AND entity_id=sales.id),0) AS mutationVersion
+    FROM sales WHERE customer_id=? ORDER BY sold_at DESC,created_at DESC LIMIT 250`).bind(id).all();
+  const sales=[];
+  for (const sale of saleRows.results||[]) {
+    const [itemRows,paymentRows]=await Promise.all([
+      env.DB.prepare("SELECT product_id AS productId,sku,item_name_snapshot AS name,option_summary_snapshot AS optionSummary,image_url_snapshot AS imageUrl,quantity,unit_price_cents AS unitPriceCents,line_total_cents AS lineTotalCents,price_currency AS priceCurrency FROM sale_items WHERE sale_id=? ORDER BY rowid").bind(sale.id).all(),
+      env.DB.prepare("SELECT id,status,method,paid_currency AS currency,amount_minor AS amountMinor,amount_scale AS amountScale,reference_currency AS referenceCurrency,reference_amount_cents AS referenceAmountCents,functional_amount_cents AS functionalAmountCents,rate_basis AS rateBasis,exchange_rate_id AS exchangeRateId,exchange_rate_scaled AS exchangeRateScaled,exchange_rate_value_date AS exchangeRateValueDate,functional_exchange_rate_id AS functionalExchangeRateId,functional_exchange_rate_scaled AS functionalExchangeRateScaled,functional_exchange_rate_value_date AS functionalExchangeRateValueDate,payment_date AS paymentDate,transaction_reference AS reference,notes,confirmed_at AS confirmedAt FROM payments WHERE sale_id=? ORDER BY confirmed_at").bind(sale.id).all()
+    ]);
+    sales.push({...sale,functionalTotalCents:Number(sale.functionalTotalCents||0),items:itemRows.results||[],payments:paymentRows.results||[]});
+  }
+  const confirmed=sales.filter(sale=>sale.status==="confirmed");
+  return json({customer:{...customer,confirmedSalesCount:confirmed.length,recurrent:confirmed.length>=2,lifetimeFunctionalUsdCents:confirmed.reduce((sum,sale)=>sum+Number(sale.functionalTotalCents||0),0)},sales,functionalCurrency:"USD"});
+}
+
+function catalogProductPrice(product,definition) {
+  const size=(product?.sizes||[]).find(option=>option.name===definition?.sizeName)||null;
+  return Number(size?.price??product?.price);
+}
+
+function builderFlavorForDefinition(state,definition) {
+  if (!definition||!/^builder:(fonkies|fomb):/.test(definition.sku)) return null;
+  const kind=definition.kind;
+  const key=definition.sku.split(":").slice(2).join(":");
+  const builder=state?.builders?.[kind];
+  const flavor=(builder?.flavors||[]).find(item=>String(item.inventoryKey||"")===key)||null;
+  return flavor?{builder,flavor}:null;
+}
+
+async function normalizeManualSaleItems(env,rawItems,referenceCurrency,session) {
+  if (!Array.isArray(rawItems)||!rawItems.length||rawItems.length>100) return {error:"Incluye entre 1 y 100 productos."};
+  const state=await publishedState(env);
+  if (!state) return {error:"El catálogo no está configurado."};
+  const definitions=await syncInventoryDefinitions(env,state,session.username);
+  const definitionMap=new Map(definitions.map(definition=>[definition.sku,definition]));
+  const productMap=new Map((state.products||[]).filter(product=>!product.deleted).map(product=>[product.id,product]));
+  const items=[];
+  const demands=new Map();
+  const skipped=[];
+  const adjustments=[];
+  for (const raw of rawItems) {
+    const quantity=validScaledInteger(raw?.quantity);
+    if (!quantity||quantity>1000) return {error:"Cantidad de producto inválida."};
+    const requestedPrice=validScaledInteger(raw.unitPriceCents??raw.unitPriceRefCents,{allowZero:true});
+    if (requestedPrice===null) return {error:"Cada producto necesita precio entero en centavos."};
+    const inventoryUnits=Array.isArray(raw.inventoryUnits)&&raw.inventoryUnits.length?raw.inventoryUnits:(raw.sku?[{sku:raw.sku,quantity}]:[]);
+    const skipInventory=raw.skipInventory===true||raw.custom===true;
+    if (!inventoryUnits.length&&!skipInventory) return {error:"Cada producto de catálogo necesita SKU/inventoryUnits; marca skipInventory solo para una línea personalizada."};
+    let definition=null;
+    for (const unit of inventoryUnits) {
+      const sku=cleanText(unit?.sku,240);
+      const units=validScaledInteger(unit?.quantity);
+      const found=definitionMap.get(sku);
+      if (!found||!units) return {error:`SKU de inventario inválido: ${sku||"vacío"}.`};
+      if(definition&&definition.productId!==found.productId)return {error:"Una línea no puede mezclar SKUs de productos distintos."};
+      definition=definition||found;
+      demands.set(sku,(demands.get(sku)||0)+units);
+    }
+    let name=cleanText(raw.name,200);
+    let imageUrl=snapshotImageUrl(raw.imageUrl);
+    let optionSummary=cleanText(raw.optionSummary,1000);
+    let productId=cleanText(raw.productId||definition?.productId,100)||null;
+    if(raw.productId&&definition&&raw.productId!==definition.productId)return {error:"El SKU no pertenece al producto seleccionado."};
+    let canonicalPrice=null;
+    const product=productMap.get(productId);
+    if (product&&definition) {
+      name=product.name;
+      imageUrl=snapshotImageUrl(product.image);
+      optionSummary=definition.optionSummary||optionSummary;
+      const price=catalogProductPrice(product,definition);
+      if (Number.isFinite(price)&&price>=0) canonicalPrice=Math.round(price*100);
+    } else if (definition) {
+      const builderFlavor=builderFlavorForDefinition(state,definition);
+      name=builderFlavor?.flavor?.name||definition.label;
+      imageUrl=snapshotImageUrl(builderFlavor?.flavor?.image||builderFlavor?.builder?.image);
+      optionSummary=definition.optionSummary||optionSummary;
+    }
+    let unitPriceCents=canonicalPrice??requestedPrice;
+    if (canonicalPrice!==null&&requestedPrice!==canonicalPrice) {
+      const reason=cleanText(raw.priceOverrideReason,500);
+      if (session.role!=="owner"||reason.length<8) return {error:`El precio de ${name} cambió; solo la propietaria puede sobrescribirlo indicando el motivo.`};
+      unitPriceCents=requestedPrice;
+      adjustments.push({name,reason,canonicalPriceCents:canonicalPrice,appliedPriceCents:requestedPrice});
+    }
+    if(definition&&!product&&canonicalPrice===null){const reason=cleanText(raw.priceOverrideReason,500);if(reason.length<8)return {error:`${name} necesita motivo de asignación manual porque su presentación no tiene precio unitario directo.`};adjustments.push({name,reason,canonicalPriceCents:null,appliedPriceCents:requestedPrice});}
+    if (!name) return {error:"La línea personalizada necesita nombre."};
+    if (skipInventory) skipped.push({name,reason:cleanText(raw.skipInventoryReason||"Línea personalizada",500)});
+    items.push({id:crypto.randomUUID(),productId,sku:inventoryUnits.length===1?cleanText(inventoryUnits[0].sku,240):null,inventoryUnits:inventoryUnits.map(unit=>({sku:cleanText(unit.sku,240),quantity:Number(unit.quantity)})),name,optionSummary,imageUrl,quantity,unitPriceCents,lineTotalCents:unitPriceCents*quantity,priceCurrency:referenceCurrency});
+  }
+  const inventory=[];
+  for (const [sku,quantity] of demands) {
+    const row=await env.DB.prepare("SELECT sku,on_hand AS onHand,reserved,track_stock AS trackStock,active FROM inventory_items WHERE sku=?").bind(sku).first();
+    if (!row||!row.active) return {error:`El SKU ${sku} ya no está activo.`};
+    if (row.trackStock&&Number(row.onHand)-Number(row.reserved)<quantity) return {error:`No hay stock suficiente para ${sku}.`,code:"stock_conflict"};
+    inventory.push({sku,quantity,trackStock:Boolean(row.trackStock)});
+  }
+  return {items,inventory,skipped,adjustments,totalCents:items.reduce((sum,item)=>sum+item.lineTotalCents,0)};
+}
+
+function manualInventoryStatements(env,inventory,saleId,session,now) {
+  const statements=[];
+  for (const item of inventory.filter(item=>item.trackStock)) {
+    statements.push(env.DB.prepare("UPDATE inventory_items SET on_hand=CASE WHEN on_hand-reserved>=? THEN on_hand-? ELSE -1 END,updated_at=?,updated_by=? WHERE sku=? AND track_stock=1").bind(item.quantity,item.quantity,now,session.username,item.sku));
+    statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku,sale_id,movement_type,delta_on_hand,delta_reserved,note,actor,created_at) VALUES (?,?,'sale',?,0,'Venta manual',?,?)").bind(item.sku,saleId,-item.quantity,session.username,now));
+  }
+  return statements;
+}
+
 async function listSales(request, env) {
   const session = await requireSession(request, env);
   if (session instanceof Response) return session;
-  const result = await env.DB.prepare("SELECT id, sold_at AS soldAt, total_cents AS totalCents, currency, status, channel, payment_method AS paymentMethod, customer_name AS customerName, items_text AS items, notes, created_by AS createdBy, created_at AS createdAt, updated_by AS updatedBy, updated_at AS updatedAt FROM sales ORDER BY sold_at DESC, created_at DESC LIMIT 1000").all();
-  const items = result.results || [];
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
+  const [result,itemRows,paymentRows]=await Promise.all([
+    env.DB.prepare(`SELECT id,sold_at AS soldAt,total_cents AS totalCents,currency,reference_currency AS referenceCurrency,functional_currency AS functionalCurrency,
+      functional_total_cents AS functionalTotalCents,reference_exchange_rate_id AS referenceExchangeRateId,reference_exchange_rate_scaled AS referenceExchangeRateScaled,reference_exchange_rate_value_date AS referenceExchangeRateValueDate,
+      functional_exchange_rate_id AS functionalExchangeRateId,functional_exchange_rate_scaled AS functionalExchangeRateScaled,functional_exchange_rate_value_date AS functionalExchangeRateValueDate,status,payment_status AS paymentStatus,channel,payment_method AS paymentMethod,customer_id AS customerId,
+      customer_name AS customerName,customer_phone AS customerPhone,items_text AS itemsText,notes,order_id AS orderId,voided_at AS voidedAt,void_reason AS voidReason,
+      created_by AS createdBy,created_at AS createdAt,updated_by AS updatedBy,updated_at AS updatedAt,
+      COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='sale' AND entity_id=sales.id),0) AS mutationVersion
+      FROM sales ORDER BY sold_at DESC,created_at DESC LIMIT 1000`).all(),
+    env.DB.prepare("SELECT id,sale_id AS saleId,product_id AS productId,sku,item_name_snapshot AS name,option_summary_snapshot AS optionSummary,image_url_snapshot AS imageUrl,quantity,price_currency AS priceCurrency,unit_price_cents AS unitPriceCents,line_total_cents AS lineTotalCents FROM sale_items ORDER BY created_at,id").all(),
+    env.DB.prepare("SELECT id,sale_id AS saleId,status,method,paid_currency AS currency,amount_minor AS amountMinor,amount_scale AS amountScale,reference_currency AS referenceCurrency,reference_amount_cents AS referenceAmountCents,functional_amount_cents AS functionalAmountCents,rate_basis AS rateBasis,exchange_rate_id AS exchangeRateId,exchange_rate_scaled AS exchangeRateScaled,exchange_rate_value_date AS exchangeRateValueDate,functional_exchange_rate_id AS functionalExchangeRateId,functional_exchange_rate_scaled AS functionalExchangeRateScaled,functional_exchange_rate_value_date AS functionalExchangeRateValueDate,payment_date AS paymentDate,transaction_reference AS reference,notes,confirmed_at AS confirmedAt FROM payments ORDER BY confirmed_at,id").all()
+  ]);
+  const bySale=(rows)=>{const map=new Map();for(const row of rows||[]){if(!map.has(row.saleId))map.set(row.saleId,[]);map.get(row.saleId).push(row);}return map;};
+  const itemsBySale=bySale(itemRows.results),paymentsBySale=bySale(paymentRows.results);
+  const items=(result.results||[]).map(sale=>({...sale,functionalTotalCents:Number(sale.functionalTotalCents||0),items:itemsBySale.get(sale.id)||[],payments:paymentsBySale.get(sale.id)||[]}));
+  const today = caracasDate();
   const month = today.slice(0, 7);
   const year = today.slice(0, 4);
   const confirmed = items.filter(item => item.status === "confirmed");
-  const sum = values => values.reduce((total, item) => total + Number(item.totalCents || 0), 0);
+  const sumFunctional = values => values.reduce((total, item) => total + Number(item.functionalTotalCents || 0), 0);
+  const totalsByCurrency={};
+  for(const sale of confirmed) totalsByCurrency[sale.referenceCurrency]=(totalsByCurrency[sale.referenceCurrency]||0)+Number(sale.totalCents||0);
   return json({
     items,
     summary: {
-      todayCents: sum(confirmed.filter(item => item.soldAt === today)),
-      monthCents: sum(confirmed.filter(item => String(item.soldAt).startsWith(month))),
-      yearCents: sum(confirmed.filter(item => String(item.soldAt).startsWith(year))),
-      allCents: sum(confirmed),
+      functionalCurrency:"USD",
+      todayFunctionalUsdCents:sumFunctional(confirmed.filter(item => item.soldAt === today)),
+      monthFunctionalUsdCents:sumFunctional(confirmed.filter(item => String(item.soldAt).startsWith(month))),
+      yearFunctionalUsdCents:sumFunctional(confirmed.filter(item => String(item.soldAt).startsWith(year))),
+      allFunctionalUsdCents:sumFunctional(confirmed),
+      todayCents:sumFunctional(confirmed.filter(item => item.soldAt === today)),
+      monthCents:sumFunctional(confirmed.filter(item => String(item.soldAt).startsWith(month))),
+      yearCents:sumFunctional(confirmed.filter(item => String(item.soldAt).startsWith(year))),
+      allCents:sumFunctional(confirmed),
+      totalsByCurrency,
       confirmedCount: confirmed.length,
-      pendingCount: items.filter(item => item.status === "pending").length
+      pendingCount: items.filter(item => item.status === "pending").length,
+      partialCount:items.filter(item=>item.paymentStatus==="partial").length
     }
   });
 }
@@ -992,16 +1666,77 @@ function validatedSale(body) {
 async function createSale(request, env) {
   const session = await requireSession(request, env);
   if (session instanceof Response) return session;
-  const sale = validatedSale(await request.json());
-  if (!sale) return json({ error: "Indica fecha, monto válido y productos vendidos." }, 400);
+  const body=await request.json().catch(()=>({}));
+  if (!Array.isArray(body.items)) {
+    const sale=validatedSale(body);
+    if (!sale) return json({error:"Indica fecha, monto válido y productos vendidos."},400);
+    const id=crypto.randomUUID(),now=new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO sales (id,sold_at,total_cents,currency,status,channel,payment_method,customer_name,customer_phone,items_text,notes,created_by,created_at,updated_by,updated_at,reference_currency,functional_currency,functional_total_cents,payment_status)
+        VALUES (?,?,?,'USD','pending',?,?,?,?,?,?,?,?,?,?,?,'USD',?,'legacy')`)
+        .bind(id,sale.soldAt,sale.totalCents,sale.channel,sale.paymentMethod,sale.customerName,cleanText(body.customerPhone,40),sale.items,sale.notes,session.username,now,session.username,now,"USD",sale.totalCents),
+      structuredAuditStatement(env,session.username,"sale_create_legacy","sale",id,{summary:`Venta heredada pendiente ${sale.soldAt}`,reason:"Sin pago estructurado ni teléfono verificado"},now)
+    ]);
+    return json({ok:true,id,status:"pending",paymentStatus:"legacy",legacyIncomplete:true,mutationVersion:0},201);
+  }
+  const identity=await requestIdentity(env,body,"sale_create");
+  if (identity.error) return identity.error;
+  if (identity.replay) return identity.replay;
+  const soldAt=cleanText(body.soldAt||caracasDate(),10);
+  const referenceCurrency=String(body.referenceCurrency||"USD").toUpperCase();
+  if (!isIsoDate(soldAt)||!SUPPORTED_REFERENCE_CURRENCIES.has(referenceCurrency)) return json({error:"Fecha o moneda base inválida."},400);
+  const normalizedItems=await normalizeManualSaleItems(env,body.items,referenceCurrency,session);
+  if (normalizedItems.error) return json({error:normalizedItems.error,code:normalizedItems.code||"invalid_sale_items"},normalizedItems.code==="stock_conflict"?409:400);
+  const customerName=cleanText(body.customer?.name||body.customerName,100);
+  const customerPhone=cleanText(body.customer?.phone||body.customerPhone,40);
+  const resolved=await resolvePaymentPayloads(env,body.payments||[],referenceCurrency,session,soldAt);
+  if (resolved.error) return json({error:resolved.error,code:"invalid_payment"},422);
+  const paymentState=derivePaymentStatus(normalizedItems.totalCents,resolved.payments.reduce((sum,payment)=>sum+payment.referenceAmountCents,0));
+  const valuation=await resolveSaleValuation(env,normalizedItems.totalCents,referenceCurrency,soldAt);
+  const functionalTotalCents=valuation.functionalTotalCents;
+  if (!paymentState||!functionalTotalCents) return json({error:"Faltan tasas BCV USD/EUR para fijar el valor funcional de la venta."},422);
+  const hasPayment=resolved.payments.length>0;
+  const hasAnyCustomerIdentity=Boolean(customerName||customerPhone);
+  if((hasPayment||hasAnyCustomerIdentity)&&(!customerName||!normalizePhone(customerPhone)))return json({error:hasPayment?"El primer cobro necesita nombre y teléfono válido del cliente.":"Guarda nombre y teléfono juntos, o deja ambos vacíos mientras la venta siga pendiente."},400);
+  const customer=hasPayment?await normalizedCustomerRecord(env,body.customer,{name:customerName,phone:customerPhone},session,{required:true}):{record:null,statements:[]};
+  if (customer.error) return json({error:customer.error},400);
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await env.DB.batch([
-    env.DB.prepare("INSERT INTO sales (id, sold_at, total_cents, currency, status, channel, payment_method, customer_name, items_text, notes, created_by, created_at, updated_by, updated_at) VALUES (?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(id, sale.soldAt, sale.totalCents, sale.status, sale.channel, sale.paymentMethod, sale.customerName, sale.items, sale.notes, session.username, now, session.username, now),
-    env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'sale_create', ?, ?)").bind(session.username, `${sale.soldAt} · USD ${(sale.totalCents / 100).toFixed(2)}`, now)
-  ]);
-  return json({ ok: true, id }, 201);
+  const status=hasPayment?"confirmed":"pending";
+  const responsePayload={ok:true,id,saleId:id,status,paymentStatus:paymentState.status,balanceCents:paymentState.balanceRefCents,overpaymentCents:paymentState.overpaymentRefCents,referenceCurrency,functionalCurrency:"USD",functionalTotalCents,customerId:customer.record?.id||null,paymentIds:resolved.payments.map(payment=>payment.id),mutationVersion:0,replayed:false};
+  const statements=[];
+  for(const rate of resolved.newRates) statements.push(rateInsertStatement(env,rate,session.username,now));
+  statements.push(...customer.statements);
+  statements.push(env.DB.prepare(`INSERT INTO sales (id,sold_at,total_cents,currency,status,channel,payment_method,customer_name,customer_phone,items_text,notes,created_by,created_at,updated_by,updated_at,customer_id,reference_currency,functional_currency,functional_total_cents,payment_status,functional_exchange_rate_id,functional_exchange_rate_scaled,functional_exchange_rate_value_date,reference_exchange_rate_id,reference_exchange_rate_scaled,reference_exchange_rate_value_date)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .bind(id,soldAt,normalizedItems.totalCents,referenceCurrency,status,cleanText(body.channel||"Venta directa",60),resolved.payments.map(payment=>payment.method).join(" + ").slice(0,60),customerName,customerPhone,
+      normalizedItems.items.map(item=>`${item.quantity}× ${item.name}${item.optionSummary?` · ${item.optionSummary}`:""}`).join("; "),cleanText(body.notes,2000),session.username,now,session.username,now,customer.record?.id||null,referenceCurrency,"USD",functionalTotalCents,paymentState.status,
+      valuation.functionalRate?.id||null,valuation.functionalRate?.rateScaled||null,valuation.functionalRate?.valueDate||null,
+      valuation.referenceRate?.id||null,valuation.referenceRate?.rateScaled||null,valuation.referenceRate?.valueDate||null));
+  if(hasPayment)statements.push(...manualInventoryStatements(env,normalizedItems.inventory,id,session,now));
+  for(const item of normalizedItems.items){
+    statements.push(env.DB.prepare(`INSERT INTO sale_items (id,sale_id,product_id,sku,item_name_snapshot,option_summary_snapshot,image_url_snapshot,quantity,price_currency,unit_price_cents,line_total_cents,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(item.id,id,item.productId,item.sku,item.name,item.optionSummary,item.imageUrl,item.quantity,item.priceCurrency,item.unitPriceCents,item.lineTotalCents,now));
+    for(const unit of item.inventoryUnits)statements.push(env.DB.prepare("INSERT INTO sale_item_inventory_units (sale_item_id,sku,quantity) VALUES (?,?,?)").bind(item.id,unit.sku,unit.quantity));
+  }
+  if(hasPayment) {
+    statements.push(...saleJournalStatements(env,{id,soldAt,totalCents:normalizedItems.totalCents,referenceCurrency,functionalTotalCents},session.username,now));
+    let paidReference=0,customerCredit=0;
+    for(const payment of resolved.payments){
+      statements.push(paymentInsertStatement(env,payment,id,null,session.username,now));
+      const posting=paymentJournalStatements(env,payment,{id,soldAt,totalCents:normalizedItems.totalCents,functionalTotalCents,referenceCurrency},paidReference,session.username,now);
+      statements.push(...posting.statements);customerCredit+=posting.customerCredit;paidReference+=payment.referenceAmountCents;
+    }
+    responsePayload.customerCreditFunctionalCents=customerCredit;
+  }
+  statements.push(env.DB.prepare("INSERT INTO idempotency_keys (idempotency_key,operation,request_hash,target_id,response_json,created_by,created_at) VALUES (?,?,?,?,?,?,?)").bind(identity.key,"sale_create",identity.requestHash,id,JSON.stringify(responsePayload),session.username,now));
+  statements.push(structuredAuditStatement(env,session.username,"sale_create","sale",id,{status,paymentStatus:paymentState.status,referenceCurrency,functionalTotalCents,inventorySkipped:normalizedItems.skipped,priceAdjustments:normalizedItems.adjustments},now));
+  try{await env.DB.batch(statements);}catch(error){
+    if(String(error?.message||error).includes("UNIQUE")){const retry=await requestIdentity(env,body,"sale_create");if(retry.replay)return retry.replay;return retry.error||json({error:"La venta ya fue procesada."},409);}
+    if(String(error?.message||error).includes("inventory_unavailable"))return json({error:"El inventario cambió y ya no alcanza.",code:"stock_conflict"},409);
+    throw error;
+  }
+  return json(responsePayload,201);
 }
 
 async function updateSale(request, env, url) {
@@ -1009,14 +1744,22 @@ async function updateSale(request, env, url) {
   if (session instanceof Response) return session;
   const id = decodeURIComponent(url.pathname.split("/").pop() || "");
   if (!/^[a-f0-9-]{36}$/.test(id)) return json({ error: "Venta inválida" }, 400);
-  const sale = validatedSale(await request.json());
+  const body=await request.json().catch(()=>({}));
+  const guard=await prepareMutationGuard(env,"sale",id,body.expectedVersion);
+  if(guard.error)return guard.error;
+  const current=await env.DB.prepare("SELECT status,payment_status AS paymentStatus FROM sales WHERE id=?").bind(id).first();
+  if (!current) return json({error:"Venta no encontrada"},404);
+  if (current.status!=="pending"||current.paymentStatus!=="legacy") return json({error:"Esta venta conserva productos o pagos estructurados y no se puede editar como texto libre.",code:"immutable_sale"},409);
+  const sale = validatedSale(body);
   if (!sale) return json({ error: "Indica fecha, monto válido y productos vendidos." }, 400);
   const now = new Date().toISOString();
-  const saved = await env.DB.prepare("UPDATE sales SET sold_at = ?, total_cents = ?, status = ?, channel = ?, payment_method = ?, customer_name = ?, items_text = ?, notes = ?, updated_by = ?, updated_at = ? WHERE id = ?")
-    .bind(sale.soldAt, sale.totalCents, sale.status, sale.channel, sale.paymentMethod, sale.customerName, sale.items, sale.notes, session.username, now, id).run();
-  if (Number(saved?.meta?.changes || 0) !== 1) return json({ error: "Venta no encontrada" }, 404);
-  await env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'sale_update', ?, ?)").bind(session.username, id, now).run();
-  return json({ ok: true, id });
+  try{await env.DB.batch([
+    mutationClaimStatement(env,guard,"sale_update_pending",body.idempotencyKey||"",session.username,now),
+    env.DB.prepare("UPDATE sales SET sold_at=?,total_cents=?,status='pending',channel=?,payment_method=?,customer_name=?,items_text=?,notes=?,functional_total_cents=?,updated_by=?,updated_at=? WHERE id=? AND status='pending' AND payment_status='legacy'")
+      .bind(sale.soldAt,sale.totalCents,sale.channel,sale.paymentMethod,sale.customerName,sale.items,sale.notes,sale.totalCents,session.username,now,id),
+    structuredAuditStatement(env,session.username,"sale_update_pending","sale",id,{soldAt:sale.soldAt,totalCents:sale.totalCents},now)
+  ]);}catch(error){if(isMutationConflict(error))return staleStateResponse(guard.currentVersion+1);throw error;}
+  return json({ ok: true, id,mutationVersion:guard.nextVersion });
 }
 
 async function deleteSale(request, env, url) {
@@ -1024,10 +1767,174 @@ async function deleteSale(request, env, url) {
   if (session instanceof Response) return session;
   const id = decodeURIComponent(url.pathname.split("/").pop() || "");
   if (!/^[a-f0-9-]{36}$/.test(id)) return json({ error: "Venta inválida" }, 400);
-  const deleted = await env.DB.prepare("DELETE FROM sales WHERE id = ?").bind(id).run();
-  if (Number(deleted?.meta?.changes || 0) !== 1) return json({ error: "Venta no encontrada" }, 404);
-  await env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'sale_delete', ?, ?)").bind(session.username, id, new Date().toISOString()).run();
-  return json({ ok: true });
+  return json({error:"Las ventas no se eliminan. Usa la anulación con motivo para conservar la auditoría.",code:"use_void",voidUrl:`/v1/admin/sales/${id}/void`},405);
+}
+
+async function addSalePayment(request,env,url) {
+  const session=await requireSession(request,env);
+  if(session instanceof Response)return session;
+  const saleId=url.pathname.split("/").filter(Boolean)[3]||"";
+  if(!/^[a-f0-9-]{36}$/.test(saleId))return json({error:"Venta inválida"},400);
+  const body=await request.json().catch(()=>({}));
+  const identity=await requestIdentity(env,body,`sale_payment:${saleId}`);
+  if(identity.error)return identity.error;if(identity.replay)return identity.replay;
+  const guard=await prepareMutationGuard(env,"sale",saleId,body.expectedVersion);
+  if(guard.error)return guard.error;
+  const sale=await env.DB.prepare(`SELECT id,sold_at AS soldAt,total_cents AS totalCents,currency,reference_currency AS referenceCurrency,functional_total_cents AS functionalTotalCents,
+    status,payment_status AS paymentStatus,customer_id AS customerId,customer_name AS customerName,customer_phone AS customerPhone,order_id AS orderId FROM sales WHERE id=?`).bind(saleId).first();
+  if(!sale)return json({error:"Venta no encontrada"},404);
+  if(sale.status==="cancelled")return json({error:"No se pueden cobrar ventas anuladas."},409);
+  const paymentDate=cleanText(body.paymentDate||body.soldAt||caracasDate(),10);
+  if(!isIsoDate(paymentDate))return json({error:"Fecha de abono inválida"},400);
+  const rawPayments=(Array.isArray(body.payments)?body.payments:(body.payment?[body.payment]:[])).map(payment=>({...payment,paymentDate:payment.paymentDate||payment.soldAt||paymentDate}));
+  if(!rawPayments.length)return json({error:"Incluye al menos un pago."},400);
+  const resolved=await resolvePaymentPayloads(env,rawPayments,sale.referenceCurrency||sale.currency||"USD",session,paymentDate);
+  if(resolved.error)return json({error:resolved.error,code:"invalid_payment"},422);
+  const previous=await env.DB.prepare("SELECT COALESCE(SUM(reference_amount_cents),0) AS referencePaid,COALESCE(SUM(functional_amount_cents),0) AS functionalPaid FROM payments WHERE sale_id=? AND status='confirmed'").bind(saleId).first();
+  const referencePaid=Number(previous?.referencePaid||0),functionalPaid=Number(previous?.functionalPaid||0);
+  const totalReferencePaid=referencePaid+resolved.payments.reduce((sum,payment)=>sum+payment.referenceAmountCents,0);
+  const paymentState=derivePaymentStatus(Number(sale.totalCents),totalReferencePaid);
+  let functionalTotalCents=Number(sale.functionalTotalCents||0)||functionalSaleTotal(Number(sale.totalCents),sale.referenceCurrency,resolved.payments);
+  if(!paymentState||!functionalTotalCents)return json({error:"No se pudo fijar el equivalente funcional USD."},422);
+  const customer=await normalizedCustomerRecord(env,body.customer,{name:sale.customerName,phone:sale.customerPhone},session,{required:true});
+  if(customer.error)return json({error:customer.error},400);
+  const now=new Date().toISOString();
+  const responsePayload={ok:true,saleId,status:"confirmed",paymentStatus:paymentState.status,balanceCents:paymentState.balanceRefCents,overpaymentCents:paymentState.overpaymentRefCents,paymentIds:resolved.payments.map(payment=>payment.id),customerId:customer.record.id,functionalCurrency:"USD",functionalTotalCents,mutationVersion:guard.nextVersion,replayed:false};
+  const statements=[mutationClaimStatement(env,guard,"sale_payment",identity.key,session.username,now)];for(const rate of resolved.newRates)statements.push(rateInsertStatement(env,rate,session.username,now));statements.push(...customer.statements);
+  if(sale.status==="pending"){
+    const unitRows=await env.DB.prepare(`SELECT siu.sku,SUM(siu.quantity) AS quantity FROM sale_item_inventory_units siu JOIN sale_items si ON si.id=siu.sale_item_id WHERE si.sale_id=? GROUP BY siu.sku`).bind(saleId).all();
+    const inventory=[];
+    for(const unit of unitRows.results||[]){const row=await env.DB.prepare("SELECT on_hand AS onHand,reserved,track_stock AS trackStock,active FROM inventory_items WHERE sku=?").bind(unit.sku).first();if(!row||!row.active)return json({error:`El SKU ${unit.sku} ya no está activo.`,code:"stock_conflict"},409);if(row.trackStock&&Number(row.onHand)-Number(row.reserved)<Number(unit.quantity))return json({error:`No hay stock suficiente para ${unit.sku}.`,code:"stock_conflict"},409);inventory.push({sku:unit.sku,quantity:Number(unit.quantity),trackStock:Boolean(row.trackStock)});}
+    statements.push(...manualInventoryStatements(env,inventory,saleId,session,now));
+  }
+  const existingSaleJournal=await env.DB.prepare("SELECT id FROM journal_entries WHERE source_type='sale' AND source_id=? LIMIT 1").bind(saleId).first();
+  if(!existingSaleJournal)statements.push(...saleJournalStatements(env,{id:saleId,soldAt:sale.soldAt,totalCents:Number(sale.totalCents),referenceCurrency:sale.referenceCurrency,functionalTotalCents},session.username,now));
+  let paidReference=referencePaid,customerCredit=0;
+  for(const payment of resolved.payments){
+    statements.push(paymentInsertStatement(env,payment,saleId,sale.orderId,session.username,now));
+    const posting=paymentJournalStatements(env,payment,{id:saleId,soldAt:sale.soldAt,totalCents:Number(sale.totalCents),functionalTotalCents,referenceCurrency:sale.referenceCurrency},paidReference,session.username,now);
+    statements.push(...posting.statements);customerCredit+=posting.customerCredit;paidReference+=payment.referenceAmountCents;
+  }
+  responsePayload.customerCreditFunctionalCents=customerCredit;
+  statements.push(env.DB.prepare("UPDATE sales SET status='confirmed',payment_status=?,customer_id=?,customer_name=CASE WHEN customer_name='' THEN ? ELSE customer_name END,customer_phone=CASE WHEN customer_phone='' THEN ? ELSE customer_phone END,functional_total_cents=?,payment_method=?,updated_by=?,updated_at=? WHERE id=? AND status<>'cancelled'")
+    .bind(paymentState.status,customer.record.id,customer.record.name,customer.record.phone,functionalTotalCents,resolved.payments.map(payment=>payment.method).join(" + ").slice(0,60),session.username,now,saleId));
+  statements.push(env.DB.prepare("INSERT INTO idempotency_keys (idempotency_key,operation,request_hash,target_id,response_json,created_by,created_at) VALUES (?,?,?,?,?,?,?)").bind(identity.key,`sale_payment:${saleId}`,identity.requestHash,saleId,JSON.stringify(responsePayload),session.username,now));
+  statements.push(structuredAuditStatement(env,session.username,"sale_payment","sale",saleId,{paymentIds:responsePayload.paymentIds,paymentStatus:paymentState.status,customerCreditFunctionalCents:customerCredit},now));
+  try{await env.DB.batch(statements);}catch(error){if(isMutationConflict(error)){const retry=await requestIdentity(env,body,`sale_payment:${saleId}`);if(retry.replay)return retry.replay;return staleStateResponse(guard.currentVersion+1);}if(String(error?.message||error).includes("UNIQUE")){const retry=await requestIdentity(env,body,`sale_payment:${saleId}`);if(retry.replay)return retry.replay;return retry.error||json({error:"El pago ya fue procesado."},409);}if(String(error?.message||error).includes("inventory_unavailable"))return json({error:"El inventario cambió y ya no alcanza.",code:"stock_conflict"},409);throw error;}
+  return json(responsePayload,201);
+}
+
+async function voidSale(request,env,url) {
+  const session=await requireSession(request,env);
+  if(session instanceof Response)return session;
+  const saleId=url.pathname.split("/").filter(Boolean)[3]||"";
+  const body=await request.json().catch(()=>({}));
+  const reason=cleanText(body.reason,500);
+  if(!/^[a-f0-9-]{36}$/.test(saleId)||reason.length<8)return json({error:"Venta o motivo de anulación inválido."},400);
+  const guard=await prepareMutationGuard(env,"sale",saleId,body.expectedVersion);
+  if(guard.error)return guard.error;
+  const sale=await env.DB.prepare("SELECT id,status,sold_at AS soldAt,total_cents AS totalCents,functional_total_cents AS functionalTotalCents,order_id AS orderId FROM sales WHERE id=?").bind(saleId).first();
+  if(!sale)return json({error:"Venta no encontrada"},404);
+  if(sale.status==="cancelled")return json({error:"La venta ya está anulada."},409);
+  const now=new Date().toISOString(),statements=[mutationClaimStatement(env,guard,"sale_void",body.idempotencyKey||"",session.username,now)];
+  const saleEntries=await env.DB.prepare("SELECT id FROM journal_entries WHERE source_type='sale' AND source_id=? AND status='posted'").bind(saleId).all();
+  for(const entry of saleEntries.results||[]){
+    const lines=await env.DB.prepare("SELECT account_id AS accountId,debit_functional_cents AS debit,credit_functional_cents AS credit,original_currency AS originalCurrency,original_amount_minor AS originalAmountMinor,original_amount_scale AS originalAmountScale,memo FROM journal_lines WHERE journal_entry_id=?").bind(entry.id).all();
+    statements.push(...balancedJournalStatements(env,{entryDate:sale.soldAt,sourceType:"reversal",sourceId:saleId,description:`Anulación de venta ${saleId}`,username:session.username,now,reversalOfId:entry.id,lines:(lines.results||[]).map(line=>({...line,debit:Number(line.credit),credit:Number(line.debit)}))}));
+    statements.push(env.DB.prepare("UPDATE journal_entries SET status='reversed',reversed_by=?,reversed_at=?,reversal_reason=? WHERE id=?").bind(session.username,now,reason,entry.id));
+  }
+  const paidRows=await env.DB.prepare("SELECT reference_amount_cents AS referenceAmountCents,functional_amount_cents AS functionalAmountCents FROM payments WHERE sale_id=? AND status='confirmed' ORDER BY confirmed_at,id").bind(saleId).all();
+  let paidFunctional=0,paidReference=0,appliedFunctional=0,carryingApplied=0,fxGain=0,fxLoss=0;
+  for(const payment of paidRows.results||[]){const allocation=deriveSettlementAllocation({saleTotalReferenceCents:Number(sale.totalCents),saleFunctionalTotalCents:Number(sale.functionalTotalCents),paidBeforeReferenceCents:paidReference,paymentReferenceCents:Number(payment.referenceAmountCents),paymentFunctionalCents:Number(payment.functionalAmountCents)});if(allocation){appliedFunctional+=allocation.appliedPaymentFunctionalCents;carryingApplied+=allocation.carryingReceivableCreditCents;fxGain+=allocation.fxGainFunctionalCents;fxLoss+=allocation.fxLossFunctionalCents;}paidReference+=Number(payment.referenceAmountCents);paidFunctional+=Number(payment.functionalAmountCents);}
+  if(appliedFunctional>0){const lines=[];if(carryingApplied>0)lines.push({accountId:"asset-receivable-usd",debit:carryingApplied,originalCurrency:"USD",originalAmountMinor:carryingApplied});if(fxGain>0)lines.push({accountId:"income-fx-gain-usd",debit:fxGain,originalCurrency:"USD",originalAmountMinor:fxGain});if(fxLoss>0)lines.push({accountId:"expense-fx-loss-usd",credit:fxLoss,originalCurrency:"USD",originalAmountMinor:fxLoss});lines.push({accountId:"liability-customer-credit-usd",credit:appliedFunctional,originalCurrency:"USD",originalAmountMinor:appliedFunctional});statements.push(...balancedJournalStatements(env,{entryDate:sale.soldAt,sourceType:"adjustment",sourceId:saleId,description:`Crédito del cliente por venta anulada ${saleId}`,username:session.username,now,lines}));}
+  let restoredStock=false;
+  if(body.restoreStock===true){
+    const movements=await env.DB.prepare("SELECT sku,-SUM(delta_on_hand) AS quantity FROM inventory_movements WHERE sale_id=? AND movement_type='sale' GROUP BY sku HAVING quantity>0").bind(saleId).all();
+    for(const movement of movements.results||[]){const quantity=Number(movement.quantity);statements.push(env.DB.prepare("UPDATE inventory_items SET on_hand=on_hand+?,updated_at=?,updated_by=? WHERE sku=?").bind(quantity,now,session.username,movement.sku));statements.push(env.DB.prepare("INSERT INTO inventory_movements (sku,order_id,sale_id,movement_type,delta_on_hand,delta_reserved,note,actor,created_at) VALUES (?,?,?,'adjustment',?,0,'Reposición por venta anulada',?,?)").bind(movement.sku,sale.orderId||null,saleId,quantity,session.username,now));restoredStock=true;}
+  }
+  statements.push(env.DB.prepare("UPDATE sales SET status='cancelled',payment_status='voided',voided_at=?,voided_by=?,void_reason=?,updated_by=?,updated_at=? WHERE id=? AND status<>'cancelled'").bind(now,session.username,reason,session.username,now,saleId));
+  if(sale.orderId)statements.push(env.DB.prepare("UPDATE stock_orders SET status='cancelled',voided_at=?,voided_by=?,void_reason=?,updated_at=? WHERE id=? AND status='confirmed'").bind(now,session.username,reason,now,sale.orderId));
+  statements.push(structuredAuditStatement(env,session.username,"sale_void","sale",saleId,{reason,restoredStock,customerCreditFunctionalCents:paidFunctional},now));
+  try{await env.DB.batch(statements);}catch(error){if(isMutationConflict(error))return staleStateResponse(guard.currentVersion+1);throw error;}
+  return json({ok:true,saleId,status:"cancelled",restoredStock,refundRecorded:false,customerCreditFunctionalCents:paidFunctional,mutationVersion:guard.nextVersion,message:paidFunctional?"El cobro quedó como crédito del cliente; no se registró un reembolso inexistente.":"Venta anulada sin cobros."});
+}
+
+async function listExpenses(request,env,url){
+  const session=await requireSession(request,env);if(session instanceof Response)return session;
+  const from=cleanText(url.searchParams.get("from"),10),to=cleanText(url.searchParams.get("to"),10);
+  if((from&&!isIsoDate(from))||(to&&!isIsoDate(to)))return json({error:"Rango de fechas inválido"},400);
+  const result=await env.DB.prepare(`SELECT id,expense_date AS expenseDate,category,description,status,amount_minor AS amountMinor,amount_scale AS amountScale,currency,payment_method AS method,
+    reference_currency AS referenceCurrency,reference_amount_cents AS referenceAmountCents,functional_amount_cents AS functionalAmountCents,transaction_reference AS reference,notes,
+    exchange_rate_value_date AS exchangeRateValueDate,created_by AS createdBy,created_at AS createdAt,voided_at AS voidedAt,void_reason AS voidReason,
+    COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='expense' AND entity_id=expenses.id),0) AS mutationVersion
+    FROM expenses WHERE (?='' OR expense_date>=?) AND (?='' OR expense_date<=?) ORDER BY expense_date DESC,created_at DESC LIMIT 1000`).bind(from,from,to,to).all();
+  const items=result.results||[],posted=items.filter(item=>item.status==="posted"),byCurrency={};for(const item of posted)byCurrency[item.currency]=(byCurrency[item.currency]||0)+Number(item.amountMinor||0);
+  return json({items,summary:{functionalCurrency:"USD",totalFunctionalUsdCents:posted.reduce((sum,item)=>sum+Number(item.functionalAmountCents||0),0),byCurrency,postedCount:posted.length,voidedCount:items.length-posted.length}});
+}
+
+async function createExpense(request,env){
+  const session=await requireSession(request,env);if(session instanceof Response)return session;
+  const body=await request.json().catch(()=>({}));const identity=await requestIdentity(env,body,"expense_create");if(identity.error)return identity.error;if(identity.replay)return identity.replay;
+  const expenseDate=cleanText(body.expenseDate||caracasDate(),10),category=cleanText(body.category||"General",100),description=cleanText(body.description,500),method=cleanText(body.method||body.paymentMethod,80),referenceCurrency=String(body.referenceCurrency||"USD").toUpperCase();
+  if(!isIsoDate(expenseDate)||!description||!method||!SUPPORTED_REFERENCE_CURRENCIES.has(referenceCurrency))return json({error:"Completa fecha, categoría, descripción, método y base USD/EUR."},400);
+  const rawPayment={...body,method,currency:String(body.currency||"").toUpperCase()};
+  const resolved=await resolvePaymentPayloads(env,[rawPayment],referenceCurrency,session,expenseDate);if(resolved.error)return json({error:resolved.error,code:"invalid_expense_payment"},422);
+  const payment=resolved.payments[0],id=crypto.randomUUID(),now=new Date().toISOString();
+  const responsePayload={ok:true,id,expenseId:id,status:"posted",referenceAmountCents:payment.referenceAmountCents,functionalAmountCents:payment.functionalAmountCents,functionalCurrency:"USD",mutationVersion:0,replayed:false};
+  const statements=[];for(const rate of resolved.newRates)statements.push(rateInsertStatement(env,rate,session.username,now));
+  statements.push(env.DB.prepare(`INSERT INTO expenses (id,expense_date,category,description,status,amount_minor,amount_scale,currency,payment_method,reference_currency,reference_amount_cents,functional_currency,functional_amount_cents,
+    exchange_rate_id,rate_basis,exchange_rate_scaled,exchange_rate_scale,exchange_rate_value_date,exchange_rate_source_url,exchange_rate_source_kind,functional_exchange_rate_id,functional_exchange_rate_scaled,functional_exchange_rate_value_date,
+    transaction_reference,notes,created_by,created_at) VALUES (?,?,?,?,'posted',?,?,?,?,?,?,'USD',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .bind(id,expenseDate,category,description,payment.amountMinor,payment.amountScale,payment.currency,payment.method,referenceCurrency,payment.referenceAmountCents,payment.functionalAmountCents,payment.exchangeRateId,payment.rateBasis,payment.rateScaled,payment.rateScaled?BCV_RATE_SCALE:null,payment.rateValueDate,payment.rateSourceUrl,payment.rateSourceKind,payment.functionalExchangeRateId,payment.functionalRateScaled,payment.functionalRateValueDate,payment.transactionReference,payment.notes,session.username,now));
+  statements.push(...balancedJournalStatements(env,{entryDate:expenseDate,sourceType:"expense",sourceId:id,description:`Gasto: ${description}`,username:session.username,now,lines:[
+    {accountId:"expense-operating-usd",debit:payment.functionalAmountCents,originalCurrency:payment.currency,originalAmountMinor:payment.amountMinor,originalAmountScale:payment.amountScale},
+    {accountId:paymentAccountId(payment),credit:payment.functionalAmountCents,originalCurrency:payment.currency,originalAmountMinor:payment.amountMinor,originalAmountScale:payment.amountScale}
+  ]}));
+  statements.push(env.DB.prepare("INSERT INTO idempotency_keys (idempotency_key,operation,request_hash,target_id,response_json,created_by,created_at) VALUES (?,?,?,?,?,?,?)").bind(identity.key,"expense_create",identity.requestHash,id,JSON.stringify(responsePayload),session.username,now));
+  statements.push(structuredAuditStatement(env,session.username,"expense_create","expense",id,{category,description,functionalAmountCents:payment.functionalAmountCents},now));
+  try{await env.DB.batch(statements);}catch(error){if(String(error?.message||error).includes("UNIQUE")){const retry=await requestIdentity(env,body,"expense_create");if(retry.replay)return retry.replay;return retry.error||json({error:"El gasto ya fue procesado."},409);}throw error;}
+  return json(responsePayload,201);
+}
+
+async function voidExpense(request,env,url){
+  const session=await requireSession(request,env);if(session instanceof Response)return session;
+  const id=url.pathname.split("/").filter(Boolean)[3]||"",body=await request.json().catch(()=>({})),reason=cleanText(body.reason,500);
+  if(!/^[a-f0-9-]{36}$/.test(id)||reason.length<8)return json({error:"Gasto o motivo inválido."},400);
+  const guard=await prepareMutationGuard(env,"expense",id,body.expectedVersion);
+  if(guard.error)return guard.error;
+  const expense=await env.DB.prepare("SELECT id,status,expense_date AS expenseDate,functional_amount_cents AS functionalAmountCents,currency,amount_minor AS amountMinor FROM expenses WHERE id=?").bind(id).first();
+  if(!expense)return json({error:"Gasto no encontrado"},404);if(expense.status==="voided")return json({error:"El gasto ya está anulado."},409);
+  const now=new Date().toISOString(),amount=Number(expense.functionalAmountCents),statements=[mutationClaimStatement(env,guard,"expense_void",body.idempotencyKey||"",session.username,now),...balancedJournalStatements(env,{entryDate:expense.expenseDate,sourceType:"reversal",sourceId:id,description:`Reclasificación de gasto anulado ${id}`,username:session.username,now,lines:[
+    {accountId:"asset-recoverable-usd",debit:amount,originalCurrency:expense.currency,originalAmountMinor:Number(expense.amountMinor)},
+    {accountId:"expense-operating-usd",credit:amount,originalCurrency:expense.currency,originalAmountMinor:Number(expense.amountMinor)}
+  ]})];
+  statements.push(env.DB.prepare("UPDATE expenses SET status='voided',voided_by=?,voided_at=?,void_reason=? WHERE id=? AND status='posted'").bind(session.username,now,reason,id));
+  statements.push(structuredAuditStatement(env,session.username,"expense_void","expense",id,{reason,reclassifiedAsRecoverableFunctionalCents:amount},now));try{await env.DB.batch(statements);}catch(error){if(isMutationConflict(error))return staleStateResponse(guard.currentVersion+1);throw error;}
+  return json({ok:true,id,status:"voided",refundRecorded:false,reclassifiedAsRecoverableFunctionalCents:amount,mutationVersion:guard.nextVersion,message:"El desembolso no se fingió como devuelto; quedó como monto por recuperar."});
+}
+
+async function getAccountingSummary(request,env,url){
+  const session=await requireSession(request,env);if(session instanceof Response)return session;
+  const today=caracasDate(),from=cleanText(url.searchParams.get("from")||`${today.slice(0,7)}-01`,10),to=cleanText(url.searchParams.get("to")||today,10);
+  if(!isIsoDate(from)||!isIsoDate(to)||from>to)return json({error:"Rango de fechas inválido"},400);
+  const [accounts,payments,sales,expenses,unbalanced]=await Promise.all([
+    env.DB.prepare(`SELECT a.id,a.code,a.name,a.account_type AS accountType,a.currency,COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.debit_functional_cents ELSE 0 END),0) AS debitFunctionalCents,COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.credit_functional_cents ELSE 0 END),0) AS creditFunctionalCents
+      FROM accounts a LEFT JOIN journal_lines jl ON jl.account_id=a.id LEFT JOIN journal_entries je ON je.id=jl.journal_entry_id AND je.entry_date>=? AND je.entry_date<=?
+      GROUP BY a.id ORDER BY a.code`).bind(from,to).all(),
+    env.DB.prepare(`SELECT paid_currency AS currency,method,SUM(amount_minor) AS amountMinor,SUM(functional_amount_cents) AS functionalAmountCents,COUNT(*) AS count FROM payments
+      WHERE status='confirmed' AND payment_date>=? AND payment_date<=? GROUP BY paid_currency,method ORDER BY paid_currency,method`).bind(from,to).all(),
+    env.DB.prepare("SELECT currency,SUM(total_cents) AS amountCents,SUM(functional_total_cents) AS functionalAmountCents,COUNT(*) AS count FROM sales WHERE status='confirmed' AND sold_at>=? AND sold_at<=? GROUP BY currency").bind(from,to).all(),
+    env.DB.prepare("SELECT currency,SUM(amount_minor) AS amountMinor,SUM(functional_amount_cents) AS functionalAmountCents,COUNT(*) AS count FROM expenses WHERE status='posted' AND expense_date>=? AND expense_date<=? GROUP BY currency").bind(from,to).all(),
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM (SELECT je.id FROM journal_entries je JOIN journal_lines jl ON jl.journal_entry_id=je.id WHERE je.entry_date>=? AND je.entry_date<=? GROUP BY je.id HAVING SUM(jl.debit_functional_cents)<>SUM(jl.credit_functional_cents))`).bind(from,to).first()
+  ]);
+  const accountItems=(accounts.results||[]).map(account=>({...account,debitFunctionalCents:Number(account.debitFunctionalCents||0),creditFunctionalCents:Number(account.creditFunctionalCents||0),balanceFunctionalCents:Number(account.debitFunctionalCents||0)-Number(account.creditFunctionalCents||0)}));
+  const income=accountItems.filter(account=>account.accountType==="income").reduce((sum,account)=>sum-account.balanceFunctionalCents,0),expense=accountItems.filter(account=>account.accountType==="expense").reduce((sum,account)=>sum+account.balanceFunctionalCents,0);
+  const receivable=accountItems.find(account=>account.id==="asset-receivable-usd")?.balanceFunctionalCents||0;
+  const collections=payments.results||[],paymentsByCurrency={},paymentsByMethod={};let collectedFunctionalCents=0;
+  for(const row of collections){const functional=Number(row.functionalAmountCents||0),nominal=Number(row.amountMinor||0);collectedFunctionalCents+=functional;paymentsByCurrency[row.currency]=(paymentsByCurrency[row.currency]||0)+nominal;paymentsByMethod[row.method]=(paymentsByMethod[row.method]||0)+functional;}
+  return json({from,to,functionalCurrency:"USD",incomeFunctionalCents:income,expenseFunctionalCents:expense,netFunctionalCents:income-expense,receivableFunctionalCents:receivable,collectedFunctionalCents,
+    incomeRefCents:income,expenseRefCents:expense,netRefCents:income-expense,receivableRefCents:receivable,
+    accounts:accountItems,collectionsByCurrencyAndMethod:collections,paymentsByCurrency,paymentsByMethod,salesByCurrency:sales.results||[],expensesByCurrency:expenses.results||[],journalBalanced:Number(unbalanced?.count||0)===0,unbalancedJournalCount:Number(unbalanced?.count||0)});
 }
 
 async function getActivity(request, env) {

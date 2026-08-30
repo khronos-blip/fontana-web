@@ -1,8 +1,19 @@
 # API privada de Fontana
 
-Backend gratuito basado en Cloudflare Workers + D1. Mantiene el catálogo publicado, cuentas administrativas separadas, sesiones, passkeys para Face ID, imágenes optimizadas, inventario central, reservas temporales, un registro de actividad y el historial de ventas del panel.
+Backend gratuito basado en Cloudflare Workers + D1. Mantiene el catálogo publicado, cuentas administrativas separadas, sesiones, passkeys para Face ID, imágenes optimizadas, inventario central, reservas temporales, CRM de clientes, cobros multimoneda, tasas históricas y un libro operativo auditable.
 
-El módulo de ventas registra fecha, importe, estado, canal, forma de pago, productos vendidos, cliente opcional y notas. Sus totales cuentan únicamente las ventas confirmadas. Es un control operativo de ingresos; no sustituye una contabilidad fiscal ni calcula automáticamente costos o utilidad.
+El módulo de ventas registra fecha, importe de referencia, productos e imágenes históricas, cliente, abonos, moneda, método, referencia y el equivalente funcional en USD. El teléfono normalizado evita duplicar clientes y permite identificar recurrencia. Una venta con abono confirmado compromete el inventario una sola vez y conserva su saldo pendiente; los abonos posteriores se enlazan a la misma venta. Es un control operativo de ingresos y egresos; no sustituye una contabilidad fiscal ni calcula impuestos, costos o utilidad fiscal.
+
+## Clientes, pagos y tasas BCV
+
+- `REF` es solo una etiqueta de presentación. Las monedas persistidas son VES, USD o EUR; la moneda funcional del libro es USD.
+- Los importes y tasas se guardan como enteros escalados, nunca como `REAL`, para que el redondeo sea determinista.
+- Los pagos en VES guardan el snapshot de la tasa BCV USD o EUR, su Fecha Valor, origen y fecha de observación. El Worker consulta la página oficial del BCV y conserva la última tasa válida en D1.
+- La carga manual de una tasa requiere la cuenta propietaria, un enlace HTTPS del BCV y un motivo; queda registrada en el historial.
+- Los pagos pueden ser parciales o divididos. La venta, sus productos y el inventario se crean una sola vez mediante una clave de idempotencia; los abonos posteriores solo reducen la cuenta por cobrar.
+- Un exceso de pago se registra como crédito a favor del cliente, no como un saldo negativo. Anular una venta pagada conserva el cobro como crédito hasta registrar una devolución o aplicarlo correctamente.
+- Las ventas, pagos, gastos y reversos producen asientos balanceados en USD funcional. Los reportes también conservan los montos nominales separados por moneda; nunca suman USD y EUR como si fueran equivalentes.
+- Los clientes se crean o actualizan únicamente cuando existe un pago confirmado. Una venta manual todavía pendiente conserva el nombre y teléfono como snapshot, pero no cuenta como cliente recurrente hasta el primer cobro.
 
 ## Inventario y reservas
 

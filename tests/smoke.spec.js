@@ -6035,14 +6035,20 @@ test("el panel registra ventas manuales y separa la configuración del catálogo
 
   await page.getByRole("button", { name: "Ventas", exact: true }).click();
   await page.getByRole("button", { name: "+ Registrar venta" }).click();
-  await expect(page.locator('#saleForm label').filter({ hasText: "Monto total REF" })).toBeVisible();
-  await page.locator('#saleForm [name="total"]').fill("47");
-  await page.locator('#saleForm [name="customerName"]').fill("Cliente de prueba");
-  await page.locator('#saleForm [name="items"]').fill("1 Torta de manjar de naranja");
-  await page.locator('#saleForm button[type="submit"]').click();
+  const paymentForm = page.locator("#paymentForm");
+  await expect(paymentForm.getByText("Monto total REF", { exact: true })).toBeVisible();
+  const orangeCake = page.locator("#saleCatalogPicker .catalog-item").filter({ hasText: "Torta de Manjar de Naranja" });
+  await orangeCake.getByRole("button", { name: "Sumar Torta de Manjar de Naranja" }).click();
+  await expect(paymentForm.locator('[name="total"]')).toHaveValue("47.00");
+  await paymentForm.locator('[name="customerName"]').fill("Cliente de prueba");
+  await paymentForm.locator('[name="customerPhone"]').fill("0412 123 4567");
+  await paymentForm.locator('.payment-line [name="paidCurrency"]').selectOption("USD");
+  await paymentForm.locator('.payment-line [name="paidAmount"]').fill("47.00");
+  await paymentForm.getByRole("button", { name: "Confirmar pago y venta" }).click();
   await expect(page.locator("#salesList")).toContainText("Cliente de prueba");
   await expect(page.locator("#salesList")).toContainText("REF 47,00");
-  await expect(page.locator("#salesStats")).toContainText("REF 47,00");
+  await expect(page.locator("#salesStats")).toContainText("USD 47,00");
+  await expect(page.locator("#salesStats")).toContainText("USD funcional");
   await page.screenshot({ path: testInfo.outputPath("ventas-admin-movil.png"), fullPage: false });
 
   await page.reload();
@@ -6989,7 +6995,7 @@ test("los formularios operativos conservan cabecera, contenido y acciones accesi
     await expect(dialog).toBeVisible();
     const geometry = await dialog.evaluate(element => {
       const box = element.getBoundingClientRect();
-      const scroller = element.querySelector(".form-grid");
+      const scroller = element.querySelector(".payment-dialog-body, .form-grid");
       const actions = element.querySelector(".dialog-actions").getBoundingClientRect();
       return {
         top: box.top,
@@ -7021,22 +7027,36 @@ test("los formularios operativos conservan cabecera, contenido y acciones accesi
 
   await page.getByRole("button", { name: "Ventas", exact: true }).click();
   await page.getByRole("button", { name: "+ Registrar venta" }).click();
-  expect((await expectUsableDialog("#saleDialog", "Guardar venta")).canScroll).toBe(true);
+  expect((await expectUsableDialog("#paymentDialog", "Confirmar pago y venta")).canScroll).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("venta-modal-movil-corregido.png") });
-  await page.locator('#saleForm [name="total"]').fill("23.50");
-  await page.locator('#saleForm [name="customerName"]').fill("Revisión móvil");
-  await page.locator('#saleForm [name="items"]').fill("Venta de prueba funcional");
-  await page.locator('#saleForm button[type="submit"]').click();
+  const paymentForm = page.locator("#paymentForm");
+  const ballerine = page.locator("#saleCatalogPicker .catalog-item").filter({ hasText: "Torta Ballerine" });
+  await ballerine.getByRole("button", { name: "Sumar Torta Ballerine" }).click();
+  await paymentForm.locator('[name="customerName"]').fill("Revisión móvil");
+  await paymentForm.locator('[name="customerPhone"]').fill("0412 765 4321");
+  await paymentForm.locator('.payment-line [name="paidCurrency"]').selectOption("USD");
+  await paymentForm.locator('.payment-line [name="paidAmount"]').fill("5.00");
+  await paymentForm.getByRole("button", { name: "Confirmar pago y venta" }).click();
   await expect(page.locator("#salesList")).toContainText("Revisión móvil");
-
-  await page.locator("#salesList [data-edit-sale]").first().click();
-  await page.locator('#saleForm [name="status"]').selectOption("pending");
-  await page.locator('#saleForm button[type="submit"]').click();
+  await expect(page.locator("#salesList")).toContainText("Pago parcial");
   await page.locator("#saleStatusFilter").selectOption("pending");
   await expect(page.locator("#salesList")).toContainText("Revisión móvil");
-  page.once("dialog", dialog => dialog.accept());
-  await page.locator("#salesList [data-delete-sale]").first().click();
-  await expect(page.locator("#salesList")).not.toContainText("Revisión móvil");
+  await page.locator("#salesList [data-add-sale-payment]").first().click();
+  await expect(paymentForm.locator('[name="total"]')).toHaveValue("7.00");
+  await paymentForm.locator('.payment-line [name="paidCurrency"]').selectOption("USD");
+  await paymentForm.locator('.payment-line [name="paidAmount"]').fill("7.00");
+  await paymentForm.getByRole("button", { name: "Registrar abono" }).click();
+  await page.locator("#saleStatusFilter").selectOption("all");
+  await expect(page.locator("#salesList")).toContainText("Confirmada");
+
+  const saleRow = page.locator("#salesList .sale-row").filter({ hasText: "Revisión móvil" });
+  await saleRow.getByRole("button", { name: "Anular venta" }).click();
+  await page.locator('#voidForm [name="reason"]').fill("Registro duplicado durante la revisión");
+  await page.locator('#voidForm [name="confirmImpact"]').check();
+  await page.locator("#voidForm").getByRole("button", { name: "Anular y conservar historial" }).click();
+  await expect(saleRow).toContainText("Anulada");
+  await expect(saleRow).toContainText("Revisión móvil");
+  await expect(page.locator("#salesList [data-delete-sale]")).toHaveCount(0);
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(errors).toEqual([]);

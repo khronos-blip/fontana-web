@@ -309,6 +309,7 @@ test("validate y reserve usan inventoryKey y guardan la identidad actual en el s
     name: "Nombre actual",
     inventoryKey: "sabor-estable",
     quantity: 4,
+    imageUrl: "",
     preorder: false
   }]);
   expect(result.demand).toEqual(expect.objectContaining({

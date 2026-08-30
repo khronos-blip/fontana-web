@@ -61,6 +61,8 @@
         <button class="nav-item" data-view="inventory">Inventario</button>
         <button class="nav-item" data-view="orders">Pedidos</button>
         <button class="nav-item" data-view="sales">Ventas</button>
+        <button class="nav-item" data-view="customers">Clientes</button>
+        <button class="nav-item" data-view="accounting">Contabilidad</button>
       </aside>
 
       <main class="content">
@@ -126,10 +128,33 @@
         </section>
 
         <section class="view" data-panel="sales">
-          <div class="page-head"><div><span class="eyebrow">Control de ingresos</span><h1>Ventas</h1><p>Registra manualmente lo vendido y consulta los ingresos de Fontana. Los pedidos de WhatsApp no se cuentan hasta que los confirmes aquí.</p></div><button class="primary" id="newSaleButton" type="button">+ Registrar venta</button></div>
+          <div class="page-head"><div><span class="eyebrow">Control de ingresos</span><h1>Ventas</h1><p>Registra lo vendido con sus productos, cliente, cobros y tasa utilizada. Los pedidos de WhatsApp no se cuentan hasta confirmar el pago.</p></div><button class="primary" id="newSaleButton" type="button">+ Registrar venta</button></div>
           <div class="stats sales-stats" id="salesStats"></div>
           <div class="toolbar sales-toolbar"><input id="saleSearch" type="search" placeholder="Buscar cliente, producto o nota"><select id="saleStatusFilter"><option value="all">Todos los estados</option><option value="confirmed">Ventas confirmadas</option><option value="pending">Pendientes de cobro</option><option value="cancelled">Anuladas</option></select><select id="salePeriodFilter"><option value="all">Todo el historial</option><option value="today">Hoy</option><option value="month">Este mes</option><option value="year">Este año</option></select></div>
           <div class="sales-list" id="salesList"></div>
+        </section>
+
+        <section class="view" data-panel="customers">
+          <div class="page-head"><div><span class="eyebrow">Relación con clientes</span><h1>Clientes</h1><p>Las compras confirmadas se agrupan por teléfono para identificar clientes recurrentes sin duplicarlos por nombre.</p></div><button class="ghost" id="refreshCustomersButton" type="button">Actualizar</button></div>
+          <div class="stats" id="customerStats"></div>
+          <div class="toolbar customers-toolbar"><input id="customerSearch" type="search" placeholder="Buscar por nombre, teléfono o email"><select id="customerTypeFilter"><option value="all">Todos los clientes</option><option value="recurrent">Recurrentes</option><option value="new">Una compra</option><option value="balance">Con saldo pendiente</option></select></div>
+          <div class="customers-list" id="customersList"></div>
+        </section>
+
+        <section class="view" data-panel="accounting">
+          <div class="page-head"><div><span class="eyebrow">Control operativo</span><h1>Contabilidad</h1><p>Consulta cobros, cuentas pendientes y gastos usando la tasa histórica guardada en cada movimiento.</p></div><button class="primary" id="newExpenseButton" type="button">+ Registrar gasto</button></div>
+          <div class="accounting-notice" role="note"><b>Registro administrativo</b><span>Estos movimientos ayudan a conciliar Fontana; los cierres fiscales e impuestos deben validarse con el contador.</span></div>
+          <form id="accountingRangeForm" class="accounting-range" aria-label="Período contable">
+            <label>Desde<input name="from" type="date" required></label>
+            <label>Hasta<input name="to" type="date" required></label>
+            <button class="ghost compact" type="submit">Aplicar período</button>
+            <output id="accountingPeriodLabel" aria-live="polite"></output>
+          </form>
+          <div class="stats accounting-stats" id="accountingStats"></div>
+          <div class="accounting-grid">
+            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Cobros reales</span><h2>Por moneda y método</h2></div></div><div id="paymentBreakdown" class="breakdown-list"></div></article>
+            <article class="panel"><div class="panel-head"><div><span class="eyebrow">Egresos</span><h2>Gastos y movimientos</h2></div><button class="ghost compact" id="refreshAccountingButton" type="button">Actualizar</button></div><div id="expenseList" class="expense-list"></div></article>
+          </div>
         </section>
 
         <section class="view" data-panel="security">
@@ -231,21 +256,101 @@
       <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="saveFlavorButton" type="submit">Guardar sabor</button></div>
     </form>
   </dialog>
-  <dialog id="saleDialog">
-    <form id="saleForm" method="dialog">
-      <div class="dialog-head"><div><span class="eyebrow">Contabilidad</span><h2 id="saleDialogTitle">Registrar venta</h2></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
-      <input type="hidden" name="id">
-      <div class="form-grid">
-        <label>Fecha de venta<input name="soldAt" type="date" required></label>
-        <label>Monto total REF<input name="total" type="number" min="0" step="0.01" inputmode="decimal" required></label>
-        <label>Estado<select name="status"><option value="confirmed">Confirmada / cobrada</option><option value="pending">Pendiente de cobro</option><option value="cancelled">Anulada</option></select></label>
-        <label>Canal<select name="channel"><option value="WhatsApp">WhatsApp</option><option value="Instagram">Instagram</option><option value="Presencial">Presencial</option><option value="Otro">Otro</option></select></label>
-        <label>Forma de pago<select name="paymentMethod"><option value="Pago Móvil">Pago Móvil</option><option value="Binance">Binance</option><option value="Efectivo">Efectivo</option><option value="Otro">Otro</option></select></label>
-        <label>Cliente (opcional)<input name="customerName" maxlength="100" autocomplete="off"></label>
-        <label class="wide">Productos vendidos<textarea name="items" rows="4" required placeholder="Ej. 1 Torta de pistacho; 1 caja de 4 Fonkies"></textarea><small>Escribe cantidades, presentaciones y sabores para conservar el detalle.</small></label>
-        <label class="wide">Referencia o nota (opcional)<textarea name="notes" rows="3" placeholder="Ej. Pedido FNT-..., abono, observación"></textarea></label>
+  <dialog id="paymentDialog" aria-labelledby="paymentDialogTitle" aria-describedby="paymentDialogDescription">
+    <form id="paymentForm" method="dialog" novalidate>
+      <div class="dialog-head"><div><span class="eyebrow">Venta y cobro</span><h2 id="paymentDialogTitle">Registrar venta</h2><p id="paymentDialogDescription">Guarda lo vendido y el dinero que realmente recibió Fontana.</p></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
+      <input type="hidden" name="orderId"><input type="hidden" name="saleId"><input type="hidden" name="idempotencyKey"><input type="hidden" name="expectedVersion"><input type="hidden" name="items">
+      <div class="payment-dialog-body">
+        <section class="payment-section" id="paymentProductsSection" aria-labelledby="paymentProductsTitle">
+          <div class="section-heading"><div><span class="eyebrow">1 · Productos</span><h3 id="paymentProductsTitle">Detalle de la venta</h3></div><label class="catalog-search" id="catalogSearchLabel">Buscar producto<input id="saleCatalogSearch" type="search" placeholder="Torta, Fonkies, Bottega…"></label></div>
+          <div id="orderPaymentItems" class="payment-item-summary" hidden></div>
+          <div id="saleCatalogPicker" class="sale-catalog-picker" role="group" aria-label="Productos del catálogo"></div>
+          <details class="custom-sale-item"><summary>Agregar un detalle que no está en el catálogo</summary><label>Detalle adicional<textarea name="customItems" rows="2" placeholder="Ej. ajuste, producto especial o presentación personalizada"></textarea></label></details>
+        </section>
+
+        <section class="payment-section" aria-labelledby="saleDetailsTitle">
+          <div class="section-heading"><div><span class="eyebrow">2 · Venta y cliente</span><h3 id="saleDetailsTitle">Datos de la operación</h3></div></div>
+          <div class="form-grid compact-form-grid">
+            <label><span id="soldAtLabelText">Fecha de venta</span><input name="soldAt" type="date" required></label>
+            <label>Canal<select name="channel"><option value="WhatsApp">WhatsApp</option><option value="Instagram">Instagram</option><option value="Presencial">Presencial</option><option value="Otro">Otro</option></select></label>
+            <label>Cliente<input name="customerName" maxlength="100" autocomplete="name" placeholder="Nombre y apellido"></label>
+            <label>Teléfono<input name="customerPhone" type="tel" maxlength="30" autocomplete="tel" placeholder="+58 412…"></label>
+            <label>Email<input name="customerEmail" type="email" maxlength="160" autocomplete="email" placeholder="cliente@correo.com"></label>
+            <label class="wide">Dirección de entrega<input name="customerAddress" maxlength="500" autocomplete="street-address" placeholder="Dirección que el cliente confirmó"></label>
+            <label class="wide">Notas internas del cliente<textarea name="customerNotes" rows="2" maxlength="2000" placeholder="Preferencias o información que el cliente pidió conservar"></textarea><small>No se copian alergias automáticamente; registra solo información confirmada.</small></label>
+            <label>Estado<select name="status"><option value="confirmed">Confirmada / con cobro</option><option value="pending">Pendiente de cobro</option></select></label>
+            <label>Moneda de referencia<select name="referenceCurrency"><option value="USD">USD</option><option value="EUR">EUR</option></select><small>REF conserva el precio; aquí indicas su base contable.</small></label>
+            <label>Monto total REF<input name="total" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+            <label>Referencia del pedido<input name="orderReference" maxlength="100" placeholder="Ej. FNT-…"></label>
+            <label class="wide">Nota de la venta<textarea name="notes" rows="2" placeholder="Observación interna, abono o entrega"></textarea></label>
+          </div>
+        </section>
+
+        <section class="payment-section" aria-labelledby="paymentsTitle">
+          <div class="section-heading"><div><span class="eyebrow">3 · Cobros</span><h3 id="paymentsTitle">Dinero recibido</h3></div><button class="ghost compact" type="button" data-add-payment-line>+ Dividir pago</button></div>
+          <p class="section-help">Cada línea conserva su moneda, método y tasa. Puedes combinar bolívares y divisas o dejar un saldo pendiente.</p>
+          <div id="paymentLines" class="payment-lines"></div>
+          <div class="payment-balance" id="paymentBalance" aria-live="polite"></div>
+        </section>
       </div>
-      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" type="submit">Guardar venta</button></div>
+      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="savePaymentButton" type="submit">Confirmar pago y venta</button></div>
+    </form>
+  </dialog>
+
+  <template id="paymentLineTemplate">
+    <fieldset class="payment-line">
+      <legend>Cobro</legend>
+      <div class="payment-line-grid">
+        <label>Monto recibido<input name="paidAmount" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+        <label>Moneda<select name="paidCurrency"><option value="VES">Bolívares (VES)</option><option value="USD">Dólares (USD)</option><option value="EUR">Euros (EUR)</option></select></label>
+        <label>Método<select name="paymentMethod"><option value="Pago Móvil">Pago Móvil</option><option value="Transferencia">Transferencia</option><option value="Efectivo">Efectivo</option><option value="Zelle">Zelle</option><option value="Binance">Binance</option><option value="Punto de venta">Punto de venta</option><option value="Otro">Otro</option></select></label>
+        <label>Referencia<input name="paymentReference" maxlength="120" placeholder="Número o comprobante"></label>
+        <label class="wide">Nota de este cobro<textarea name="paymentNotes" rows="2" maxlength="500" placeholder="Detalle propio de este pago o abono"></textarea></label>
+        <div class="bcv-fields wide">
+          <div class="bcv-grid">
+            <label>Base BCV<select name="rateBasis"><option value="USD">BCV USD</option><option value="EUR">BCV EUR</option></select></label>
+            <label>Tasa BCV<input name="bcvRate" type="number" min="0.00000001" step="0.00000001" inputmode="decimal"></label>
+            <label>Fecha valor<input name="rateValueDate" type="date"></label>
+            <label>Origen<select name="rateSourceType"><option value="BCV">BCV automático</option><option value="manual">Carga manual</option></select></label>
+            <label class="manual-rate-reason wide" hidden>Motivo de carga manual<input name="manualRateReason" minlength="8" maxlength="240" placeholder="Obligatorio si la tasa no llegó automáticamente"></label>
+          </div>
+          <small class="rate-status" aria-live="polite">Selecciona la fecha para buscar la tasa oficial.</small>
+        </div>
+      </div>
+      <button class="remove-payment-line" type="button" data-remove-payment-line aria-label="Quitar este cobro">×</button>
+    </fieldset>
+  </template>
+
+  <dialog id="expenseDialog" aria-labelledby="expenseDialogTitle">
+    <form id="expenseForm" method="dialog" novalidate>
+      <div class="dialog-head"><div><span class="eyebrow">Salida de dinero</span><h2 id="expenseDialogTitle">Registrar gasto</h2></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
+      <input type="hidden" name="idempotencyKey">
+      <div class="form-grid">
+        <label>Fecha<input name="spentAt" type="date" required></label>
+        <label>Categoría<select name="category"><option value="Ingredientes e insumos">Ingredientes e insumos</option><option value="Empaque">Empaque</option><option value="Transporte">Transporte</option><option value="Servicios">Servicios</option><option value="Equipos y mantenimiento">Equipos y mantenimiento</option><option value="Otro">Otro</option></select></label>
+        <label class="wide">Descripción<input name="description" maxlength="180" required placeholder="Qué se pagó"></label>
+        <label>Monto<input name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required></label>
+        <label>Moneda<select name="currency"><option value="VES">Bolívares (VES)</option><option value="USD">Dólares (USD)</option><option value="EUR">Euros (EUR)</option></select></label>
+        <label>Método<select name="method"><option value="Pago Móvil">Pago Móvil</option><option value="Transferencia">Transferencia</option><option value="Efectivo">Efectivo</option><option value="Zelle">Zelle</option><option value="Binance">Binance</option><option value="Punto de venta">Punto de venta</option><option value="Otro">Otro</option></select></label>
+        <label>Referencia<input name="reference" maxlength="120"></label>
+        <label>Base BCV<select name="rateBasis"><option value="USD">BCV USD</option><option value="EUR">BCV EUR</option></select></label>
+        <label>Tasa BCV<input name="bcvRate" type="number" min="0.00000001" step="0.00000001" inputmode="decimal"></label>
+        <label>Fecha valor<input name="rateValueDate" type="date"></label>
+        <label>Origen<select name="rateSourceType"><option value="BCV">BCV automático</option><option value="manual">Carga manual</option></select></label>
+        <label class="wide" id="expenseManualRateReason" hidden>Motivo de tasa manual<input name="manualRateReason" minlength="8" maxlength="240" placeholder="Obligatorio si la tasa oficial no estuvo disponible"></label>
+        <div class="wide rate-status" id="expenseRateStatus" aria-live="polite"></div>
+        <label class="wide">Nota personalizada<textarea name="notes" rows="2" placeholder="Dato adicional para conciliación"></textarea></label>
+      </div>
+      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" type="submit">Guardar gasto</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="voidDialog" aria-labelledby="voidDialogTitle">
+    <form id="voidForm" method="dialog" novalidate>
+      <div class="dialog-head"><div><span class="eyebrow">Trazabilidad</span><h2 id="voidDialogTitle">Anular movimiento</h2></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
+      <input type="hidden" name="recordType"><input type="hidden" name="recordId"><input type="hidden" name="expectedVersion">
+      <div class="form-grid"><label class="wide">Motivo de anulación<textarea name="reason" rows="3" minlength="8" required placeholder="Explica por qué se revierte este movimiento"></textarea><small>El registro se conservará con usuario, fecha y motivo.</small></label><div class="wide void-impact" id="voidImpact"></div><label class="switch wide"><input name="confirmImpact" type="checkbox" required><span id="voidImpactConfirmation">Confirmo el efecto contable de esta anulación.</span></label></div>
+      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="danger" type="submit">Anular y conservar historial</button></div>
     </form>
   </dialog>
   <div class="toast" id="adminToast" role="status"></div>
