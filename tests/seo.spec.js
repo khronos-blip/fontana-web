@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const { readFile, readdir, stat } = require("node:fs/promises");
+const { gzipSync } = require("node:zlib");
 const path = require("node:path");
 const sharp = require("sharp");
 
@@ -25,7 +26,8 @@ test("el build publica JavaScript versionado sin inflar el HTML principal", asyn
   expect(html).not.toContain("data-store-app");
   expect(html).toContain("Precios expresados en REF.");
   expect(html).not.toMatch(/>\$\d/);
-  expect(Buffer.byteLength(html)).toBeLessThan(150_000);
+  expect(Buffer.byteLength(html)).toBeLessThan(153_000);
+  expect(gzipSync(html).byteLength).toBeLessThan(32_000);
   const files = await readdir(path.join(process.cwd(), "dist"));
   const appFile = files.find(file => /^app\.[a-f0-9]{12}\.js$/.test(file));
   const configFile = files.find(file => /^config\.[a-f0-9]{12}\.js$/.test(file));

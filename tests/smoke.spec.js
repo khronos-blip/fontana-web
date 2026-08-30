@@ -19,7 +19,7 @@ const previewPages = new WeakSet();
 
 async function openPreview(page) {
   if (!previewPages.has(page)) {
-    await page.route("**/config.js*", async route => {
+    await page.route(/\/config(?:\.[a-f0-9]+)?\.js(?:\?.*)?$/, async route => {
       const response = await route.fetch({ maxRetries: 2 });
       const body = (await response.text()).replace("previewMode: false", "previewMode: true");
       await route.fulfill({ response, body });
@@ -5274,6 +5274,25 @@ test("Bottega habilita compra, agotado y pre-order solo según el inventario adm
   await expect(preorder).toContainText("PRE-ORDER");
   await expect(preorder).not.toContainText("2 días");
   await expect(preorder.locator(".add")).toHaveText("PRE-ORDER");
+  await page.setViewportSize({width:320,height:568});
+  await preorder.scrollIntoViewIfNeeded();
+  const preorderFit = await preorder.evaluate(element => {
+    const footer = element.querySelector(".product-front .product-footer"), outer = footer.getBoundingClientRect();
+    const descendants = [...footer.querySelectorAll("*")].filter(node => { const style = getComputedStyle(node), box = node.getBoundingClientRect(); return style.display !== "none" && box.width > 0 && box.height > 0; });
+    const controls = descendants.filter(node => node.matches(".diet,.product-minus,.product-menu-qty,.add"));
+    const overlaps = [];
+    controls.forEach((node, index) => controls.slice(index + 1).forEach(other => {
+      const a = node.getBoundingClientRect(), b = other.getBoundingClientRect();
+      if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) overlaps.push(`${node.className}|${other.className}`);
+    }));
+    return {
+      overflow:[footer, ...descendants].filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1).map(node => node.className || node.tagName),
+      outside:descendants.filter(node => { const box = node.getBoundingClientRect(); return box.left < outer.left - 1 || box.right > outer.right + 1 || box.top < outer.top - 1 || box.bottom > outer.bottom + 1; }).map(node => node.className),
+      overlaps,
+      pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth
+    };
+  });
+  expect(preorderFit).toEqual({overflow:[],outside:[],overlaps:[],pageOverflow:0});
 
   await expect(pending).toContainText("DISPONIBILIDAD POR CONFIRMAR");
   await expect(pending.locator(".add")).toBeVisible();
@@ -5923,6 +5942,8 @@ test("el panel administrador lista y conserva los 11 Bottega con precio, marca y
 });
 
 test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mientras D1 no lo publica", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.emulateMedia({reducedMotion:"reduce"});
   await page.goto("/admin/");
   await page.getByRole("button", { name:"Entrar al panel" }).click();
   await page.getByRole("button", { name:"Guardar cambios" }).click();
@@ -5967,6 +5988,7 @@ test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mi
     await route.fulfill({status:200,contentType:"application/json",headers,body:JSON.stringify(payload)});
   });
 
+  await page.setViewportSize({width:320,height:568});
   await page.goto(`${apiOrigin}/`);
   await expect(page.locator("#products")).toHaveClass(/catalog-organized/);
   await page.getByRole("button", {name:"Bottega",exact:true}).click();
@@ -5987,6 +6009,51 @@ test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mi
   expect(await page.evaluate(() => window.FONTANA_CONFIG.dynamicCatalog
     .filter(product => product.category === "bottega")
     .every(product => product.price === 10))).toBe(true);
+
+  await page.evaluate(() => document.fonts?.ready);
+  await expect(page.locator('.catalog-group[data-catalog-group="bottega"] .catalog-group-grid')).not.toHaveClass(/product-height-syncing/);
+  for (const expectedProduct of expectedBottegaProducts) {
+    const card = page.locator(`.catalog-group[data-catalog-group="bottega"] .product[data-product-id="${expectedProduct.id}"]`);
+    await card.scrollIntoViewIfNeeded();
+    await expect.poll(() => card.locator(".product-front img").evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
+    const compact = await card.evaluate(element => {
+      const front = element.querySelector(".product-front"), body = front.querySelector(".product-body"), footer = body.querySelector(".product-footer");
+      const measured = [element, element.querySelector(".product-flip-inner"), front, body, footer, ...footer.children];
+      const outer = footer.getBoundingClientRect();
+      return {
+        overflow:measured.filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1).map(node => node.className || node.tagName),
+        outside:[...footer.children].filter(node => { const box = node.getBoundingClientRect(); return box.left < outer.left - 1 || box.right > outer.right + 1 || box.top < outer.top - 1 || box.bottom > outer.bottom + 1; }).map(node => node.className),
+        pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    expect(compact, `${expectedProduct.id} pendiente compacta`).toEqual({overflow:[],outside:[],pageOverflow:0});
+
+    await openProductCard(page, card);
+    await expect(card).toHaveClass(/product-expanded-open/);
+    const safety = card.locator(".product-back .product-safety");
+    await safety.locator("summary").click();
+    await expect(safety).toHaveAttribute("open", "");
+    const expanded = await card.evaluate((element, expectedIngredients) => {
+      const back = element.querySelector(".product-back"), body = back.querySelector(".product-expanded-body"), footer = body.querySelector(".product-footer"), safety = body.querySelector(".product-safety");
+      const measured = [element, element.querySelector(".product-flip-inner"), back, body, footer, safety, ...footer.children];
+      const outer = footer.getBoundingClientRect();
+      const viewport = window.visualViewport || {offsetLeft:0,offsetTop:0,width:window.innerWidth,height:window.innerHeight};
+      const box = element.getBoundingClientRect();
+      return {
+        insideViewport:box.left >= viewport.offsetLeft - 1 && box.right <= viewport.offsetLeft + viewport.width + 1 && box.top >= viewport.offsetTop - 1 && box.bottom <= viewport.offsetTop + viewport.height + 1,
+        overflow:measured.filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1).map(node => node.className || node.tagName),
+        outside:[...footer.children].filter(node => { const child = node.getBoundingClientRect(); return child.left < outer.left - 1 || child.right > outer.right + 1 || child.top < outer.top - 1 || child.bottom > outer.bottom + 1; }).map(node => node.className),
+        bodyOverflowY:getComputedStyle(body).overflowY,
+        ingredientsVisible:safety.textContent.includes(expectedIngredients),
+        pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    }, expectedProduct.ingredients);
+    expect(expanded, `${expectedProduct.id} pendiente expandida`).toEqual({
+      insideViewport:true,overflow:[],outside:[],bodyOverflowY:"hidden",ingredientsVisible:true,pageOverflow:0
+    });
+    await safety.locator("summary").click();
+    await closeProductCard(page);
+  }
 
   await page.evaluate(productId => {
     const product = window.FONTANA_CONFIG.dynamicCatalog.find(item => item.id === productId);
@@ -6021,6 +6088,7 @@ test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mi
 });
 
 test("Bottega publicada por la API respeta el stock real disponible o en cero", async ({ page }) => {
+  await page.setViewportSize({width:320,height:568});
   await page.goto("/admin/");
   await page.getByRole("button", {name:"Entrar al panel"}).click();
   await page.getByRole("button", {name:"Guardar cambios"}).click();
@@ -6073,9 +6141,30 @@ test("Bottega publicada por la API respeta el stock real disponible o en cero", 
 
   await expect(group.locator('.product[data-category="bottega"]')).toHaveCount(expectedBottegaProducts.length);
   await expect(immediate).toContainText("ENTREGA INMEDIATA");
+  await expect(immediate).toHaveAttribute("data-catalog-managed", "true");
   await expect(immediate.locator(".add")).toBeVisible();
   await immediate.locator(".add").click();
   await expect.poll(() => validationRequests).toBe(1);
+  await expect(immediate.locator(".product-menu-qty")).toHaveText("1");
+  const managedCompact = await immediate.evaluate(element => {
+    const footer = element.querySelector(".product-front .product-footer");
+    const outer = footer.getBoundingClientRect();
+    const descendants = [...footer.querySelectorAll("*")].filter(node => { const style = getComputedStyle(node), box = node.getBoundingClientRect(); return style.display !== "none" && box.width > 0 && box.height > 0; });
+    const measured = [element, element.querySelector(".product-flip-inner"), element.querySelector(".product-front"), element.querySelector(".product-front .product-body"), footer, ...descendants];
+    const controls = descendants.filter(node => node.matches(".diet,.product-minus,.product-menu-qty,.add,.product-quote"));
+    const overlaps = [];
+    controls.forEach((node, index) => controls.slice(index + 1).forEach(other => {
+      const a = node.getBoundingClientRect(), b = other.getBoundingClientRect();
+      if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) overlaps.push(`${node.className}|${other.className}`);
+    }));
+    return {
+      overflow:measured.filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1).map(node => node.className || node.tagName),
+      outside:descendants.filter(node => { const box = node.getBoundingClientRect(); return box.left < outer.left - 1 || box.right > outer.right + 1 || box.top < outer.top - 1 || box.bottom > outer.bottom + 1; }).map(node => node.className),
+      overlaps,
+      pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth
+    };
+  });
+  expect(managedCompact).toEqual({overflow:[],outside:[],overlaps:[],pageOverflow:0});
   await expect.poll(() => page.evaluate(productId => {
     const cart = JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]");
     return cart.find(item => item.inventory?.productId === productId)?.inventory?.availability;
@@ -6571,6 +6660,92 @@ test("el bloque negro fue eliminado y el footer centra la marca", async ({ page 
   expect(brokenImages).toEqual([]);
 });
 
+test("la experiencia cierra el espacio y el footer queda compacto en dos columnas móviles", async ({ page }) => {
+  const viewports = [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 640, height: 900 },
+    { width: 641, height: 900 },
+    { width: 768, height: 1024 },
+    { width: 1366, height: 900 }
+  ];
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await openPreview(page);
+    await page.evaluate(() => document.fonts?.ready);
+
+    const layout = await page.evaluate(() => {
+      const box = element => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          top: bounds.top,
+          bottom: bounds.bottom,
+          left: bounds.left,
+          right: bounds.right,
+          width: bounds.width,
+          height: bounds.height
+        };
+      };
+      const footer = document.querySelector("footer");
+      const grid = footer.querySelector(".footer-grid");
+      const brand = footer.querySelector(".footer-brand");
+      const groups = [...grid.children].filter(element => !element.classList.contains("footer-brand"));
+      const footerBounds = box(footer);
+      const visibleDescendants = [...footer.querySelectorAll("a, span, p, .footer-title")].filter(element => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.width > 0 && bounds.height > 0 && getComputedStyle(element).display !== "none";
+      });
+      const outside = visibleDescendants.filter(element => {
+        const bounds = box(element);
+        return bounds.left < footerBounds.left - 1 || bounds.right > footerBounds.right + 1;
+      });
+      const experience = box(document.querySelector(".experience-banner"));
+      const quote = box(document.querySelector(".experience-copy blockquote"));
+      const story = box(document.querySelector("#historia"));
+      const storyCopy = box(document.querySelector("#historia .story-copy"));
+      const storyEyebrow = box(document.querySelector("#historia .story-copy .eyebrow"));
+      return {
+        columnCount: getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length,
+        brand: box(brand),
+        brandColumn: getComputedStyle(brand).gridColumn,
+        groups: groups.map(box),
+        footerHeight: footerBounds.height,
+        footerOverflow: footer.scrollWidth > footer.clientWidth + 1 || footer.scrollHeight > footer.clientHeight + 1,
+        outside: outside.map(element => element.textContent.trim()),
+        documentOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+        experienceToStory: story.top - experience.bottom,
+        experienceToStoryCopy: storyCopy.top - experience.bottom,
+        quoteToStoryEyebrow: storyEyebrow.top - quote.bottom
+      };
+    });
+
+    const desktop = viewport.width > 960;
+    expect(layout.columnCount).toBe(desktop ? 3 : 2);
+    expect(layout.experienceToStory).toBeGreaterThanOrEqual(15);
+    expect(layout.experienceToStory).toBeLessThanOrEqual(40);
+    expect(layout.experienceToStoryCopy).toBeGreaterThanOrEqual(40);
+    expect(layout.experienceToStoryCopy).toBeLessThanOrEqual(95);
+    expect(layout.quoteToStoryEyebrow).toBeGreaterThanOrEqual(45);
+    expect(layout.quoteToStoryEyebrow).toBeLessThanOrEqual(125);
+    expect(layout.footerOverflow).toBe(false);
+    expect(layout.documentOverflow).toBe(false);
+    expect(layout.outside).toEqual([]);
+    expect(Math.abs(layout.groups[0].top - layout.groups[1].top)).toBeLessThanOrEqual(1);
+    expect(layout.groups[0].right).toBeLessThanOrEqual(layout.groups[1].left);
+
+    if (desktop) {
+      expect(layout.brandColumn).toBe("auto");
+      expect(Math.abs(layout.brand.top - layout.groups[0].top)).toBeLessThanOrEqual(1);
+      expect(layout.footerHeight).toBeLessThan(500);
+    } else {
+      expect(layout.brandColumn).toBe("1 / -1");
+      expect(layout.brand.bottom).toBeLessThan(layout.groups[0].top);
+      expect(layout.footerHeight).toBeLessThan(viewport.width <= 640 ? 650 : 700);
+    }
+  }
+});
+
 test("WhatsApp queda próximo y alineado con el menú en móvil", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
@@ -6629,8 +6804,8 @@ test("la torta personalizada usa la foto original y la experiencia muestra la ca
     const storyBounds = document.querySelector(".story-copy").getBoundingClientRect();
     return storyBounds.top - experienceBounds.bottom;
   });
-  expect(experienceToStoryGap).toBeLessThanOrEqual(120);
-  expect(experienceToStoryGap).toBeGreaterThanOrEqual(80);
+  expect(experienceToStoryGap).toBeLessThanOrEqual(60);
+  expect(experienceToStoryGap).toBeGreaterThanOrEqual(40);
 
   const founder = page.locator(".founder-note");
   await expect(founder).toContainText("El rostro detrás de Fontana");

@@ -249,6 +249,13 @@
     .product[data-category="bottega"] .product-media img{object-fit:contain;object-position:50% 50%;transform:none}
     .product[data-category="bottega"] .product-top h3{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
     .product[data-category="bottega"] .price{flex:0 0 auto}
+    .product[data-category="bottega"] .product-footer{flex-wrap:wrap;gap:6px}
+    .product[data-category="bottega"] .product-footer>.diet{flex:1 1 90px;min-width:0;overflow-wrap:anywhere}
+    .product[data-category="bottega"] .product-quantity-control{flex:0 0 auto;width:max-content;max-width:100%;margin-left:auto}
+    .product[data-category="bottega"] .product-quantity-control.has-quantity{display:grid;grid-template-columns:max-content max-content max-content;min-width:106px}
+    .product[data-category="bottega"] .add:hover{transform:none}
+    .product[data-category="bottega"][data-catalog-managed="false"] .product-footer{align-items:stretch}
+    .product[data-category="bottega"][data-catalog-managed="false"] .product-footer>.product-quote{flex:1 1 110px;min-width:0;max-width:100%;padding:6px 7px;white-space:normal;overflow-wrap:anywhere}
     .product.product-expanded[data-category="bottega"] .product-expanded-body{overflow-y:hidden}
     .product-tag{position:absolute;left:15px;top:15px;background:rgba(255,255,255,.92);border-radius:999px;padding:6px 10px;font-size:.67rem;font-weight:800;color:var(--plum);backdrop-filter:blur(8px)}
     .product-tags{position:absolute;left:15px;right:15px;top:15px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}.product-tags .product-tag{position:static;display:block}.product-tags .product-tag.secondary{background:rgba(255,255,255,.9);color:var(--plum)}
@@ -705,28 +712,32 @@
     .founder-copy .eyebrow{color:var(--accent)}
     .founder-copy h3{margin:9px 0 8px;color:var(--cream);font-family:'Berlin Sans FB','Bebas Neue','Arial Narrow',sans-serif;font-size:clamp(1.65rem,3vw,2.2rem);font-weight:400;letter-spacing:.02em;text-transform:uppercase}
     .founder-copy p{max-width:390px;margin:0;color:rgba(255,250,242,.68);font-size:.84rem;line-height:1.65}
-    .experience-banner{position:relative;display:grid;grid-template-columns:minmax(0,1.06fr) minmax(280px,.94fr);align-items:center;gap:clamp(22px,4vw,54px);width:min(1020px,100%);min-height:470px;margin:64px auto 0;padding:clamp(18px,3vw,34px);isolation:isolate;overflow:hidden}
+    .experience-banner{position:relative;display:grid;grid-template-columns:minmax(0,1.06fr) minmax(280px,.94fr);align-items:end;gap:clamp(22px,4vw,54px);width:min(1020px,100%);min-height:470px;margin:64px auto 0;padding:clamp(18px,3vw,34px);padding-bottom:18px;isolation:isolate;overflow:hidden}
     .experience-banner:before{content:"";position:absolute;inset:6% 0;background:radial-gradient(circle at 33% 48%,rgba(217,174,220,.28),transparent 52%);z-index:-1;filter:blur(22px)}
     .experience-photo-wrap{position:relative;min-height:430px;margin:0}
     .experience-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 46%;-webkit-mask-image:linear-gradient(to right,transparent 0,rgba(0,0,0,.28) 5%,#000 15%,#000 85%,rgba(0,0,0,.28) 95%,transparent 100%),linear-gradient(to bottom,transparent 0,rgba(0,0,0,.32) 7%,#000 18%,#000 82%,rgba(0,0,0,.32) 93%,transparent 100%);-webkit-mask-composite:source-in;mask-image:linear-gradient(to right,transparent 0,rgba(0,0,0,.28) 5%,#000 15%,#000 85%,rgba(0,0,0,.28) 95%,transparent 100%),linear-gradient(to bottom,transparent 0,rgba(0,0,0,.32) 7%,#000 18%,#000 82%,rgba(0,0,0,.32) 93%,transparent 100%);mask-composite:intersect}
     .experience-copy{position:relative;z-index:1;color:var(--cream)}
     .experience-copy .eyebrow{color:var(--accent)}
     .experience-copy blockquote{max-width:430px;margin:18px 0 0;font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:clamp(2.7rem,4.7vw,4.8rem);font-weight:400;line-height:.94;letter-spacing:.015em;text-transform:uppercase}
-    .footer-logo{width:min(230px,70vw)!important;height:auto!important;max-height:none!important;border-radius:0!important;object-fit:contain!important;box-shadow:none!important}
+    .footer-logo{width:min(190px,70vw)!important;height:auto!important;max-height:none!important;border-radius:0!important;object-fit:contain!important;box-shadow:none!important}
     body,main,.menu-section,.story,.location,.testimonials,.final,footer{background:#441945}
     .location-card,.quote{background:var(--lilac);color:var(--plum-dark)}
     .location-copy .eyebrow,.location-copy p,.location-copy .hours b,.location-copy .hours span{color:var(--plum-dark)}
     .location-copy .eyebrow:before{background:var(--plum)}
     .quote small{color:#705e70}
     .final{color:var(--cream)}.final p{color:rgba(255,250,242,.72)}
+    .menu-section{padding-bottom:36px}
+    .story{padding-top:48px;padding-bottom:96px}
     .story+.location,main+footer{position:relative}
     .story+.location:before,main+footer:before{content:"";position:absolute;top:0;left:50%;width:min(760px,calc(100% - 52px));height:1px;background:rgba(217,174,220,.22);transform:translateX(-50%)}
     .diet{color:var(--plum-dark)}
-    .footer-brand{grid-column:1/-1;display:grid;justify-items:center;text-align:center}
+    footer{padding:48px 0 24px}
+    .footer-grid{align-items:start;gap:clamp(32px,5vw,60px)}
+    .footer-brand{display:grid;justify-items:center;text-align:center}
     .footer-brand p{margin-left:auto;margin-right:auto}
     .footer-grid>div:not(.footer-brand){text-align:center}
-    .footer-links{justify-items:center}
-    .footer-bottom{justify-content:center;gap:24px;text-align:center}
+    .footer-links{justify-items:center}.footer-links a,.footer-links span{max-width:100%;overflow-wrap:anywhere}
+    .footer-bottom{justify-content:center;gap:24px;margin-top:32px;padding-top:20px;text-align:center}
     .product-placeholder{width:100%;height:100%;display:grid;place-items:center;padding:24px;text-align:center;background:linear-gradient(145deg,#e4c7e7,#caa4cf);color:var(--plum-dark)}
     .product-placeholder b{font-family:'Bebas Neue','Arial Narrow',sans-serif;font-size:2rem;letter-spacing:.04em}.product-placeholder small{display:block;margin-top:8px;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase}
     .product-sold-out{opacity:.66}.product-sold-out .add{pointer-events:none;background:#877687}.product-unpriced .add{display:none}
@@ -785,6 +796,14 @@
       .product.product-expanded .product-back .product-expanded-ingredients div{color:#665267;font-size:.76rem;line-height:1.62}
       .product.product-expanded .product-expanded-body .product-footer{padding-top:2px}
     }
+    @media(max-width:960px){
+      footer{padding:40px 0 22px}
+      .footer-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:28px 24px}
+      .footer-brand{grid-column:1/-1}
+      .footer-logo{width:min(170px,48vw)!important}
+      .footer-brand p{margin-top:10px;font-size:.78rem;line-height:1.5}
+      .footer-bottom{margin-top:28px}
+    }
     @media(max-width:640px){
       .review-invitation{align-items:stretch;flex-direction:column}.review-invitation .btn{width:100%}
       .products{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
@@ -813,6 +832,8 @@
       .product-top{gap:6px}
       .product h3{font-size:1.12rem;line-height:1.02}
       .price{font-size:.76rem}
+      .product[data-category="bottega"] .product-front .product-footer>.diet{flex-basis:100%}
+      .product[data-category="bottega"] .product-quantity-control.has-quantity{min-width:86px}
       .product p{font-size:.68rem;line-height:1.4;min-height:58px;margin:7px 0 12px}
       .product-variants{margin:0 0 12px}.product-variants label{font-size:.58rem}.product-variants select{padding:9px 8px;font-size:.64rem}
       .product-selection-summary{grid-template-columns:minmax(0,1fr) auto;gap:3px 7px;margin:0 0 12px;padding:8px 9px}.product-selection-summary span{grid-column:1/-1;font-size:.48rem}.product-selection-summary strong{font-size:.62rem}.product-selection-summary em{font-size:.5rem}
@@ -834,12 +855,22 @@
       .diet{font-size:.58rem}
       .add{width:36px;height:36px;border-radius:11px;font-size:1.15rem}
       .product-quantity-control{gap:4px;min-width:36px}.product-minus{width:30px;height:30px;border-radius:10px;font-size:1rem}.product-menu-qty{min-width:12px;font-size:.68rem}
-      .menu-section{padding-bottom:56px}
-      .story{padding:58px 0 78px}
+      .menu-section{padding-bottom:20px}
+      .story{padding:30px 0 64px}
       .location{padding:26px 0 20px}
       .testimonials{padding:34px 0 26px}
       .final{padding:42px 0 32px}
-      main+footer{padding-top:42px}
+      main+footer{padding-top:34px}
+      footer{padding-bottom:20px}
+      .footer-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 14px}
+      .footer-brand{grid-column:1/-1}
+      .footer-logo{width:min(150px,44vw)!important}
+      .footer-brand p{max-width:300px;margin:8px auto 0;font-size:.72rem;line-height:1.45}
+      .footer-grid>div:not(.footer-brand){min-width:0;text-align:left}
+      .footer-title{margin-bottom:10px;font-size:.84rem}
+      .footer-links{justify-items:start;gap:7px;font-size:.74rem;line-height:1.35}
+      .footer-bottom{display:grid;gap:5px;margin-top:28px;padding-top:18px;line-height:1.4}
+      .footer-bottom span{margin-top:0}
       .founder-note{grid-template-columns:148px minmax(0,1fr);gap:16px;margin-top:38px;padding-top:18px}
       .founder-portrait{border-radius:50px 50px 16px 16px}
       .founder-copy h3{font-size:1.45rem}
