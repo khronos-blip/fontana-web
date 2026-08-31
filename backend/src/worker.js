@@ -28,6 +28,7 @@ import {
 import {
   applyPublicBuilderAvailability,
   applyPublicProductAvailability,
+  builderFlavorPreorderAllowed,
   builderFlavorInventoryKey,
   deriveBuilderInventoryDefinitions,
   newlyIntroducedBuilderInventorySkus,
@@ -289,6 +290,110 @@ function parsePositiveInteger(value, maximum = MAX_ITEM_QUANTITY) {
   return Number.isInteger(number) && number > 0 && number <= maximum ? number : 0;
 }
 
+function reservationIdentityItems(items = []) {
+  return (Array.isArray(items) ? items : []).map(item => {
+    const kind = String(item?.kind || "product");
+    const quantity = Number(item?.quantity || 0);
+    if (kind === "product") {
+      return {
+        kind,
+        productId: String(item?.productId || ""),
+        quantity,
+        size: String(item?.size || ""),
+        variant: String(item?.variant || ""),
+        preorder: item?.preorder === true
+      };
+    }
+    const flavors = (Array.isArray(item?.flavors) ? item.flavors : []).map(flavor => {
+      const inventoryKey = String(flavor?.inventoryKey || "").trim();
+      return {
+        inventoryKey,
+        // A stable inventory key is the identity. The catalog may rename a
+        // flavor between the request and its canonical reservation snapshot.
+        // Legacy entries without a key still fall back to their name.
+        name: inventoryKey ? "" : String(flavor?.name || ""),
+        quantity: Number(flavor?.quantity ?? flavor?.qty ?? 0),
+        preorder: flavor?.preorder === true
+      };
+    }).sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right)));
+    return {
+      kind,
+      quantity,
+      flavors,
+      boxSize: Number(item?.boxSize || 0),
+      extraCount: Number(item?.extraCount || 0),
+      preorder: item?.preorder === true
+    };
+  }).sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right)));
+}
+
+function reservationIdentityCustomer(customer = {}) {
+  const text = (value, maximum) => String(value || "").trim().slice(0, maximum);
+  return {
+    name: text(customer.name, 100),
+    phone: text(customer.phone, 40),
+    fulfillment: text(customer.fulfillment, 180),
+    requestedDate: text(customer.requestedDate, 10),
+    paymentMethod: text(customer.paymentMethod, 80),
+    address: text(customer.address, 500),
+    allergySummary: text(customer.allergySummary, 2000),
+    birthdayCandle: text(customer.birthdayCandle, 20),
+    notes: text(customer.notes, 2000)
+  };
+}
+
+export function reservationPayloadIdentity(items, customer = {}) {
+  return canonicalJson({
+    items: reservationIdentityItems(items),
+    customer: reservationIdentityCustomer(customer)
+  });
+}
+
+export function minimumPreorderDate(value = new Date()) {
+  const start = Date.parse(`${caracasDate(value)}T00:00:00Z`);
+  return new Date(start + (2 * 86_400_000)).toISOString().slice(0, 10);
+}
+
+export function preorderDateViolation(items, requestedDate, value = new Date()) {
+  if (!(Array.isArray(items) ? items : []).some(item => item?.preorder === true)) return "";
+  const minimumDate = minimumPreorderDate(value);
+  return String(requestedDate || "") < minimumDate ? minimumDate : "";
+}
+
+export function reservationCanBeReused(existing, body, value = new Date()) {
+  if (!existing || existing.status !== "reserved" || Number(existing.expiresAt) <= Math.floor(value.getTime() / 1000)) return false;
+  let snapshot = null;
+  try { snapshot = JSON.parse(existing.snapshotJson || "null"); } catch { return false; }
+  const storedIdentity = typeof snapshot?.requestIdentity === "string"
+    ? snapshot.requestIdentity
+    : snapshot && reservationPayloadIdentity(snapshot.items, snapshot.customer);
+  return Boolean(storedIdentity
+    && reservationPayloadIdentity(body?.items, body?.customer) === storedIdentity);
+}
+
+export function reservationReplay(existing, body, value = new Date()) {
+  if (!existing) return null;
+  if (!reservationCanBeReused(existing, body, value)) {
+    return {
+      status: 409,
+      payload: {
+        error:"Esta solicitud ya fue utilizada o cambió. Vuelve al carrito e inténtalo de nuevo.",
+        code:"idempotency_conflict"
+      }
+    };
+  }
+  const { snapshotJson: _snapshotJson, ...publicExisting } = existing;
+  return {
+    status: 200,
+    payload: {
+      ok:true,
+      ...publicExisting,
+      reservedUntil:new Date(Number(existing.expiresAt)*1000).toISOString(),
+      reused:true
+    }
+  };
+}
+
 export function resolveReservationCart(state, requestedItems, operations) {
   if (!Array.isArray(requestedItems) || !requestedItems.length || requestedItems.length > MAX_ORDER_ITEMS) throw new Error("invalid_cart");
   const definitions = deriveInventoryDefinitions(state);
@@ -353,9 +458,7 @@ export function resolveReservationCart(state, requestedItems, operations) {
     const resolvedFlavors = resolvedSelections.map(selected => {
       const { flavor, name, inventoryKey } = selected.resolved;
       const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
-      const preorderAllowed = builder.availabilityMode === "preorder"
-        || (builder.availabilityMode !== "sold-out" && flavor.availabilityMode === "preorder")
-        || (builder.allowPreorder === true && flavor.availabilityMode === undefined);
+      const preorderAllowed = builderFlavorPreorderAllowed(builder, flavor);
       const preorder = Boolean(requested.preorder && unavailable && preorderAllowed);
       if (unavailable && !preorder) throw new Error("unavailable_product");
       return { name, inventoryKey, quantity: selected.quantity, imageUrl: snapshotImageUrl(flavor.image), preorder };
@@ -438,9 +541,7 @@ export function resolveStockChecks(state, requestedChecks, operations) {
     if (!resolvedFlavor) throw new Error("invalid_option");
     const { flavor, inventoryKey } = resolvedFlavor;
     const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
-    const preorderAllowed = builder.availabilityMode === "preorder"
-      || (builder.availabilityMode !== "sold-out" && flavor.availabilityMode === "preorder")
-      || (builder.allowPreorder === true && flavor.availabilityMode === undefined);
+    const preorderAllowed = builderFlavorPreorderAllowed(builder, flavor);
     const preorder = requested.preorder === true && unavailable && preorderAllowed;
     if (unavailable && !preorder) throw new Error("unavailable_product");
     if (preorder) continue;
@@ -479,8 +580,9 @@ async function reserveOrder(request, env) {
   const body = await request.json();
   const clientKey = String(body.clientKey || "");
   if (!/^[a-zA-Z0-9_-]{16,100}$/.test(clientKey)) return json({error:"No se pudo identificar la solicitud. Inténtalo de nuevo."},400);
-  const existing = await env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents FROM stock_orders WHERE client_key = ?").bind(clientKey).first();
-  if (existing) return json({ok:true,...existing,reservedUntil:new Date(Number(existing.expiresAt)*1000).toISOString(),reused:true});
+  const reservationLookup = () => env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, snapshot_json AS snapshotJson FROM stock_orders WHERE client_key = ?").bind(clientKey).first();
+  const existingReplay = reservationReplay(await reservationLookup(), body);
+  if (existingReplay) return json(existingReplay.payload, existingReplay.status);
   const state = await publishedState(env);
   if (!state) return json({error:"El catálogo todavía no está preparado para reservar stock."},503);
   const definitions = await syncInventoryDefinitions(env,state);
@@ -505,12 +607,20 @@ async function reserveOrder(request, env) {
   const customerName = String(customer.name || "").trim().slice(0,100);
   const customerPhone = String(customer.phone || "").trim().slice(0,40);
   const requestedDate = String(customer.requestedDate || "").trim();
-  if (!customerName || !customerPhone || !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) return json({error:"Completa nombre, teléfono y fecha del pedido."},400);
+  if (!customerName || !customerPhone || !isIsoDate(requestedDate)) return json({error:"Completa nombre, teléfono y fecha del pedido."},400);
+  const minimumDate = preorderDateViolation(cart.snapshotItems, requestedDate);
+  if (minimumDate) {
+    return json({
+      error:`Los productos para preordenar necesitan una fecha a partir del ${minimumDate}.`,
+      code:"requested_date_too_soon",
+      minimumDate
+    },409);
+  }
   const id = crypto.randomUUID();
   const orderCode = reservationOrderCode(body.orderPrefix);
   const now = new Date().toISOString();
   const expiresAt = Math.floor(Date.now()/1000)+RESERVATION_TTL_SECONDS;
-  const snapshot = {items:cart.snapshotItems,customer:{name:customerName,phone:customerPhone,fulfillment:String(customer.fulfillment||"").slice(0,180),requestedDate,paymentMethod:String(customer.paymentMethod||"").slice(0,80),address:String(customer.address||"").slice(0,500),allergySummary:String(customer.allergySummary||"").slice(0,2000),birthdayCandle:String(customer.birthdayCandle||"").slice(0,20),notes:String(customer.notes||"").slice(0,2000)}};
+  const snapshot = {items:cart.snapshotItems,customer:{name:customerName,phone:customerPhone,fulfillment:String(customer.fulfillment||"").slice(0,180),requestedDate,paymentMethod:String(customer.paymentMethod||"").slice(0,80),address:String(customer.address||"").slice(0,500),allergySummary:String(customer.allergySummary||"").slice(0,2000),birthdayCandle:String(customer.birthdayCandle||"").slice(0,20),notes:String(customer.notes||"").slice(0,2000)},requestIdentity:reservationPayloadIdentity(body.items,customer)};
   const statements = [env.DB.prepare("INSERT INTO stock_orders (id, order_code, client_key, client_hash, status, expires_at, total_cents, currency, customer_name, customer_phone, fulfillment, requested_date, payment_method, address, allergy_summary, birthday_candle, notes, snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, 'reserved', ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .bind(id,orderCode,clientKey,clientHash,expiresAt,cart.totalCents,customerName,customerPhone,snapshot.customer.fulfillment,requestedDate,snapshot.customer.paymentMethod,snapshot.customer.address,snapshot.customer.allergySummary,snapshot.customer.birthdayCandle,snapshot.customer.notes,JSON.stringify(snapshot),now,now)];
   for (const demand of trackedDemands) {
@@ -522,7 +632,14 @@ async function reserveOrder(request, env) {
   catch (error) {
     const message = String(error?.message || error);
     if (message.includes("inventory_unavailable")) return json({error:"Alguien acaba de reservar la última unidad de uno de estos productos. Actualiza el carrito.",code:"stock_conflict"},409);
-    if (message.includes("UNIQUE")) return json({error:"Esta solicitud ya fue procesada. Revisa tus pedidos."},409);
+    if (message.includes("UNIQUE")) {
+      // A simultaneous retry can pass the first lookup before the winning
+      // request commits. Re-read the row and replay the canonical response;
+      // never misreport an identical idempotent retry as a stock failure.
+      const racedReplay = reservationReplay(await reservationLookup(), body);
+      if (racedReplay) return json(racedReplay.payload, racedReplay.status);
+      return json({error:"No pudimos recuperar la reserva ya procesada. Vuelve al carrito e inténtalo de nuevo.",code:"idempotency_conflict"},409);
+    }
     throw error;
   }
   return json({ok:true,id,orderCode,totalCents:cart.totalCents,reservedUntil:new Date(expiresAt*1000).toISOString(),expiresAt,mutationVersion:0},201);

@@ -5,7 +5,7 @@ test("la disponibilidad de builders aplica una precedencia determinista", async 
 
   const manuallyPaused = {
     status: "sold-out",
-    flavors: [{ name: "Con stock", status: "sold-out" }]
+    flavors: [{ name: "Con stock", status: "available" }]
   };
   applyPublicBuilderAvailability(
     manuallyPaused,
@@ -118,6 +118,178 @@ test("la disponibilidad de builders aplica una precedencia determinista", async 
   expect(completelyDepleted.status).toBe("sold-out");
   expect(completelyDepleted.stockTracked).toBe(true);
   expect(completelyDepleted.immediateBoxAvailable).toBe(false);
+
+  const excludedPolicies = {
+    availabilityMode: "available",
+    status: "available",
+    allowPreorder: false,
+    minimumQuantity: 4,
+    flavors: [
+      { name: "Agotado manual", inventoryKey: "agotado-manual", availabilityMode: "sold-out", status: "sold-out" },
+      { name: "Disponible sin unidades", inventoryKey: "disponible-cero", availabilityMode: "available", status: "available" }
+    ]
+  };
+  applyPublicBuilderAvailability(
+    excludedPolicies,
+    [
+      { sku: "builder:fonkies:agotado-manual", flavorName: "Agotado manual", inventoryKey: "agotado-manual" },
+      { sku: "builder:fonkies:disponible-cero", flavorName: "Disponible sin unidades", inventoryKey: "disponible-cero" }
+    ],
+    new Map([
+      ["builder:fonkies:agotado-manual", { trackStock: true, available: 4 }],
+      ["builder:fonkies:disponible-cero", { trackStock: true, available: 0 }]
+    ])
+  );
+  expect(excludedPolicies).toMatchObject({
+    status: "sold-out",
+    immediate: false,
+    immediateBoxAvailable: false,
+    flavors: [
+      { availabilityMode: "sold-out", status: "sold-out" },
+      { availabilityMode: "available", status: "sold-out" }
+    ]
+  });
+});
+
+test("un sabor agotado prevalece sobre el preorden general", async () => {
+  const { builderFlavorPreorderAllowed } = await import("../backend/src/public-availability.mjs");
+  const builder = { availabilityMode:"preorder", status:"sold-out", allowPreorder:true };
+  expect(builderFlavorPreorderAllowed(builder, { availabilityMode:"sold-out", status:"sold-out" })).toBe(false);
+  expect(builderFlavorPreorderAllowed(builder, { availabilityMode:"available", status:"available" })).toBe(true);
+
+  const { execFileSync } = require("node:child_process");
+  const { resolve } = require("node:path");
+  const { pathToFileURL } = require("node:url");
+  const workerUrl = pathToFileURL(resolve(__dirname, "../backend/src/worker.js")).href;
+  const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+    import { resolveReservationCart, resolveStockChecks } from ${JSON.stringify(workerUrl)};
+    const state = {products:[],builders:{fonkies:{
+      visible:true,availabilityMode:"preorder",status:"sold-out",allowPreorder:true,
+      requiresElectricity:false,minimumQuantity:4,singlePrice:15,mixedPrice:17,extraPrice:3.5,
+      flavors:[{name:"No vender",inventoryKey:"no-vender",availabilityMode:"sold-out",status:"sold-out",allowPreorder:false}]
+    }}};
+    const operations = {electricityEnabled:true};
+    const requested = [{kind:"fonkies",quantity:1,preorder:true,flavors:[{name:"No vender",inventoryKey:"no-vender",quantity:4}]}];
+    let reserveError = "";
+    let validateError = "";
+    try { resolveReservationCart(state, requested, operations); } catch (error) { reserveError = error.message; }
+    try { resolveStockChecks(state, [{kind:"fonkies",flavor:"No vender",inventoryKey:"no-vender",quantity:4,preorder:true}], operations); } catch (error) { validateError = error.message; }
+    process.stdout.write(JSON.stringify({reserveError,validateError}));
+  `], {cwd:resolve(__dirname,".."),encoding:"utf8",env:{...process.env,NODE_NO_WARNINGS:"1"}}));
+  expect(result).toEqual({reserveError:"unavailable_product",validateError:"unavailable_product"});
+});
+
+test("un sabor disponible explícito no hereda el preorden legacy al agotarse", async () => {
+  const { applyPublicBuilderAvailability } = await import("../backend/src/public-availability.mjs");
+  const builder = {
+    status: "available",
+    allowPreorder: true,
+    minimumQuantity: 4,
+    flavors: [{
+      name: "Pistacho",
+      inventoryKey: "pistacho",
+      availabilityMode: "available",
+      status: "available"
+    }]
+  };
+  const candidates = [{
+    sku: "builder:fomb:pistacho",
+    flavorName: "Pistacho",
+    inventoryKey: "pistacho"
+  }];
+  const inventory = new Map([["builder:fomb:pistacho", { trackStock: true, available: 0 }]]);
+
+  applyPublicBuilderAvailability(builder, candidates, inventory);
+
+  expect(builder.flavors[0]).toMatchObject({
+    availabilityMode: "available",
+    status: "sold-out",
+    allowPreorder: false,
+    immediate: false
+  });
+  expect(builder.immediateBoxAvailable).toBe(false);
+});
+
+test("un builder queda agotado cuando todos sus sabores se desactivan aunque el stock no esté controlado", async () => {
+  const { applyPublicBuilderAvailability } = await import("../backend/src/public-availability.mjs");
+  const builder = {
+    availabilityMode:"available",
+    status:"available",
+    minimumQuantity:4,
+    flavors:[
+      {name:"Uno",inventoryKey:"uno",availabilityMode:"sold-out",status:"sold-out"},
+      {name:"Dos",inventoryKey:"dos",availabilityMode:"sold-out",status:"sold-out"}
+    ]
+  };
+  const candidates = [
+    {sku:"builder:fonkies:uno",flavorName:"Uno",inventoryKey:"uno"},
+    {sku:"builder:fonkies:dos",flavorName:"Dos",inventoryKey:"dos"}
+  ];
+  const inventory = new Map([
+    ["builder:fonkies:uno",{trackStock:false,available:8}],
+    ["builder:fonkies:dos",{trackStock:false,available:8}]
+  ]);
+
+  applyPublicBuilderAvailability(builder,candidates,inventory);
+
+  expect(builder).toMatchObject({availabilityMode:"available",status:"sold-out",stockTracked:false,immediate:false,immediateBoxAvailable:false});
+
+  const emptyBuilder = {availabilityMode:"available",status:"available",minimumQuantity:4,flavors:[]};
+  applyPublicBuilderAvailability(emptyBuilder,[],new Map());
+  expect(emptyBuilder).toMatchObject({availabilityMode:"available",status:"sold-out",immediate:false,immediateBoxAvailable:false});
+});
+
+test("la reserva exige dos días y solo reutiliza una solicitud idéntica y activa", async () => {
+  const { execFileSync } = require("node:child_process");
+  const { resolve } = require("node:path");
+  const { pathToFileURL } = require("node:url");
+  const workerUrl = pathToFileURL(resolve(__dirname, "../backend/src/worker.js")).href;
+  const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+    import { minimumPreorderDate, preorderDateViolation, reservationCanBeReused, reservationPayloadIdentity, reservationReplay } from ${JSON.stringify(workerUrl)};
+    const now = new Date("2026-09-01T12:00:00Z");
+    const items = [{kind:"product",productId:"torta",quantity:1,size:"",variant:"",preorder:true}];
+    const customer = {name:"Ana",phone:"04120000000",fulfillment:"Pickup",requestedDate:"2026-09-03",paymentMethod:"Pago móvil",address:"",allergySummary:"",birthdayCandle:"",notes:""};
+    const snapshotJson = JSON.stringify({items,customer});
+    const active = {status:"reserved",expiresAt:Math.floor(now.getTime()/1000)+60,snapshotJson};
+    const expired = {...active,expiresAt:Math.floor(now.getTime()/1000)-1};
+    const renamedRequest = [{kind:"fomb",quantity:1,boxSize:4,extraCount:0,preorder:false,flavors:[{inventoryKey:" pistacho ",name:"Nombre anterior",quantity:4,preorder:false}]}];
+    const renamedSnapshot = [{kind:"fomb",quantity:1,boxSize:4,extraCount:0,preorder:false,flavors:[{inventoryKey:"pistacho",name:"Nombre nuevo",quantity:4,preorder:false}]}];
+    const legacyRequest = [{kind:"fomb",quantity:1,preorder:true,flavors:[{inventoryKey:"",name:"Pistacho",quantity:4,preorder:true}]}];
+    const canonicalLegacySnapshot = [{kind:"fomb",quantity:1,boxSize:4,extraCount:0,preorder:false,flavors:[{inventoryKey:"pistacho",name:"Pistacho",quantity:4,preorder:false}]}];
+    const canonicalizedSnapshotJson = JSON.stringify({items:canonicalLegacySnapshot,customer,requestIdentity:reservationPayloadIdentity(legacyRequest,customer)});
+    const overnightSnapshot = JSON.stringify({items,customer:{...customer,requestedDate:"2026-09-03"}});
+    process.stdout.write(JSON.stringify({
+      minimum:minimumPreorderDate(now),
+      tomorrow:preorderDateViolation(items,"2026-09-02",now),
+      valid:preorderDateViolation(items,"2026-09-03",now),
+      sameIdentity:reservationPayloadIdentity(items,customer)===reservationPayloadIdentity([...items],{...customer}),
+      activeSame:reservationCanBeReused(active,{items,customer},now),
+      activeChanged:reservationCanBeReused(active,{items:[{...items[0],quantity:2}],customer},now),
+      expiredSame:reservationCanBeReused(expired,{items,customer},now),
+      confirmedSame:reservationCanBeReused({...active,status:"confirmed"},{items,customer},now),
+      renamedStableKey:reservationPayloadIdentity(renamedRequest,customer)===reservationPayloadIdentity(renamedSnapshot,customer),
+      rawRequestSurvivesCanonicalization:reservationCanBeReused({status:"reserved",expiresAt:Math.floor(now.getTime()/1000)+60,snapshotJson:canonicalizedSnapshotJson},{items:legacyRequest,customer},now),
+      crossesMidnight:reservationCanBeReused({status:"reserved",expiresAt:Math.floor(Date.parse("2026-09-02T04:06:00Z")/1000),snapshotJson:overnightSnapshot},{items,customer:{...customer,requestedDate:"2026-09-03"}},new Date("2026-09-02T04:05:00Z")),
+      raceReplay:reservationReplay({...active,id:"order-1",orderCode:"FNT-1",totalCents:1200},{items,customer},now)
+    }));
+  `], {cwd:resolve(__dirname,".."),encoding:"utf8",env:{...process.env,NODE_NO_WARNINGS:"1"}}));
+  expect(result).toEqual({
+    minimum:"2026-09-03",
+    tomorrow:"2026-09-03",
+    valid:"",
+    sameIdentity:true,
+    activeSame:true,
+    activeChanged:false,
+    expiredSame:false,
+    confirmedSame:false,
+    renamedStableKey:true,
+    rawRequestSurvivesCanonicalization:true,
+    crossesMidnight:true,
+    raceReplay:{
+      status:200,
+      payload:expect.objectContaining({ok:true,id:"order-1",orderCode:"FNT-1",totalCents:1200,reused:true})
+    }
+  });
 });
 
 test("las claves estables conservan SKU y el catálogo rechaza colisiones", async () => {

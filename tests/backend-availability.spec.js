@@ -98,7 +98,7 @@ test("los productos publican solo si su stock real está controlado", async () =
   expect(serialized).not.toContain("trackStock");
 });
 
-test("un producto agotado por inventario conserva la política configurada de pre-order", async () => {
+test("un producto legacy agotado por inventario conserva su política de pre-order", async () => {
   const { applyPublicProductAvailability } = await import("../backend/src/public-availability.mjs");
   const soldOut = { id: "bottega-agotado", category: "bottega", status: "available", allowPreorder: false };
   const soldOutWithPreorder = { id: "bottega-agotado-con-preorder", category: "bottega", status: "available", allowPreorder: true };
@@ -111,8 +111,67 @@ test("un producto agotado por inventario conserva la política configurada de pr
   applyPublicProductAvailability(soldOutWithPreorder, [{ sku: "product:bottega-agotado-con-preorder:base:base" }], inventory);
 
   expect([soldOut, soldOutWithPreorder]).toEqual([
-    expect.objectContaining({ id: "bottega-agotado", status: "sold-out", stockTracked: true, allowPreorder: false }),
-    expect.objectContaining({ id: "bottega-agotado-con-preorder", status: "sold-out", stockTracked: true, allowPreorder: true })
+    expect.objectContaining({ id: "bottega-agotado", availabilityMode:"available", status: "sold-out", stockTracked: true, allowPreorder: false, immediate:false }),
+    expect.objectContaining({ id: "bottega-agotado-con-preorder", availabilityMode:"preorder", status: "sold-out", stockTracked: true, allowPreorder: true, immediate:false })
+  ]);
+});
+
+test("la selección explícita disponible evita un pre-order automático al llegar a cero", async () => {
+  const { applyPublicProductAvailability } = await import("../backend/src/public-availability.mjs");
+  const product = {id:"explicito",availabilityMode:"available",status:"available",allowPreorder:true,immediate:true};
+  applyPublicProductAvailability(
+    product,
+    [{sku:"product:explicito:base:base"}],
+    new Map([["product:explicito:base:base",{trackStock:true,available:0}]])
+  );
+  expect(product).toMatchObject({availabilityMode:"available",status:"sold-out",allowPreorder:false,immediate:false});
+});
+
+test("los productos legacy de dos días migran a preorden sin perder el plazo", async () => {
+  const { applyPublicProductAvailability } = await import("../backend/src/public-availability.mjs");
+  const cake = {id:"torta",status:"available",allowPreorder:false,immediate:false,minimumBusinessDays:2};
+  applyPublicProductAvailability(cake, [], new Map());
+  expect(cake).toMatchObject({availabilityMode:"preorder",status:"sold-out",allowPreorder:true,immediate:false,minimumBusinessDays:2});
+});
+
+test("una pausa temporal nunca publica entrega inmediata", async () => {
+  const { applyPublicProductAvailability } = await import("../backend/src/public-availability.mjs");
+  const product = {id:"electrico",availabilityMode:"available",status:"available",temporarilyUnavailable:true,immediate:true};
+  applyPublicProductAvailability(
+    product,
+    [{sku:"product:electrico:base:base"}],
+    new Map([["product:electrico:base:base",{trackStock:true,available:4}]])
+  );
+  expect(product).toMatchObject({availabilityMode:"available",status:"available",temporarilyUnavailable:true,immediate:false});
+});
+
+test("un producto queda agotado cuando ya no tiene opciones ordenables", async () => {
+  const { applyPublicProductAvailability } = await import("../backend/src/public-availability.mjs");
+  const product = {
+    id:"opciones",
+    availabilityMode:"available",
+    status:"available",
+    immediate:true,
+    variants:[
+      {name:"Manual",status:"sold-out"},
+      {name:"Controlada",status:"available"}
+    ]
+  };
+  const candidates = [
+    {sku:"product:opciones:base:manual",variantName:"Manual"},
+    {sku:"product:opciones:base:controlada",variantName:"Controlada"}
+  ];
+  const inventory = new Map([
+    ["product:opciones:base:manual",{trackStock:false,available:5}],
+    ["product:opciones:base:controlada",{trackStock:true,available:0}]
+  ]);
+
+  applyPublicProductAvailability(product,candidates,inventory);
+
+  expect(product).toMatchObject({availabilityMode:"available",status:"sold-out",stockTracked:false,immediate:false});
+  expect(product.variants).toEqual([
+    expect.objectContaining({name:"Manual",status:"sold-out",stockTracked:false}),
+    expect.objectContaining({name:"Controlada",status:"sold-out",stockTracked:true})
   ]);
 });
 

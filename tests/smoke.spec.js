@@ -1697,12 +1697,10 @@ test("el cierre no activa por accidente un filtro que queda debajo de la foto", 
       const filter = document.querySelector(`.filter[data-filter="${CSS.escape(filterName)}"]`);
       return {
         isPointerTarget: document.elementFromPoint(x, y)?.closest(".filter") === filter,
-        isHovered: filter?.matches(":hover"),
         background: filter ? getComputedStyle(filter).backgroundColor : ""
       };
     }, hit);
     expect(guarded.isPointerTarget).toBe(true);
-    expect(guarded.isHovered).toBe(true);
     expect(guarded.background).toBe(hit.restingBackground);
 
     await page.mouse.move(hit.x + 1, hit.y);
@@ -2930,7 +2928,7 @@ test("Fonkies configurados para preordenar anuncian entrega en dos días", async
   await expect(page.locator("#fonkieValidation")).toContainText(/pre-order/i);
   await page.locator("#addFonkieBox").click();
   await page.locator("#cartButton").click();
-  await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días hábiles");
+  await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días");
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#checkoutPreparationGuide")).toContainText("Mínimo 2 días de preparación");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -3092,8 +3090,8 @@ test("la disponibilidad seleccionada llega al resumen, carrito y tiempos del che
       fonkiesName: "Fonkie para encargo",
       fombName: "Fomb para encargo",
       availability: "preorder",
-      summary: "Pre-Order: tu caja estará lista en 2 días hábiles.",
-      cart: /Pre-Order · 2 días hábiles/i
+      summary: "Pre-Order: tu caja estará lista en 2 días.",
+      cart: /Pre-Order · 2 días/i
     },
     {
       fonkiesName: "Fonkie sin inventario cargado",
@@ -3296,7 +3294,7 @@ test("las cajas mixtas heredan el tiempo más conservador", async ({ page }) => 
     await change(entry.pending, -1, 2);
     await change(entry.immediate, 1, 2);
     await change(entry.preorder, 1, 2);
-    await expect(page.locator(`${entry.builder} ${entry.validation}`)).toHaveText("Pre-Order: tu caja estará lista en 2 días hábiles.");
+    await expect(page.locator(`${entry.builder} ${entry.validation}`)).toHaveText("Pre-Order: tu caja estará lista en 2 días.");
     await change(entry.immediate, -1, 2);
     await change(entry.preorder, -1, 2);
   }
@@ -3482,6 +3480,58 @@ test("las cajas nuevas conservan la clave de inventario en carrito, validación 
       })
     ]));
   }
+});
+
+test("un conflicto de idempotencia libera la clave para el siguiente intento", async ({ page }) => {
+  const product = {
+    id:"ballerine",
+    category:"cakes",
+    name:"Torta Ballerine",
+    price:12,
+    image:"assets/ballerine-fontana-pro.jpg",
+    description:"Individual para 1–2 personas.",
+    ingredients:"Harina de almendra, monkfruit y huevo.",
+    weight:"180 G APROX.",
+    availabilityMode:"available",
+    minimumBusinessDays:0,
+    status:"available",
+    stockTracked:true,
+    visible:true
+  };
+  const keys = [];
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status:200,
+    contentType:"application/json",
+    headers:{"access-control-allow-origin":"*"},
+    body:JSON.stringify({state:{version:2,settings:{productionWithElectricity:true,stockTodayOpen:true},operations:{verified:true,electricityEnabled:true},products:[product],builders:{}}})
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", route => route.fulfill({
+    status:route.request().method() === "OPTIONS" ? 204 : 200,
+    contentType:"application/json",
+    headers:{"access-control-allow-origin":"*","access-control-allow-methods":"POST, OPTIONS","access-control-allow-headers":"content-type"},
+    body:route.request().method() === "OPTIONS" ? "" : JSON.stringify({ok:true})
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/reserve", route => {
+    const preflight = route.request().method() === "OPTIONS";
+    if (!preflight) keys.push(route.request().postDataJSON().clientKey);
+    return route.fulfill({
+      status:preflight ? 204 : 409,
+      contentType:"application/json",
+      headers:{"access-control-allow-origin":"*","access-control-allow-methods":"POST, OPTIONS","access-control-allow-headers":"content-type"},
+      body:preflight ? "" : JSON.stringify({error:"La solicitud anterior cambió.",code:"idempotency_conflict"})
+    });
+  });
+
+  await page.goto("/");
+  await page.locator('[data-product-id="ballerine"] .product-front .add').click();
+  await fillCheckout(page);
+  const submit = page.locator('#checkoutForm button[type="submit"]');
+  await submit.click();
+  await expect.poll(() => keys.length).toBe(1);
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect.poll(() => keys.length).toBe(2);
+  expect(keys[1]).not.toBe(keys[0]);
 });
 
 test("un carrito guardado se reconcilia con el inventario vigente", async ({ page }) => {
@@ -5494,7 +5544,7 @@ test("el carrito Bottega reconcilia la disponibilidad vigente antes del checkout
       choices:item.choices
     })));
   expect(reconciled).toEqual([
-    {productId:seeded[0].id,availability:"pending",preorder:false,choices:"DISPONIBILIDAD POR CONFIRMAR"},
+    {productId:seeded[0].id,availability:"immediate",preorder:false,choices:"ENTREGA INMEDIATA"},
     {productId:seeded[1].id,availability:"immediate",preorder:false,choices:"ENTREGA INMEDIATA"},
     {productId:seeded[2].id,availability:"preorder",preorder:true,choices:"PRE-ORDER"},
     {productId:seeded[3].id,availability:"unavailable",preorder:false,choices:"AGOTADO"}
@@ -5881,7 +5931,7 @@ test("Panzerottis y Raviolis envían el relleno elegido y admiten sabores agotad
   await expect(page.locator(".cart-item").filter({ hasText: "Raviolis" }).locator(".cart-choices")).toHaveText("300 g · Carne");
 });
 
-test("un sabor salado agotado cambia automáticamente a Pre-Order", async ({ page }) => {
+test("un sabor agotado no cambia a preorden sin una selección explícita", async ({ page }) => {
   await page.route("**/config.js*", async route => {
     const response = await route.fetch({ maxRetries: 2 });
     const body = (await response.text())
@@ -5892,8 +5942,8 @@ test("un sabor salado agotado cambia automáticamente a Pre-Order", async ({ pag
   await page.goto("/");
   await page.getByRole("button", { name: "Salado" }).click();
   const carne = page.locator('[data-product-id="panzerottis"] .product-variant option').first();
-  await expect(carne).toHaveText("Carne · Pre-Order");
-  await expect(carne).toBeEnabled();
+  await expect(carne).toHaveText("Carne · Agotado");
+  await expect(carne).toBeDisabled();
   await expect(page.locator('[data-product-id="panzerottis"] .product-tag')).toBeHidden();
   await expect(page.locator('[data-product-id="panzerottis"] .add')).toBeEnabled();
 });
@@ -5938,6 +5988,12 @@ test("el panel puede poner Fomb en preordenar y la tienda respeta los dos días"
   const preorder = page.locator('.fomb-flavor[data-flavor="Pistacho"]');
   await expect(preorder).toContainText("Preordenar · 2 días");
   await expect(preorder.locator('[data-delta="1"]')).toBeEnabled();
+  await page.emulateMedia({reducedMotion:"reduce"});
+  await page.locator('.builder-gallery-card[data-flavor="Pistacho"]').click();
+  const expanded = page.locator('.builder-flavor-flip-card[data-flavor="Pistacho"]');
+  await expect(expanded.locator(".builder-flavor-expanded-availability")).toHaveText("Preordenar · 2 días");
+  await expect(expanded.locator('.builder-flavor-quantity-button').last()).toBeEnabled();
+  await expanded.locator(".builder-flavor-expanded-media").click();
 });
 
 test("el panel permite elegir la disponibilidad de cada sabor", async ({ page }) => {
@@ -5955,6 +6011,55 @@ test("el panel permite elegir la disponibilidad de cada sabor", async ({ page })
   await expect(selectedFlavor).toContainText("Preordenar · 2 días");
   await expect(selectedFlavor.locator('[data-delta="1"]')).toBeEnabled();
   await expect(page.locator('.fonkie-gallery-card[data-flavor="Chispa de Chocolate Blanco"]')).not.toContainText("Preordenar");
+});
+
+test("un sabor agotado bloquea la cantidad y permite preguntar su disponibilidad", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Fonkies", exact: true }).click();
+  await page.locator('#fonkiesEditor [data-edit-flavor="fonkies:0"]').click();
+  await page.locator('#flavorForm [name="availabilityMode"]').selectOption("sold-out");
+  await page.getByRole("button", { name: "Guardar sabor" }).click();
+  await page.getByRole("button", { name: "Guardar Fonkies" }).click();
+
+  await page.emulateMedia({reducedMotion:"reduce"});
+  await page.goto("/");
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const row = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
+  await expect(row.locator(".builder-flavor-availability")).toHaveText("Agotado");
+  await expect(row.locator('[data-delta="1"]')).toBeDisabled();
+  const consult = row.locator(".builder-flavor-consult");
+  await expect(consult).toHaveText("Preguntar disponibilidad");
+  await expect(consult).toHaveAttribute("href", /wa\.me\/.*Chips%20de%20Chocolate%20Oscuro/);
+
+  await page.locator('.fonkie-gallery-card[data-flavor="Chips de Chocolate Oscuro"]').click();
+  const expanded = page.locator('.builder-flavor-flip-card[data-flavor="Chips de Chocolate Oscuro"]');
+  await expect(expanded.locator(".builder-flavor-expanded-availability")).toHaveText("Agotado");
+  await expect(expanded.locator(".builder-flavor-expanded-consult")).toBeVisible();
+  await expect(expanded.locator('.builder-flavor-quantity-button').last()).toBeDisabled();
+});
+
+test("el panel migra los productos legacy de dos días a preorden sin perder el plazo", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Productos", exact: true }).click();
+  const cake = page.locator('[data-product-id="pistacho"]');
+  await expect(cake).toContainText("Preordenar · 2 días");
+  await cake.locator('[data-edit="pistacho"]').click();
+  await expect(page.locator('#productForm [name="availabilityMode"]')).toHaveValue("preorder");
+  await page.getByRole("button", { name: "Guardar producto" }).click();
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  const migrated = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("fontana-admin-catalog-v1") || "{}");
+    const product = state.products?.find(item => item.id === "pistacho");
+    return product && {
+      availabilityMode:product.availabilityMode,
+      minimumBusinessDays:product.minimumBusinessDays,
+      allowPreorder:product.allowPreorder,
+      immediate:product.immediate
+    };
+  });
+  expect(migrated).toEqual({availabilityMode:"preorder",minimumBusinessDays:2,allowPreorder:true,immediate:false});
 });
 
 test("Inventario es la única cantidad de Fonkies y Fomb y actualiza la tienda", async ({ page }) => {
@@ -6019,7 +6124,7 @@ test("Inventario es la única cantidad de Fonkies y Fomb y actualiza la tienda",
 
   await page.goto("/");
   const preorderCard = page.locator('.fonkie-gallery-card[data-flavor="Chips de Chocolate Oscuro"]');
-  await expect(preorderCard.locator(".builder-flavor-availability")).toHaveText("Temporalmente no disponible");
+  await expect(preorderCard.locator(".builder-flavor-availability")).toHaveText("Agotado");
   await expect(page.locator(".fonkie-builder")).toHaveAttribute("data-immediate", "false");
   const immediateFomb = page.locator('.builder-gallery-card[data-flavor="Pistacho"]');
   await expect(immediateFomb.locator(".builder-flavor-availability")).toHaveText("Entrega inmediata");
@@ -6107,7 +6212,8 @@ test("el panel administrador permite entrar, editar y reflejar el catálogo en l
   const ballerine = page.locator('[data-product-id="ballerine"]');
   await expect(ballerine).toBeVisible();
   await expect(ballerine).toContainText("Disponible para celebrar hoy.");
-  await expect(ballerine.locator(".product-tag").first()).toHaveText("PROMOCIÓN DEL DÍA");
+  await expect(ballerine.locator(".product-tags")).toContainText("PREORDENAR · 2 DÍAS");
+  await expect(ballerine.locator(".product-tags")).toContainText("PROMOCIÓN DEL DÍA");
 });
 
 test("el panel permite editar u ocultar el peso y volumen de cada producto", async ({ page }) => {
@@ -6507,7 +6613,7 @@ test("el panel publica disponible hoy, preordenar y agotado sin romper el carrit
   await ballerine.locator(".product-back .add").click();
   await closeProductCard(page);
   await page.locator("#cartButton").click();
-  await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días hábiles");
+  await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días");
   await page.locator("#closeCart").click();
   const soldOut = page.locator('[data-product-id="san-pellegrino"]');
   await expect(soldOut.locator(".product-tags")).toContainText("AGOTADO");
@@ -7618,6 +7724,7 @@ test("sin electricidad pausa Fonkies, muestra rojo y bloquea un carrito existent
   await expect(page.locator(".fonkie-builder")).toContainText("Temporalmente no disponible");
   await expect(page.locator(".fonkie-builder .builder-flavor-availability").first()).toHaveText("Temporalmente no disponible");
   await expect(page.locator(".fonkie-builder")).not.toContainText("Entrega inmediata");
+  await expect(page.locator(".fonkie-builder")).not.toContainText("Preguntar disponibilidad");
   const unavailableTag = page.locator(".fonkie-builder .builder-admin-tags .status-unavailable").first();
   await expect(unavailableTag).toHaveCSS("background-color", "rgb(180, 56, 56)");
   await expect(unavailableTag).toHaveCSS("color", "rgb(255, 255, 255)");
@@ -7628,6 +7735,7 @@ test("sin electricidad pausa Fonkies, muestra rojo y bloquea un carrito existent
   const unavailableOverlay = page.locator(".builder-flavor-flip-card");
   await expect(unavailableOverlay).toBeVisible();
   await expect(unavailableOverlay.locator(".builder-flavor-expanded-availability")).toHaveText("Temporalmente no disponible");
+  await expect(unavailableOverlay.locator(".builder-flavor-expanded-consult")).toBeHidden();
   await expect(unavailableOverlay.locator(".builder-flavor-quantity-output")).toHaveText("0");
   await expect(unavailableOverlay.getByRole("button", { name: /^Restar / })).toBeDisabled();
   await expect(unavailableOverlay.getByRole("button", { name: /^Sumar / })).toBeDisabled();

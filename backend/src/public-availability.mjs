@@ -1,5 +1,55 @@
 const INVENTORY_KEY_PATTERN = /^[a-z0-9](?:[a-z0-9_-]{0,69})$/;
 
+const AVAILABILITY_MODES = new Set(["available", "preorder", "sold-out"]);
+
+export function availabilityModeFor(item = {}) {
+  if (AVAILABILITY_MODES.has(item.availabilityMode)) return item.availabilityMode;
+  if (item.status === "sold-out") return item.allowPreorder === true ? "preorder" : "sold-out";
+  // Legacy made-to-order products (notably cakes) expressed their two-day
+  // preparation time without an explicit availability mode. Preserve that
+  // promise when migrating the existing catalogue.
+  if (Number(item.minimumBusinessDays) >= 2) return "preorder";
+  return "available";
+}
+
+export function applyAvailabilityMode(item, requestedMode = availabilityModeFor(item)) {
+  const mode = AVAILABILITY_MODES.has(requestedMode) ? requestedMode : "available";
+  if (mode === "preorder") {
+    Object.assign(item, {
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2
+    });
+  } else if (mode === "sold-out") {
+    Object.assign(item, {
+      availabilityMode: "sold-out",
+      status: "sold-out",
+      allowPreorder: false,
+      immediate: false,
+      minimumBusinessDays: 0
+    });
+  } else {
+    Object.assign(item, {
+      availabilityMode: "available",
+      status: "available",
+      allowPreorder: false,
+      immediate: true,
+      minimumBusinessDays: 0
+    });
+  }
+  return item;
+}
+
+export function builderFlavorPreorderAllowed(builder = {}, flavor = {}) {
+  if (builder.availabilityMode === "sold-out" || flavor.availabilityMode === "sold-out") return false;
+  if (builder.availabilityMode === "preorder" || flavor.availabilityMode === "preorder") return true;
+  return builder.availabilityMode === undefined
+    && flavor.availabilityMode === undefined
+    && builder.allowPreorder === true;
+}
+
 function stockSlug(value) {
   return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 70) || "base";
 }
@@ -90,11 +140,15 @@ function inventoryResult(candidates, inventory) {
 }
 
 export function applyPublicProductAvailability(product, candidates, inventory) {
+  const legacyAllowsPreorder = !AVAILABILITY_MODES.has(product.availabilityMode)
+    && product.allowPreorder === true;
+  applyAvailabilityMode(product);
   const productResult = inventoryResult(candidates, inventory);
   const manualUnavailable = product.availabilityMode === "preorder" || product.availabilityMode === "sold-out";
   product.stockTracked = productResult.tracked;
   if (!manualUnavailable && productResult.available !== null) {
-    product.status = productResult.available ? "available" : "sold-out";
+    if (!productResult.available && legacyAllowsPreorder) applyAvailabilityMode(product, "preorder");
+    else product.status = productResult.available ? "available" : "sold-out";
   }
   for (const variant of product.variants || []) {
     const variantResult = inventoryResult(
@@ -118,11 +172,24 @@ export function applyPublicProductAvailability(product, candidates, inventory) {
     }
     delete size.stockQuantity;
   }
+  if (!manualUnavailable) {
+    const variantsUnavailable = (product.variants || []).length > 0
+      && product.variants.every(variant => variant.status === "sold-out");
+    const sizesUnavailable = (product.sizes || []).length > 0
+      && product.sizes.every(size => size.status === "sold-out");
+    if (variantsUnavailable || sizesUnavailable) product.status = "sold-out";
+  }
+  product.immediate = product.availabilityMode === "available"
+    && product.status === "available"
+    && product.temporarilyUnavailable !== true;
   delete product.stockQuantity;
   return product;
 }
 
 export function applyPublicBuilderAvailability(builder, candidates, inventory) {
+  const legacyAllowsPreorder = !AVAILABILITY_MODES.has(builder.availabilityMode)
+    && builder.allowPreorder === true;
+  applyAvailabilityMode(builder);
   const manuallyPaused = builder.status === "sold-out";
   const builderResult = inventoryResult(candidates, inventory);
   builder.stockTracked = builderResult.tracked;
@@ -133,13 +200,6 @@ export function applyPublicBuilderAvailability(builder, candidates, inventory) {
   const minimumQuantity = Number.isInteger(configuredMinimum) && configuredMinimum > 0
     ? configuredMinimum
     : (sizeMinimums.length ? Math.min(...sizeMinimums) : 4);
-  const trackedAvailableUnits = [...new Set(candidates.map(item => item.sku))]
-    .map(sku => inventory.get(sku))
-    .filter(row => row?.trackStock === true)
-    .reduce((sum, row) => sum + Math.max(0, Number(row.available) || 0), 0);
-  builder.immediateBoxAvailable = !manuallyPaused
-    && builder.temporarilyUnavailable !== true
-    && trackedAvailableUnits >= minimumQuantity;
   // A manual builder pause always wins. Otherwise the aggregate state is
   // derived only when every flavor has live inventory control. A partially
   // tracked builder keeps its manual "available" state while each flavor
@@ -149,16 +209,41 @@ export function applyPublicBuilderAvailability(builder, candidates, inventory) {
   }
 
   for (const flavor of builder.flavors || []) {
+    const hasExplicitMode = AVAILABILITY_MODES.has(flavor.availabilityMode);
+    const legacyFlavorPreorder = !hasExplicitMode
+      && flavor.status === "sold-out"
+      && legacyAllowsPreorder;
+    applyAvailabilityMode(flavor, legacyFlavorPreorder ? "preorder" : availabilityModeFor(flavor));
     const flavorCandidates = candidates.filter(item => item.flavorName === flavor.name);
     const flavorResult = inventoryResult(flavorCandidates, inventory);
     flavor.inventoryKey = builderFlavorInventoryKey(flavor);
     flavor.stockTracked = flavorResult.tracked;
     const manualFlavorUnavailable = flavor.availabilityMode === "preorder" || flavor.availabilityMode === "sold-out";
     if (!manualFlavorUnavailable && flavorResult.available !== null) {
-      flavor.status = flavorResult.available ? "available" : "sold-out";
+      if (!flavorResult.available && legacyAllowsPreorder && !hasExplicitMode) applyAvailabilityMode(flavor, "preorder");
+      else flavor.status = flavorResult.available ? "available" : "sold-out";
     }
+    flavor.immediate = flavor.availabilityMode === "available" && flavor.status === "available";
     delete flavor.stockQuantity;
   }
+  if (!manuallyPaused) {
+    const hasOrderableFlavor = (builder.flavors || []).some(flavor => (
+      flavor.availabilityMode === "preorder" || flavor.status !== "sold-out"
+    ));
+    builder.status = hasOrderableFlavor ? "available" : "sold-out";
+  }
+  const immediateFlavorKeys = new Set((builder.flavors || [])
+    .filter(flavor => flavor.availabilityMode === "available" && flavor.status === "available")
+    .map(builderFlavorInventoryKey));
+  const trackedAvailableUnits = [...new Map(candidates.map(item => [item.sku, item])).values()]
+    .filter(item => immediateFlavorKeys.has(String(item.inventoryKey || builderFlavorInventoryKey({ name:item.flavorName }))))
+    .map(item => inventory.get(item.sku))
+    .filter(row => row?.trackStock === true)
+    .reduce((sum, row) => sum + Math.max(0, Number(row.available) || 0), 0);
+  builder.immediateBoxAvailable = builder.availabilityMode === "available"
+    && builder.temporarilyUnavailable !== true
+    && trackedAvailableUnits >= minimumQuantity;
+  builder.immediate = builder.immediateBoxAvailable;
   delete builder.stockQuantity;
   return builder;
 }

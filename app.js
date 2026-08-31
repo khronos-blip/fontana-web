@@ -64,6 +64,17 @@
     return product.stockTracked === true || productHasLocalTrackedStock(product);
   }
 
+  function productAvailabilityMode(product = {}) {
+    if (["available", "preorder", "sold-out"].includes(product.availabilityMode)) return product.availabilityMode;
+    if (product.status === "sold-out") return product.allowPreorder === true ? "preorder" : "sold-out";
+    // The catalogue lead-time table is a checkout scheduling fallback, not an
+    // availability selection. Only a lead time stored on this legacy product
+    // may migrate it to pre-order; otherwise "available" must still respect
+    // live/local stock validation.
+    const leadTime = Number(product.minimumBusinessDays);
+    return leadTime >= 2 ? "preorder" : "available";
+  }
+
   function resolvedBottegaAvailability({ stockTracked = false, soldOut = false, preorder = false, unavailable = false, availabilityMode = "" } = {}) {
     if (unavailable) return "unavailable";
     if (availabilityMode === "preorder") return "preorder";
@@ -81,11 +92,24 @@
     return "DISPONIBILIDAD POR CONFIRMAR";
   }
 
-  function soldOutConsultMarkup(name) {
+  function soldOutConsultHref(name) {
     const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
-    if (!whatsappNumber) return "Agotado temporalmente.";
+    if (!whatsappNumber) return "";
     const message = `Hola Fontana sin gluten 💜 Quisiera saber para cuándo pueden tener disponible ${name}.`;
-    return `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">Preguntar cuándo estará disponible</a>`;
+    return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+  }
+
+  function soldOutConsultMarkup(name) {
+    const href = soldOutConsultHref(name);
+    if (!href) return "Agotado temporalmente.";
+    return `<a class="product-quote" href="${href}" target="_blank" rel="noopener">Preguntar cuándo estará disponible</a>`;
+  }
+
+  function builderFlavorConsultMarkup(details, name) {
+    if (details.state !== "unavailable" || details.temporarilyUnavailable) return "";
+    const href = soldOutConsultHref(name);
+    if (!href) return "";
+    return `<a class="builder-flavor-consult" href="${href}" target="_blank" rel="noopener">Preguntar disponibilidad</a>`;
   }
 
   function builderFlavorInventoryKey(flavor = {}) {
@@ -606,9 +630,13 @@
     const flavorSoldOut = flavor.status === "sold-out"
       || (localQuantityConfigured && Number(flavor.stockQuantity) <= 0);
     const soldOut = builderSoldOut || flavorSoldOut;
-    const preorderAllowed = builder.availabilityMode === "preorder"
-      || (builder.availabilityMode !== "sold-out" && flavor.availabilityMode === "preorder")
-      || (builder.allowPreorder === true && flavor.availabilityMode === undefined);
+    const preorderAllowed = builder.availabilityMode !== "sold-out"
+      && flavor.availabilityMode !== "sold-out"
+      && (builder.availabilityMode === "preorder"
+        || flavor.availabilityMode === "preorder"
+        || (builder.availabilityMode === undefined
+          && flavor.availabilityMode === undefined
+          && builder.allowPreorder === true));
     const state = temporarilyUnavailable
       ? "unavailable"
       : soldOut
@@ -617,13 +645,24 @@
           ? "immediate"
           : "pending";
     const label = state === "unavailable"
-      ? "Temporalmente no disponible"
+      ? temporarilyUnavailable ? "Temporalmente no disponible" : "Agotado"
       : state === "immediate"
         ? "Entrega inmediata"
         : state === "preorder"
           ? "Preordenar · 2 días"
           : "Disponibilidad por confirmar";
-    return { tracked, soldOut, state, label, preorderAllowed };
+    return { tracked, soldOut, state, label, preorderAllowed, temporarilyUnavailable };
+  }
+
+  function builderAvailabilityContext(builderElement, builderMeta = {}) {
+    const preorder = builderElement?.dataset.preorder === "true";
+    return {
+      availabilityMode: builderMeta.availabilityMode || (preorder ? "preorder" : undefined),
+      status: builderElement?.dataset.soldOut === "true" ? "sold-out" : builderMeta.status,
+      allowPreorder: builderMeta.allowPreorder === true || preorder,
+      temporarilyUnavailable: builderElement?.dataset.temporarilyUnavailable === "true"
+        || builderMeta.temporarilyUnavailable === true
+    };
   }
 
   function builderMinimumBoxQuantity(kind, builder = {}) {
@@ -701,7 +740,7 @@
   function builderAvailabilityCopy(availability) {
     if (availability === "unavailable") return "TEMPORALMENTE NO DISPONIBLE";
     if (availability === "immediate") return "ENTREGA INMEDIATA";
-    if (availability === "preorder") return "PRE-ORDER · 2 días hábiles";
+    if (availability === "preorder") return "PRE-ORDER · 2 días";
     return "DISPONIBILIDAD POR CONFIRMAR";
   }
 
@@ -721,11 +760,14 @@
     const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
     const availableVariants = variants.filter(variant => variant.status !== "sold-out" && variant.stockQuantity !== 0);
     const availableSizes = sizes.filter(size => size.status !== "sold-out" && size.stockQuantity !== 0);
-    const soldOut = product?.status === "sold-out"
+    const availabilityMode = productAvailabilityMode(product || {});
+    const soldOut = availabilityMode === "preorder"
+      || availabilityMode === "sold-out"
+      || product?.status === "sold-out"
       || product?.stockQuantity === 0
       || (variants.length > 0 && availableVariants.length === 0)
       || (sizes.length > 0 && availableSizes.length === 0);
-    const preorderAllowed = Boolean(product?.allowPreorder);
+    const preorderAllowed = availabilityMode === "preorder";
     const preorder = soldOut && preorderAllowed;
     const temporarilyUnavailable = Boolean(product?.temporarilyUnavailable
       || (!productionWithElectricity && product?.requiresElectricity));
@@ -733,7 +775,7 @@
       stockTracked: productStockIsTracked(product),
       soldOut,
       preorder,
-      availabilityMode: product?.availabilityMode,
+      availabilityMode,
       unavailable: missingOrHidden || temporarilyUnavailable
     });
     const effectivePreorder = availability === "preorder";
@@ -890,7 +932,8 @@
       }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
-        return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`;
+        const consult = builderFlavorConsultMarkup(stock, `${flavor.name} de Fonkies`);
+        return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${stock.state === "unavailable" ? "disabled" : ""}>+</button></div></div>`;
       }).join("");
       const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       fonkieBuilder.dataset.ingredients = availableIngredients;
@@ -931,7 +974,8 @@
       }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
-        return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}">+</button></div></div>`;
+        const consult = builderFlavorConsultMarkup(stock, `${flavor.name} de Fomb`);
+        return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${stock.state === "unavailable" ? "disabled" : ""}>+</button></div></div>`;
       }).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
@@ -2212,11 +2256,10 @@
       const nextMeta = flavorMeta(state.kind, nextName);
       const builderElement = card.closest(".fonkie-builder, .fomb-builder");
       const builderMeta = adminState?.builders?.[state.kind] || {};
-      const nextStock = builderFlavorStockDetails(nextMeta || {}, {
-        status: builderElement?.dataset.soldOut === "true" ? "sold-out" : builderMeta.status,
-        temporarilyUnavailable: builderElement?.dataset.temporarilyUnavailable === "true"
-          || builderMeta.temporarilyUnavailable === true
-      });
+      const nextStock = builderFlavorStockDetails(
+        nextMeta || {},
+        builderAvailabilityContext(builderElement, builderMeta)
+      );
       const nextImage = $("img", card);
       state.currentSource = card;
       state.currentIndex = state.cards.indexOf(card);
@@ -2228,6 +2271,9 @@
       state.ingredients.textContent = nextMeta?.ingredients?.trim() || "Ingredientes pendientes de confirmar con Fontana.";
       state.availability.textContent = nextStock.label;
       state.availability.dataset.stockState = nextStock.state;
+      const consultHref = soldOutConsultHref(`${nextName} de ${state.kind === "fonkies" ? "Fonkies" : "Fomb"}`);
+      state.consult.hidden = nextStock.state !== "unavailable" || nextStock.temporarilyUnavailable || !consultHref;
+      if (consultHref) state.consult.href = consultHref;
       state.flavorUnavailable = nextStock.state === "unavailable";
       state.overlay.dataset.flavor = nextName;
       state.overlay.setAttribute("aria-label", `${state.kind === "fonkies" ? "Fonkie" : "Fomb"} ${nextName}. ${nextStock.label}`);
@@ -2409,11 +2455,7 @@
       const builderElement = card.closest(".fonkie-builder, .fomb-builder");
       const builderMeta = adminState?.builders?.[kind] || {};
       const meta = flavorMeta(kind, flavorName(card)) || {};
-      return builderFlavorStockDetails(meta, {
-        status: builderElement?.dataset.soldOut === "true" ? "sold-out" : builderMeta.status,
-        temporarilyUnavailable: builderElement?.dataset.temporarilyUnavailable === "true"
-          || builderMeta.temporarilyUnavailable === true
-      });
+      return builderFlavorStockDetails(meta, builderAvailabilityContext(builderElement, builderMeta));
     };
 
     const measureExpandedFlavorDetails = (kind, cards, width, layout) => {
@@ -2442,6 +2484,11 @@
       const heading = document.createElement("h3");
       const availability = document.createElement("span");
       availability.className = "builder-flavor-expanded-availability";
+      const consult = document.createElement("a");
+      consult.className = "builder-flavor-expanded-consult";
+      consult.target = "_blank";
+      consult.rel = "noopener";
+      consult.textContent = "Preguntar cuándo estará disponible";
       const ingredients = document.createElement("p");
       const actions = document.createElement("div");
       actions.className = "builder-flavor-expanded-actions";
@@ -2450,7 +2497,7 @@
         <span class="builder-flavor-quantity" aria-hidden="true"><i class="builder-flavor-quantity-button">−</i><output class="builder-flavor-quantity-output">0</output><i class="builder-flavor-quantity-button">+</i></span>
         <span class="builder-flavor-done">Listo</span>
       `;
-      details.append(eyebrow, heading, availability, ingredients, actions);
+      details.append(eyebrow, heading, availability, consult, ingredients, actions);
       probe.append(details);
       document.body.append(probe);
 
@@ -2464,6 +2511,9 @@
           || "Ingredientes pendientes de confirmar con Fontana.";
         availability.textContent = stock.label;
         availability.dataset.stockState = stock.state;
+        const consultHref = soldOutConsultHref(`${name} de ${kind === "fonkies" ? "Fonkies" : "Fomb"}`);
+        consult.hidden = stock.state !== "unavailable" || stock.temporarilyUnavailable || !consultHref;
+        if (consultHref) consult.href = consultHref;
         requiredHeight = Math.max(requiredHeight, details.scrollHeight);
       });
       probe.remove();
@@ -2781,6 +2831,12 @@
       heading.textContent = name;
       const availability = document.createElement("span");
       availability.className = "builder-flavor-expanded-availability";
+      const consult = document.createElement("a");
+      consult.className = "builder-flavor-expanded-consult";
+      consult.target = "_blank";
+      consult.rel = "noopener";
+      consult.textContent = "Preguntar cuándo estará disponible";
+      consult.hidden = true;
       const ingredients = document.createElement("p");
       ingredients.textContent = meta?.ingredients?.trim() || "Ingredientes pendientes de confirmar con Fontana.";
       const quantityActions = document.createElement("div");
@@ -2824,7 +2880,7 @@
       swipeInstructions.className = "sr-only";
       swipeInstructions.textContent = "Desliza horizontalmente sobre la foto o usa las flechas izquierda y derecha para cambiar de sabor.";
       overlay.setAttribute("aria-describedby", swipeInstructions.id);
-      details.append(eyebrow, heading, availability, ingredients, quantityActions);
+      details.append(eyebrow, heading, availability, consult, ingredients, quantityActions);
       back.append(media, swipeCue, details, swipeInstructions, liveStatus);
       inner.append(front, back);
       overlay.append(inner);
@@ -2872,6 +2928,7 @@
         backImage,
         heading,
         availability,
+        consult,
         ingredients,
         details,
         quantityActions,
@@ -3191,17 +3248,18 @@
       const availableVariants = variants.filter(variant => variant.status !== "sold-out" && variant.stockQuantity !== 0);
       const availableSizes = sizes.filter(size => size.status !== "sold-out" && size.stockQuantity !== 0);
       const temporarilyUnavailable = Boolean(product.temporarilyUnavailable || (!productionWithElectricity && product.requiresElectricity));
-      const soldOut = product.status === "sold-out" || product.stockQuantity === 0 || (variants.length > 0 && availableVariants.length === 0) || (sizes.length > 0 && availableSizes.length === 0);
+      const availabilityMode = productAvailabilityMode(product);
+      const soldOut = availabilityMode === "preorder" || availabilityMode === "sold-out" || product.status === "sold-out" || product.stockQuantity === 0 || (variants.length > 0 && availableVariants.length === 0) || (sizes.length > 0 && availableSizes.length === 0);
       const stockTracked = productStockIsTracked(product);
-      const preorderAllowed = Boolean(product.allowPreorder);
+      const preorderAllowed = availabilityMode === "preorder";
       const preorder = soldOut && preorderAllowed;
       const bottegaAvailability = category !== "bottega"
         ? ""
-        : resolvedBottegaAvailability({ stockTracked, soldOut, preorder, availabilityMode:product.availabilityMode });
+        : resolvedBottegaAvailability({ stockTracked, soldOut, preorder, availabilityMode });
       const bottegaAvailabilityLabel = bottegaAvailabilityCopy(bottegaAvailability);
       const immediate = category === "bottega"
         ? stockTodayOpen && bottegaAvailability === "immediate"
-        : stockTodayOpen && Boolean(product.immediate);
+        : stockTodayOpen && !soldOut && !temporarilyUnavailable && Boolean(product.immediate);
       const description = String(product.description || "Disponibilidad sujeta a confirmación por WhatsApp.");
       const ingredients = String(product.ingredients || "");
       const dietary = resolvedDietary(product);
@@ -3364,7 +3422,7 @@
             ? "DISPONIBILIDAD POR CONFIRMAR"
             : ""
       : preorder
-        ? "PRE-ORDER · 2 días hábiles"
+        ? "PRE-ORDER · 2 días"
         : "";
     const identityChoices = [selectedSize, selectedVariant].filter(Boolean);
     const selectedChoices = [...identityChoices, stockCopy].filter(Boolean);
@@ -3673,6 +3731,7 @@
     };
 
     const isPreorder = row => row.dataset.stockState === "preorder";
+    const isUnavailable = row => row.dataset.stockState === "unavailable";
     const activeOperations = operations => operations.filter(operation => !operation.cancelled);
     const quantityFor = row => Math.max(0,
       Number(state.committed.get(row) || 0)
@@ -3796,6 +3855,10 @@
       if (!row || !Number.isFinite(change) || change === 0) return;
       quantityMutationVersion += 1;
       if (change > 0) {
+        if (isUnavailable(row)) {
+          say(`${row.dataset.flavor || "Este sabor"} está agotado. Puedes preguntar cuándo estará disponible.`);
+          return;
+        }
         if (isPreorder(row)) {
           state.committed.set(row, Number(state.committed.get(row) || 0) + change);
         } else {
@@ -3880,16 +3943,20 @@
       const selected = selectedFlavors();
       const preorder = selected.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
       const availability = preorder ? "preorder" : selectedBuilderAvailability(selected);
+      const selectedUnavailable = selected.find(item => item.stockState === "unavailable");
       const total = selected.reduce((sum, item) => sum + item.qty, 0);
       const price = fonkiePrice(total, selected.length);
       $("#fonkieChoiceCount").textContent = `${total} ${total === 1 ? "elegido" : "elegidos"}`;
       $("#fonkieCount").textContent = `Has seleccionado ${total} ${total === 1 ? "Fonkie" : "Fonkies"}`;
       $("#fonkieTotal").textContent = money(price);
-      addButton.disabled = total < minimum || unavailable;
+      addButton.disabled = total < minimum || unavailable || Boolean(selectedUnavailable);
       if (unavailable) {
         $("#fonkiePriceRule").textContent = temporaryUnavailable ? "Producción temporalmente pausada." : "Producto agotado temporalmente.";
         if (temporaryUnavailable) $("#fonkieValidation").textContent = "Temporalmente no disponible.";
         else $("#fonkieValidation").innerHTML = soldOutConsultMarkup("Fonkies");
+      } else if (selectedUnavailable) {
+        $("#fonkiePriceRule").textContent = `${selectedUnavailable.name} está agotado.`;
+        $("#fonkieValidation").innerHTML = soldOutConsultMarkup(`${selectedUnavailable.name} de Fonkies`);
       } else if (total < minimum) {
         $("#fonkiePriceRule").textContent = `Selecciona al menos ${minimum} para armar tu caja.`;
         $("#fonkieValidation").textContent = `Mínimo ${minimum} galletas para armar tu caja.`;
@@ -3900,7 +3967,7 @@
         $("#fonkieValidation").textContent = availability === "immediate"
           ? "Hay stock real: entrega inmediata."
           : availability === "preorder"
-            ? "Pre-Order: tu caja estará lista en 2 días hábiles."
+            ? "Pre-Order: tu caja estará lista en 2 días."
             : "Disponibilidad por confirmar con Fontana.";
       }
     }
@@ -4003,6 +4070,7 @@
       const current = selection();
       const preorder = current.flavors.some(item => item.preorder) || (builder.dataset.soldOut === "true" && preorderAllowed);
       const availability = preorder ? "preorder" : current.availability;
+      const selectedUnavailable = current.flavors.find(item => item.stockState === "unavailable");
       $("#fombChoiceCount").textContent = `${current.selectedTotal} ${current.selectedTotal === 1 ? "elegido" : "elegidos"}`;
       $("#fombCount").textContent = `Has seleccionado ${current.selectedTotal} Fomb`;
       const remaining = current.size - current.selectedTotal;
@@ -4016,14 +4084,16 @@
         $("#fombValidation").textContent = availability === "immediate"
           ? "Hay stock real: entrega inmediata."
           : availability === "preorder"
-            ? "Pre-Order: tu caja estará lista en 2 días hábiles."
+            ? "Pre-Order: tu caja estará lista en 2 días."
             : "Disponibilidad por confirmar con Fontana.";
       }
       $("#fombTotal").textContent = money(current.price);
-      addButton.disabled = remaining > 0 || unavailable;
+      addButton.disabled = remaining > 0 || unavailable || Boolean(selectedUnavailable);
       if (unavailable) {
         if (temporaryUnavailable) $("#fombValidation").textContent = "Temporalmente no disponible.";
         else $("#fombValidation").innerHTML = soldOutConsultMarkup("Fomb");
+      } else if (selectedUnavailable) {
+        $("#fombValidation").innerHTML = soldOutConsultMarkup(`${selectedUnavailable.name} de Fomb`);
       }
     }
 
@@ -4644,6 +4714,11 @@
       const reservation = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (reservation.code === "temporarily_unavailable") throw new Error("La producción de un producto del carrito está temporalmente pausada. Retíralo para continuar; tu carrito se conserva.");
+        if (reservation.code === "idempotency_conflict") {
+          delete checkoutForm.dataset.reservationKey;
+          throw new Error(reservation.error || "Actualiza los datos del pedido e inténtalo de nuevo.");
+        }
+        if (reservation.code === "requested_date_too_soon") throw new Error(reservation.error || "Actualiza la fecha del pedido e inténtalo de nuevo.");
         if (response.status === 409) throw new Error("Ese stock acaba de agotarse. Actualiza el menú para ver la disponibilidad.");
         throw new Error(reservation.error || "No pudimos reservar el stock. Inténtalo otra vez.");
       }

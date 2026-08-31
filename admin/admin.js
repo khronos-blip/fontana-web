@@ -46,14 +46,15 @@
     return availableInventoryKey(`${base.slice(0, 57)}-${randomSuffix}`, usedKeys);
   }
 
-  function normalizeBuilderFlavors(sourceFlavors) {
+  function normalizeBuilderFlavors(sourceFlavors, legacyAllowsPreorder = false) {
     const usedKeys = new Set();
     return (sourceFlavors || []).map(sourceFlavor => {
       const flavor = {...sourceFlavor};
       flavor.inventoryKey = availableInventoryKey(flavor.inventoryKey || flavor.name, usedKeys);
-      Object.assign(flavor, ["available", "preorder", "sold-out"].includes(flavor.availabilityMode)
-        ? availabilityFields(flavor.availabilityMode)
-        : availabilityFields(flavor.status === "sold-out" ? (flavor.allowPreorder === true ? "preorder" : "sold-out") : "available"));
+      const legacyFlavorPreorder = !["available", "preorder", "sold-out"].includes(flavor.availabilityMode)
+        && flavor.status === "sold-out"
+        && legacyAllowsPreorder;
+      Object.assign(flavor, availabilityFields(legacyFlavorPreorder ? "preorder" : availabilityModeFor(flavor)));
       if (localMode) {
         flavor.stockQuantity = flavor.stockQuantity === null || flavor.stockQuantity === "" || flavor.stockQuantity === undefined
           ? null
@@ -151,11 +152,13 @@
       allowPreorder: Boolean(product.allowPreorder), customLabels: Array.isArray(product.customLabels) ? product.customLabels : [],
       variants: (product.variants || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))})),
       sizes: (product.sizes || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))})),
-      ...(["available", "preorder", "sold-out"].includes(product.availabilityMode) ? availabilityFields(product.availabilityMode) : {})
+      ...availabilityFields(availabilityModeFor(product))
     }));
     next.builders = next.builders || clone(originalBuilders);
     ["fonkies", "fomb"].forEach(kind => {
       const builder = next.builders[kind] || clone(originalBuilders[kind]);
+      const legacyAllowsPreorder = !["available", "preorder", "sold-out"].includes(builder.availabilityMode)
+        && builder.allowPreorder === true;
       const normalizedBuilder = {
         ...builder,
         glutenFree: Object.prototype.hasOwnProperty.call(builder, "glutenFree") ? Boolean(builder.glutenFree) : true,
@@ -165,8 +168,8 @@
         visible: builder.visible !== false, status: builder.status === "sold-out" ? "sold-out" : "available",
         isNew: Boolean(builder.isNew), promo: Boolean(builder.promo), immediate: Boolean(builder.immediate), allowPreorder: Boolean(builder.allowPreorder),
         requiresElectricity: Object.prototype.hasOwnProperty.call(builder, "requiresElectricity") ? Boolean(builder.requiresElectricity) : kind === "fonkies",
-        flavors: normalizeBuilderFlavors(builder.flavors),
-        ...(["available", "preorder", "sold-out"].includes(builder.availabilityMode) ? availabilityFields(builder.availabilityMode) : {})
+        flavors: normalizeBuilderFlavors(builder.flavors, legacyAllowsPreorder),
+        ...availabilityFields(availabilityModeFor(builder))
       };
       delete normalizedBuilder.stockQuantity;
       next.builders[kind] = normalizedBuilder;
@@ -1441,12 +1444,13 @@
   function availabilityModeFor(item = {}) {
     if (["available", "preorder", "sold-out"].includes(item.availabilityMode)) return item.availabilityMode;
     if (item.status === "sold-out") return item.allowPreorder ? "preorder" : "sold-out";
+    if (Number(item.minimumBusinessDays) >= 2) return "preorder";
     return "available";
   }
 
   function availabilityFields(mode) {
     if (mode === "preorder") return {availabilityMode:"preorder",status:"sold-out",allowPreorder:true,immediate:false,minimumBusinessDays:2};
-    if (mode === "sold-out") return {availabilityMode:"sold-out",status:"sold-out",allowPreorder:false,immediate:false};
+    if (mode === "sold-out") return {availabilityMode:"sold-out",status:"sold-out",allowPreorder:false,immediate:false,minimumBusinessDays:0};
     return {availabilityMode:"available",status:"available",allowPreorder:false,immediate:true,minimumBusinessDays:0};
   }
 
