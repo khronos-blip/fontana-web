@@ -98,7 +98,7 @@
 
         <section class="view" data-panel="products">
           <div class="page-head"><div><span class="eyebrow">Catálogo</span><h1>Productos</h1><p>Edita el contenido que aparece en la tienda y en WhatsApp.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>
-          <div class="toolbar"><input id="productSearch" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="bottega">Bottega</option><option value="snacks">Otros</option></select><select id="statusFilter"><option value="all">Todos los estados</option><option value="available">Disponibles</option><option value="sold-out">Agotados</option><option value="hidden">Ocultos</option><option value="preorder">Pre-order</option><option value="new">Nuevos</option><option value="promo">Promoción</option><option value="immediate">Stock de hoy</option></select></div>
+          <div class="toolbar"><input id="productSearch" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="bottega">Bottega</option><option value="snacks">Otros</option></select><select id="statusFilter"><option value="all">Todos los estados</option><option value="available">Disponibles hoy</option><option value="preorder">Para preordenar</option><option value="sold-out">Agotados</option><option value="hidden">Ocultos</option><option value="new">Nuevos</option><option value="promo">Promoción</option></select></div>
           <div class="filter-summary" id="productFilterSummary" aria-live="polite"></div>
           <div class="product-list" id="productList"></div>
         </section>
@@ -236,15 +236,12 @@
           <output class="product-weight-preview" data-weight-preview>No se mostrará peso ni volumen en la tienda.</output>
           <small>Desactívalo cuando el producto no tenga un peso o volumen que deba mostrarse. Las presentaciones especiales ya publicadas se conservan.</small>
         </fieldset>
-        <label>Etiqueta de disponibilidad<input name="availabilityLabel" placeholder="Ej. Por encargo"></label>
-        <label>Días hábiles mínimos<input name="minimumBusinessDays" type="number" min="0" step="1" value="0"></label>
-        <label>Estado<select name="status"><option value="available">Disponible</option><option value="sold-out">Agotado</option></select></label>
+        <label class="wide">Disponibilidad en la tienda<select name="availabilityMode"><option value="available">Disponible hoy</option><option value="preorder">Preordenar · entrega en 2 días</option><option value="sold-out">Agotado · permitir consulta</option></select><small>Esta elección controla la etiqueta, el botón de compra y la fecha del pedido. Si el inventario controlado llega a cero, la tienda bloqueará la venta por seguridad.</small></label>
+        <label>Etiqueta adicional<input name="availabilityLabel" placeholder="Opcional · Ej. Refrigerado"></label>
         <label>Cantidad administrada<input name="stockQuantity" type="number" min="0" step="1" placeholder="Vacío = sin control numérico"></label>
         <label class="switch"><input name="visible" type="checkbox" checked><span>Visible en la tienda</span></label>
         <label class="switch"><input name="isNew" type="checkbox"><span>Etiqueta Nuevo</span></label>
         <label class="switch"><input name="promo" type="checkbox"><span>Promoción del día</span></label>
-        <label class="switch"><input name="immediate" type="checkbox"><span>Stock de hoy</span></label>
-        <label class="switch"><input name="allowPreorder" type="checkbox"><span>Permitir pre-order si está agotado</span></label>
         <label class="switch"><input name="requiresElectricity" type="checkbox"><span>Requiere electricidad para producirse</span></label>
         <label class="wide">Etiquetas personalizadas<textarea name="customLabels" rows="2" placeholder="Una por línea"></textarea></label>
         <label class="wide">Variantes o sabores<textarea name="variants" rows="3" placeholder="Una por línea: Nombre | available | cantidad"></textarea><small>Usa <b>sold-out</b> para marcar una opción agotada; la cantidad es opcional.</small></label>
@@ -260,7 +257,7 @@
       <input type="hidden" name="builder"><input type="hidden" name="index">
       <div class="form-grid">
         <label>Nombre<input name="name" required></label>
-        <label class="wide">Disponibilidad manual<select name="status"><option value="available">Normal · manda Inventario</option><option value="sold-out">Pre-Order manual</option></select><small>Con control activo, Inventario determina la disponibilidad. Sin control, esta elección decide entre disponibilidad por confirmar y Pre-Order.</small></label>
+        <label class="wide">Disponibilidad en la tienda<select name="availabilityMode"><option value="available">Disponible hoy</option><option value="preorder">Preordenar · entrega en 2 días</option><option value="sold-out">Agotado · permitir consulta</option></select><small>Esta elección corresponde únicamente a este sabor. Si el inventario real llega a cero, Disponible hoy se bloquea por seguridad.</small></label>
         <label class="wide">Ingredientes<textarea name="ingredients" rows="4"></textarea></label>
         <div class="image-field wide"><div class="image-preview" id="flavorImagePreview"></div><div><label>Ruta de imagen<input name="image"></label><label class="file-button">Subir y optimizar imagen<input id="flavorImageInput" type="file" accept="image/jpeg,image/png,image/webp"></label></div></div>
       </div>

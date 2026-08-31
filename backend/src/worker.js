@@ -198,14 +198,6 @@ function stockSlug(value) {
   return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 70) || "base";
 }
 
-function automaticPreorderForProduct(product) {
-  return product?.category === "salado";
-}
-
-function automaticPreorderForBuilder(kind) {
-  return kind === "fonkies" || kind === "fomb";
-}
-
 function deriveInventoryDefinitions(state) {
   const definitions = [];
   for (const product of state?.products || []) {
@@ -259,7 +251,6 @@ function applyPublicAvailability(state, inventory, operations = { electricityEna
     byProduct.get(definition.productId).push(definition);
   }
   for (const product of publicState.products || []) {
-    if (automaticPreorderForProduct(product)) product.allowPreorder = true;
     product.requiresElectricity = product.requiresElectricity === true;
     product.temporarilyUnavailable = !operations.electricityEnabled && product.requiresElectricity;
     const candidates = byProduct.get(product.id) || [];
@@ -268,7 +259,6 @@ function applyPublicAvailability(state, inventory, operations = { electricityEna
   for (const kind of ["fonkies", "fomb"]) {
     const builder = publicState.builders?.[kind];
     if (!builder) continue;
-    builder.allowPreorder = true;
     builder.requiresElectricity = builder.requiresElectricity === true || (kind === "fonkies" && !Object.prototype.hasOwnProperty.call(builder, "requiresElectricity"));
     builder.temporarilyUnavailable = !operations.electricityEnabled && builder.requiresElectricity;
     const productId = kind === "fonkies" ? "fonkie-box" : "fomb-box";
@@ -327,7 +317,7 @@ export function resolveReservationCart(state, requestedItems, operations) {
       if ((product.sizes || []).length && !size) throw new Error("invalid_option");
       if ((product.variants || []).length && !variant) throw new Error("invalid_option");
       const unavailable = product.status === "sold-out" || size?.status === "sold-out" || variant?.status === "sold-out";
-      const preorderAllowed = automaticPreorderForProduct(product) || product.allowPreorder === true;
+      const preorderAllowed = product.allowPreorder === true;
       const preorder = Boolean(requested.preorder && unavailable && preorderAllowed);
       if (unavailable && !preorder) throw new Error("unavailable_product");
       const sku = ["product", product.id, size ? stockSlug(size.name) : "base", variant ? stockSlug(variant.name) : "base"].join(":");
@@ -360,10 +350,12 @@ export function resolveReservationCart(state, requestedItems, operations) {
     }));
     if (resolvedSelections.some(item => !item.resolved)
       || new Set(resolvedSelections.map(item => item.resolved.inventoryKey)).size !== resolvedSelections.length) throw new Error("invalid_option");
-    const preorderAllowed = automaticPreorderForBuilder(kind) || builder.allowPreorder === true;
     const resolvedFlavors = resolvedSelections.map(selected => {
       const { flavor, name, inventoryKey } = selected.resolved;
       const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
+      const preorderAllowed = builder.availabilityMode === "preorder"
+        || (builder.availabilityMode !== "sold-out" && flavor.availabilityMode === "preorder")
+        || (builder.allowPreorder === true && flavor.availabilityMode === undefined);
       const preorder = Boolean(requested.preorder && unavailable && preorderAllowed);
       if (unavailable && !preorder) throw new Error("unavailable_product");
       return { name, inventoryKey, quantity: selected.quantity, imageUrl: snapshotImageUrl(flavor.image), preorder };
@@ -427,7 +419,7 @@ export function resolveStockChecks(state, requestedChecks, operations) {
       if ((product.sizes || []).length && !size) throw new Error("invalid_option");
       if ((product.variants || []).length && !variant) throw new Error("invalid_option");
       const unavailable = product.status === "sold-out" || size?.status === "sold-out" || variant?.status === "sold-out";
-      const preorder = requested.preorder === true && unavailable && (automaticPreorderForProduct(product) || product.allowPreorder === true);
+      const preorder = requested.preorder === true && unavailable && product.allowPreorder === true;
       if (unavailable && !preorder) throw new Error("unavailable_product");
       if (preorder) continue;
       const sku = ["product", product.id, size ? stockSlug(size.name) : "base", variant ? stockSlug(variant.name) : "base"].join(":");
@@ -446,7 +438,10 @@ export function resolveStockChecks(state, requestedChecks, operations) {
     if (!resolvedFlavor) throw new Error("invalid_option");
     const { flavor, inventoryKey } = resolvedFlavor;
     const unavailable = builder.status === "sold-out" || flavor.status === "sold-out";
-    const preorder = requested.preorder === true && unavailable && (automaticPreorderForBuilder(kind) || builder.allowPreorder === true);
+    const preorderAllowed = builder.availabilityMode === "preorder"
+      || (builder.availabilityMode !== "sold-out" && flavor.availabilityMode === "preorder")
+      || (builder.allowPreorder === true && flavor.availabilityMode === undefined);
+    const preorder = requested.preorder === true && unavailable && preorderAllowed;
     if (unavailable && !preorder) throw new Error("unavailable_product");
     if (preorder) continue;
     const definition = definitionMap.get(`builder:${kind}:${inventoryKey}`);
@@ -2059,11 +2054,25 @@ function validateCatalog(state) {
     if (ids.has(product.id)) return `El identificador ${product.id} está repetido`;
     ids.add(product.id);
     if (!String(product.name || "").trim()) return `El producto ${product.id} no tiene nombre`;
+    if (product.availabilityMode !== undefined && !["available", "preorder", "sold-out"].includes(product.availabilityMode)) return `La disponibilidad de ${product.id} no es válida`;
+    if (product.availabilityMode === "available" && (product.status !== "available" || product.allowPreorder === true || product.immediate !== true)) return `La disponibilidad de ${product.id} no está sincronizada`;
+    if (product.availabilityMode === "preorder" && (product.status !== "sold-out" || product.allowPreorder !== true || Number(product.minimumBusinessDays) !== 2)) return `La preventa de ${product.id} no está sincronizada`;
+    if (product.availabilityMode === "sold-out" && (product.status !== "sold-out" || product.allowPreorder === true)) return `El estado agotado de ${product.id} no está sincronizado`;
     if (typeof product.image === "string" && product.image.startsWith("data:")) return "Guarda las imágenes con el botón de subida antes de publicar";
   }
   for (const kind of ["fonkies", "fomb"]) {
     const builder = state.builders[kind];
     if (!builder) continue;
+    if (builder.availabilityMode !== undefined && !["available", "preorder", "sold-out"].includes(builder.availabilityMode)) return `La disponibilidad de ${kind} no es válida`;
+    if (builder.availabilityMode === "available" && (builder.status !== "available" || builder.allowPreorder === true || builder.immediate !== true)) return `La disponibilidad de ${kind} no está sincronizada`;
+    if (builder.availabilityMode === "preorder" && (builder.status !== "sold-out" || builder.allowPreorder !== true || Number(builder.minimumBusinessDays) !== 2)) return `La preventa de ${kind} no está sincronizada`;
+    if (builder.availabilityMode === "sold-out" && (builder.status !== "sold-out" || builder.allowPreorder === true)) return `El estado agotado de ${kind} no está sincronizado`;
+    for (const flavor of builder.flavors || []) {
+      if (flavor.availabilityMode !== undefined && !["available", "preorder", "sold-out"].includes(flavor.availabilityMode)) return `La disponibilidad de ${flavor.name || "un sabor"} no es válida`;
+      if (flavor.availabilityMode === "available" && (flavor.status !== "available" || flavor.allowPreorder === true || flavor.immediate !== true)) return `La disponibilidad de ${flavor.name || "un sabor"} no está sincronizada`;
+      if (flavor.availabilityMode === "preorder" && (flavor.status !== "sold-out" || flavor.allowPreorder !== true || Number(flavor.minimumBusinessDays) !== 2)) return `La preventa de ${flavor.name || "un sabor"} no está sincronizada`;
+      if (flavor.availabilityMode === "sold-out" && (flavor.status !== "sold-out" || flavor.allowPreorder === true)) return `El estado agotado de ${flavor.name || "un sabor"} no está sincronizado`;
+    }
     const identityError = validateBuilderInventoryIdentity(kind, builder);
     if (identityError) return identityError;
   }

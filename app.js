@@ -42,7 +42,6 @@
   let stockQuantityMutationTail = Promise.resolve();
   let quantityMutationVersion = 0;
   let storefrontCatalogRefresh = null;
-  const automaticPreorderCategories = new Set(["salado"]);
   const optimizedAssetPaths = new Map([
     ["assets/pistacho-fontana-v4.png", "assets/pistacho-fontana-v4.webp"],
     ["assets/layer-cake-fontana-pro.png", "assets/layer-cake-fontana-pro.webp"]
@@ -51,10 +50,6 @@
   function optimizedProductImage(image) {
     const path = String(image || "");
     return optimizedAssetPaths.get(path) || path;
-  }
-
-  function productAllowsAutomaticPreorder(product) {
-    return automaticPreorderCategories.has(String(product?.category || ""));
   }
 
   function productHasLocalTrackedStock(product = {}) {
@@ -69,8 +64,11 @@
     return product.stockTracked === true || productHasLocalTrackedStock(product);
   }
 
-  function resolvedBottegaAvailability({ stockTracked = false, soldOut = false, preorder = false, unavailable = false } = {}) {
+  function resolvedBottegaAvailability({ stockTracked = false, soldOut = false, preorder = false, unavailable = false, availabilityMode = "" } = {}) {
     if (unavailable) return "unavailable";
+    if (availabilityMode === "preorder") return "preorder";
+    if (availabilityMode === "sold-out") return "unavailable";
+    if (availabilityMode === "available") return soldOut ? "unavailable" : "immediate";
     if (!stockTracked) return "pending";
     if (!soldOut) return "immediate";
     return preorder ? "preorder" : "unavailable";
@@ -83,8 +81,11 @@
     return "DISPONIBILIDAD POR CONFIRMAR";
   }
 
-  function builderAllowsAutomaticPreorder(kind) {
-    return kind === "fonkies" || kind === "fomb";
+  function soldOutConsultMarkup(name) {
+    const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
+    if (!whatsappNumber) return "Agotado temporalmente.";
+    const message = `Hola Fontana sin gluten 💜 Quisiera saber para cuándo pueden tener disponible ${name}.`;
+    return `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}" target="_blank" rel="noopener">Preguntar cuándo estará disponible</a>`;
   }
 
   function builderFlavorInventoryKey(flavor = {}) {
@@ -261,10 +262,7 @@
         .filter(product => !product.deleted && product.visible !== false)
         .map(product => ({...product, catalogManaged:true})),
       ...newlyConfiguredProducts
-    ].map(product => {
-      const normalized = {...product, image:optimizedProductImage(product.image)};
-      return productAllowsAutomaticPreorder(normalized) ? {...normalized, allowPreorder:true} : normalized;
-    });
+    ].map(product => ({...product, image:optimizedProductImage(product.image)}));
     config.dynamicCatalog.forEach(product => {
       if (!product.id || !Number.isFinite(Number(product.minimumBusinessDays))) return;
       config.leadTimesByProduct ||= {};
@@ -579,12 +577,13 @@
     $(".builder-admin-tags", element)?.remove();
     const soldOut = builder.status === "sold-out";
     const temporarilyUnavailable = Boolean(builder.temporarilyUnavailable || element.dataset.temporarilyUnavailable === "true");
-    const labels = [temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : "", soldOut ? "AGOTADO" : "", soldOut && builder.allowPreorder ? "PRE-ORDER" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", element.dataset.immediate === "true" ? "STOCK DE HOY" : ""].filter(Boolean);
+    const preorder = soldOut && builder.allowPreorder;
+    const labels = [temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : "", soldOut && !preorder ? "AGOTADO" : "", preorder ? "PREORDENAR · 2 DÍAS" : "", builder.isNew ? "NUEVO" : "", builder.promo ? "PROMOCIÓN DEL DÍA" : "", element.dataset.immediate === "true" ? "DISPONIBLE HOY" : ""].filter(Boolean);
     if (!labels.length) return;
     const tags = document.createElement("div");
     tags.className = "builder-admin-tags";
     tags.innerHTML = labels.map(label => {
-      const statusClass = label === "TEMPORALMENTE NO DISPONIBLE" || label === "AGOTADO" ? " status-unavailable" : label === "PRE-ORDER" ? " status-preorder" : "";
+      const statusClass = label === "TEMPORALMENTE NO DISPONIBLE" || label === "AGOTADO" ? " status-unavailable" : label.startsWith("PREORDENAR") ? " status-preorder" : "";
       return `<span class="${statusClass.trim()}">${escapeHtml(label)}</span>`;
     }).join("");
     element.prepend(tags);
@@ -603,13 +602,17 @@
       && Number.isFinite(Number(flavor.stockQuantity));
     const tracked = flavor.stockTracked === true || localQuantityConfigured;
     const temporarilyUnavailable = builder.temporarilyUnavailable === true;
-    const soldOut = builder.status === "sold-out"
-      || flavor.status === "sold-out"
+    const builderSoldOut = builder.status === "sold-out";
+    const flavorSoldOut = flavor.status === "sold-out"
       || (localQuantityConfigured && Number(flavor.stockQuantity) <= 0);
+    const soldOut = builderSoldOut || flavorSoldOut;
+    const preorderAllowed = builder.availabilityMode === "preorder"
+      || (builder.availabilityMode !== "sold-out" && flavor.availabilityMode === "preorder")
+      || (builder.allowPreorder === true && flavor.availabilityMode === undefined);
     const state = temporarilyUnavailable
       ? "unavailable"
       : soldOut
-        ? "preorder"
+        ? preorderAllowed ? "preorder" : "unavailable"
         : tracked
           ? "immediate"
           : "pending";
@@ -618,9 +621,9 @@
       : state === "immediate"
         ? "Entrega inmediata"
         : state === "preorder"
-          ? "Pre-Order · 2 días hábiles"
+          ? "Preordenar · 2 días"
           : "Disponibilidad por confirmar";
-    return { tracked, soldOut, state, label };
+    return { tracked, soldOut, state, label, preorderAllowed };
   }
 
   function builderMinimumBoxQuantity(kind, builder = {}) {
@@ -730,6 +733,7 @@
       stockTracked: productStockIsTracked(product),
       soldOut,
       preorder,
+      availabilityMode: product?.availabilityMode,
       unavailable: missingOrHidden || temporarilyUnavailable
     });
     const effectivePreorder = availability === "preorder";
@@ -755,7 +759,6 @@
     const builder = adminState?.builders?.[kind];
     const builderMissingOrHidden = catalogAvailable && (!builder || builder.visible === false);
     const builderUnavailable = builderMissingOrHidden || builderTemporarilyUnavailable(kind, builder);
-    const builderPreorder = builder?.status === "sold-out";
     const selected = (inventory.flavors || []).map(flavor => {
       const storedInventoryKey = builderFlavorInventoryKey(flavor);
       // A cart that already knows its immutable inventory key must never jump
@@ -781,14 +784,14 @@
         name,
         inventoryKey,
         qty: Number(flavor.quantity ?? flavor.qty ?? 0),
-        preorder: !builderUnavailable && stock.state !== "unavailable" && (builderPreorder || stock.state === "preorder"),
+        preorder: !builderUnavailable && stock.state === "preorder",
         stockState: stock.state
       };
     });
     const flavorUnavailable = selected.some(flavor => flavor.stockState === "unavailable");
     const availability = builderUnavailable || flavorUnavailable
       ? "unavailable"
-      : builderPreorder
+      : selected.some(flavor => flavor.preorder)
         ? "preorder"
         : selectedBuilderAvailability(selected);
     const preorder = availability === "preorder";
@@ -859,14 +862,16 @@
       const temporarilyUnavailable = builderTemporarilyUnavailable("fonkies", fonkies);
       const flavors = Array.isArray(fonkies.flavors) ? fonkies.flavors : [];
       const stockContext = {
+        availabilityMode: fonkies.availabilityMode,
         status: fonkies.status,
+        allowPreorder: Boolean(fonkies.allowPreorder),
         temporarilyUnavailable
       };
       const hasImmediateBox = builderHasImmediateBox("fonkies", fonkies, stockContext);
       fonkieBuilder.dataset.promo = String(Boolean(fonkies.promo));
       fonkieBuilder.dataset.immediate = String(stockTodayOpen && hasImmediateBox);
       fonkieBuilder.dataset.new = String(Boolean(fonkies.isNew));
-      fonkieBuilder.dataset.preorder = String(builderAllowsAutomaticPreorder("fonkies") || Boolean(fonkies.allowPreorder));
+      fonkieBuilder.dataset.preorder = String(Boolean(fonkies.allowPreorder));
       fonkieBuilder.dataset.glutenFree = String(fonkies.glutenFree !== false);
       fonkieBuilder.dataset.sugarFree = String(fonkies.sugarFree !== false);
       fonkieBuilder.dataset.lactoseFree = String(fonkies.lactoseFree !== false);
@@ -898,14 +903,16 @@
       const temporarilyUnavailable = builderTemporarilyUnavailable("fomb", fomb);
       const flavors = Array.isArray(fomb.flavors) ? fomb.flavors : [];
       const stockContext = {
+        availabilityMode: fomb.availabilityMode,
         status: fomb.status,
+        allowPreorder: Boolean(fomb.allowPreorder),
         temporarilyUnavailable
       };
       const hasImmediateBox = builderHasImmediateBox("fomb", fomb, stockContext);
       fombBuilder.dataset.promo = String(Boolean(fomb.promo));
       fombBuilder.dataset.immediate = String(stockTodayOpen && hasImmediateBox);
       fombBuilder.dataset.new = String(Boolean(fomb.isNew));
-      fombBuilder.dataset.preorder = String(builderAllowsAutomaticPreorder("fomb") || Boolean(fomb.allowPreorder));
+      fombBuilder.dataset.preorder = String(Boolean(fomb.allowPreorder));
       fombBuilder.dataset.glutenFree = String(fomb.glutenFree !== false);
       fombBuilder.dataset.sugarFree = String(fomb.sugarFree !== false);
       fombBuilder.dataset.lactoseFree = String(fomb.lactoseFree !== false);
@@ -3186,11 +3193,11 @@
       const temporarilyUnavailable = Boolean(product.temporarilyUnavailable || (!productionWithElectricity && product.requiresElectricity));
       const soldOut = product.status === "sold-out" || product.stockQuantity === 0 || (variants.length > 0 && availableVariants.length === 0) || (sizes.length > 0 && availableSizes.length === 0);
       const stockTracked = productStockIsTracked(product);
-      const preorderAllowed = productAllowsAutomaticPreorder(product) || Boolean(product.allowPreorder);
+      const preorderAllowed = Boolean(product.allowPreorder);
       const preorder = soldOut && preorderAllowed;
       const bottegaAvailability = category !== "bottega"
         ? ""
-        : resolvedBottegaAvailability({ stockTracked, soldOut, preorder });
+        : resolvedBottegaAvailability({ stockTracked, soldOut, preorder, availabilityMode:product.availabilityMode });
       const bottegaAvailabilityLabel = bottegaAvailabilityCopy(bottegaAvailability);
       const immediate = category === "bottega"
         ? stockTodayOpen && bottegaAvailability === "immediate"
@@ -3199,12 +3206,12 @@
       const ingredients = String(product.ingredients || "");
       const dietary = resolvedDietary(product);
       const badges = [];
-      if (soldOut) badges.push("AGOTADO");
+      if (soldOut && !preorder) badges.push("AGOTADO");
       if (temporarilyUnavailable) badges.unshift("TEMPORALMENTE NO DISPONIBLE");
-      if (preorder) badges.push("PRE-ORDER");
+      if (preorder) badges.push("PREORDENAR · 2 DÍAS");
       if (product.isNew) badges.push("NUEVO");
       if (product.promo) badges.push("PROMOCIÓN DEL DÍA");
-      if (immediate) badges.push("STOCK DE HOY");
+      if (immediate) badges.push("DISPONIBLE HOY");
       (Array.isArray(product.customLabels) ? product.customLabels : []).forEach(label => { if (label) badges.push(String(label).slice(0,40)); });
       const image = product.image
         ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(name)}" loading="lazy" decoding="async">`
@@ -3232,16 +3239,22 @@
             variants.find(variant => variant.status !== "sold-out" && variant.stockQuantity !== 0)?.name || variants[0]?.name
           ].filter(Boolean).join(" · "))}</strong><em>Ver opciones</em></button>`
         : "";
-      const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => { const statusClass = badge === "TEMPORALMENTE NO DISPONIBLE" || badge === "AGOTADO" ? " status-unavailable" : badge === "PRE-ORDER" ? " status-preorder" : ""; return `<span class="product-tag${index ? " secondary" : ""}${statusClass}">${escapeHtml(badge)}</span>`; }).join("")}</div>` : "";
+      const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => { const statusClass = badge === "TEMPORALMENTE NO DISPONIBLE" || badge === "AGOTADO" ? " status-unavailable" : badge.startsWith("PREORDENAR") ? " status-preorder" : ""; return `<span class="product-tag${index ? " secondary" : ""}${statusClass}">${escapeHtml(badge)}</span>`; }).join("")}</div>` : "";
       const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
-      const quoteText = category === "bottega"
-        ? `Hola Fontana sin gluten 💜 Quisiera consultar la disponibilidad de ${name}${hasPrice ? ` (${money(price)})` : ""}.`
-        : `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
-      const quoteButton = (!hasPrice || pendingCatalogPublication) && whatsappNumber
-        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">${pendingCatalogPublication ? "Consultar disponibilidad" : "Consultar por WhatsApp"}</a>`
+      const quoteText = soldOut && !preorder
+        ? `Hola Fontana sin gluten 💜 Quisiera saber para cuándo pueden tener disponible ${name}.`
+        : category === "bottega"
+          ? `Hola Fontana sin gluten 💜 Quisiera consultar la disponibilidad de ${name}${hasPrice ? ` (${money(price)})` : ""}.`
+          : `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
+      const quoteButton = (!hasPrice || pendingCatalogPublication || (soldOut && !preorder)) && whatsappNumber
+        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">${soldOut && !preorder ? "Preguntar disponibilidad" : pendingCatalogPublication ? "Consultar disponibilidad" : "Consultar por WhatsApp"}</a>`
         : "";
-      const footerCopy = category === "bottega" ? bottegaAvailabilityLabel : product.weight || product.availabilityLabel;
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${immediate}" data-stock-state="${bottegaAvailability || "pending"}" data-catalog-managed="${catalogManaged}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${catalogManaged && hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Solicitar pre-order de" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PRE-ORDER" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
+      const availabilityCopy = preorder ? "PREORDENAR · ENTREGA EN 2 DÍAS" : soldOut ? "AGOTADO" : immediate ? "DISPONIBLE HOY" : "";
+      // Keep the product's presentation visible in the footer. Availability is
+      // already communicated by the status badge above the image, so it must
+      // not replace useful data such as 355 ML, 400 G or 1,5 L.
+      const footerCopy = product.weight || product.availabilityLabel || availabilityCopy || (category === "bottega" ? bottegaAvailabilityLabel : "");
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${immediate}" data-stock-state="${bottegaAvailability || "pending"}" data-catalog-managed="${catalogManaged}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${catalogManaged && hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Preordenar" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PREORDENAR" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
     emptyState.insertAdjacentHTML("beforebegin", cards);
   }
@@ -3659,7 +3672,7 @@
       idleResolvers: []
     };
 
-    const isPreorder = row => preorderAllowed && row.dataset.soldOut === "true";
+    const isPreorder = row => row.dataset.stockState === "preorder";
     const activeOperations = operations => operations.filter(operation => !operation.cancelled);
     const quantityFor = row => Math.max(0,
       Number(state.committed.get(row) || 0)
@@ -3858,7 +3871,7 @@
         name: row.dataset.flavor,
         inventoryKey: row.dataset.inventoryKey || "",
         qty: Number($("output", row).value || $("output", row).textContent || 0),
-        preorder: row.dataset.soldOut === "true",
+        preorder: row.dataset.stockState === "preorder",
         stockState: row.dataset.stockState || "pending"
       })).filter(item => item.qty > 0);
     }
@@ -3875,7 +3888,8 @@
       addButton.disabled = total < minimum || unavailable;
       if (unavailable) {
         $("#fonkiePriceRule").textContent = temporaryUnavailable ? "Producción temporalmente pausada." : "Producto agotado temporalmente.";
-        $("#fonkieValidation").textContent = temporaryUnavailable ? "Temporalmente no disponible." : "Consulta disponibilidad por WhatsApp.";
+        if (temporaryUnavailable) $("#fonkieValidation").textContent = "Temporalmente no disponible.";
+        else $("#fonkieValidation").innerHTML = soldOutConsultMarkup("Fonkies");
       } else if (total < minimum) {
         $("#fonkiePriceRule").textContent = `Selecciona al menos ${minimum} para armar tu caja.`;
         $("#fonkieValidation").textContent = `Mínimo ${minimum} galletas para armar tu caja.`;
@@ -3971,7 +3985,7 @@
         name: row.dataset.flavor,
         inventoryKey: row.dataset.inventoryKey || "",
         qty: Number($("output", row).value || $("output", row).textContent || 0),
-        preorder: row.dataset.soldOut === "true",
+        preorder: row.dataset.stockState === "preorder",
         stockState: row.dataset.stockState || "pending"
       })).filter(item => item.qty > 0);
     }
@@ -4007,7 +4021,10 @@
       }
       $("#fombTotal").textContent = money(current.price);
       addButton.disabled = remaining > 0 || unavailable;
-      if (unavailable) $("#fombValidation").textContent = temporaryUnavailable ? "Temporalmente no disponible." : "Producto agotado temporalmente. Consulta por WhatsApp.";
+      if (unavailable) {
+        if (temporaryUnavailable) $("#fombValidation").textContent = "Temporalmente no disponible.";
+        else $("#fombValidation").innerHTML = soldOutConsultMarkup("Fomb");
+      }
     }
 
     sizeInputs.forEach(input => input.addEventListener("change", () => {

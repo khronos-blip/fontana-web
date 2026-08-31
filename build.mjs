@@ -234,8 +234,10 @@ function productPage(product, category, seoStyleFile) {
     && product.stockQuantity !== ""
     && Number.isFinite(Number(product.stockQuantity));
   const stockTracked = product.stockTracked === true || quantityConfigured;
-  const offerAvailability = product.status === "sold-out"
-    ? "https://schema.org/OutOfStock"
+  const offerAvailability = product.availabilityMode === "preorder"
+    ? "https://schema.org/PreOrder"
+    : product.status === "sold-out"
+      ? "https://schema.org/OutOfStock"
     : product.category !== "bottega" || stockTracked
       ? "https://schema.org/InStock"
       : "";

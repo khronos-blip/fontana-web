@@ -28,7 +28,7 @@ Esto permite modificar la tienda desde cualquier sesión de Codex con acceso a G
 
 ## Gestión del catálogo
 
-El panel administrativo vive en `/admin/`. Incluye acceso privado con cuentas individuales y passkeys (Face ID en iPhone), CRUD de productos, inventario centralizado, visibilidad, nuevo, promoción, Stock de hoy, agotado, pre-order, etiquetas personalizadas, variantes, presentaciones, anticipación, carga optimizada de imágenes, constructores de Fonkies y Fomb, exportación/importación de copias JSON, CRM de clientes y control contable operativo. Cada producto permite activar o desactivar su peso/volumen y editar una cantidad en mg, g, kg, ml o litros; las presentaciones especiales existentes se conservan. Inventario, pedidos, ventas y perfiles de clientes muestran la imagen del producto o un fallback seguro.
+El panel administrativo vive en `/admin/`. Incluye acceso privado con cuentas individuales y passkeys (Face ID en iPhone), CRUD de productos, inventario centralizado, visibilidad, nuevo, promoción, etiquetas personalizadas, variantes, presentaciones, anticipación, carga optimizada de imágenes, constructores de Fonkies y Fomb, exportación/importación de copias JSON, CRM de clientes y control contable operativo. Cada producto y cada constructor ofrece una sola elección de disponibilidad: **Disponible hoy**, **Preordenar · entrega en 2 días** o **Agotado · permitir consulta**. Esa elección gobierna la etiqueta pública, el alta en carrito y el plazo; el inventario numérico controlado conserva el bloqueo de seguridad cuando llega a cero. Cada producto también permite activar o desactivar su peso/volumen y editar una cantidad en mg, g, kg, ml o litros; las presentaciones especiales existentes se conservan. Inventario, pedidos, ventas y perfiles de clientes muestran la imagen del producto o un fallback seguro.
 
 Al confirmar una venta se guarda el cliente por teléfono normalizado, el detalle e imagen histórica de cada producto, el monto realmente recibido, la moneda (VES, USD o EUR), el método y la referencia del pago. Los cobros en bolívares conservan una copia inmutable de la tasa oficial del BCV y su Fecha Valor; si la fuente oficial no responde, únicamente la cuenta propietaria puede introducir una tasa manual con enlace oficial y motivo auditado. Se permiten abonos y pagos divididos: el inventario se descuenta una sola vez, el saldo queda por cobrar y los abonos posteriores no duplican la venta.
 
@@ -46,10 +46,11 @@ En producción, el panel guarda en D1 y los cambios se reflejan para todos los v
 6. Usar `price: null` cuando el precio aún no esté confirmado; la web mostrará «Por confirmar» y no permitirá añadirlo al carrito.
 7. Guardar las nuevas fotografías dentro de `assets/` y asignar su ruta en `image`.
 8. Para productos con sabores, usar `variants` y cambiar el `status` de cada sabor entre `available` y `sold-out`. Los sabores disponibles no muestran etiqueta; los no disponibles aparecen como «Agotado» y no pueden seleccionarse.
-9. `stockQuantity: 0` también marca el producto u opción como agotado. Si `allowPreorder` está activo, se conserva la solicitud en el carrito y WhatsApp como pre-order sujeto a confirmación.
-10. `visible: false` retira el producto de la tienda sin borrar su ficha del panel.
+9. `availabilityMode` acepta `available`, `preorder` o `sold-out`. El panel sincroniza internamente `status`, `allowPreorder`, `immediate` y dos días de anticipación para que no existan combinaciones contradictorias.
+10. `stockQuantity: 0` también bloquea un producto u opción con inventario controlado, aunque esté marcado como disponible, para impedir ventas por encima de las existencias reales.
+11. `visible: false` retira el producto de la tienda sin borrar su ficha del panel.
 
-Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Sus cantidades se gestionan exclusivamente en **Inventario**, por sabor y por unidad individual; el rótulo «Stock de hoy» de cada constructor se deriva de ese inventario real. El estado manual del constructor solo pausa toda la línea o define el fallback sin control numérico. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
+Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Sus cantidades se gestionan exclusivamente en **Inventario**, por sabor y por unidad individual; la selección manual de disponibilidad se aplica a toda la caja y el inventario real de cada sabor sigue limitando las unidades. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
 
 ## Páginas públicas y SEO
 

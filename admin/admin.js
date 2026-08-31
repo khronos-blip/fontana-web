@@ -51,7 +51,9 @@
     return (sourceFlavors || []).map(sourceFlavor => {
       const flavor = {...sourceFlavor};
       flavor.inventoryKey = availableInventoryKey(flavor.inventoryKey || flavor.name, usedKeys);
-      flavor.status = flavor.status === "sold-out" ? "sold-out" : "available";
+      Object.assign(flavor, ["available", "preorder", "sold-out"].includes(flavor.availabilityMode)
+        ? availabilityFields(flavor.availabilityMode)
+        : availabilityFields(flavor.status === "sold-out" ? (flavor.allowPreorder === true ? "preorder" : "sold-out") : "available"));
       if (localMode) {
         flavor.stockQuantity = flavor.stockQuantity === null || flavor.stockQuantity === "" || flavor.stockQuantity === undefined
           ? null
@@ -146,9 +148,10 @@
       stockQuantity: product.stockQuantity === null || product.stockQuantity === "" || product.stockQuantity === undefined ? null : Math.max(0, Number(product.stockQuantity)),
       isNew: Boolean(product.isNew), promo: Boolean(product.promo), immediate: Boolean(product.immediate),
       requiresElectricity: product.requiresElectricity === true,
-      allowPreorder: product.category === "salado" || Boolean(product.allowPreorder), customLabels: Array.isArray(product.customLabels) ? product.customLabels : [],
+      allowPreorder: Boolean(product.allowPreorder), customLabels: Array.isArray(product.customLabels) ? product.customLabels : [],
       variants: (product.variants || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))})),
-      sizes: (product.sizes || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))}))
+      sizes: (product.sizes || []).map(option => ({...option, stockQuantity: option.stockQuantity === null || option.stockQuantity === "" || option.stockQuantity === undefined ? null : Math.max(0, Number(option.stockQuantity))})),
+      ...(["available", "preorder", "sold-out"].includes(product.availabilityMode) ? availabilityFields(product.availabilityMode) : {})
     }));
     next.builders = next.builders || clone(originalBuilders);
     ["fonkies", "fomb"].forEach(kind => {
@@ -160,9 +163,10 @@
         lactoseFree: Object.prototype.hasOwnProperty.call(builder, "lactoseFree") ? Boolean(builder.lactoseFree) : true,
         eggFree: Object.prototype.hasOwnProperty.call(builder, "eggFree") ? Boolean(builder.eggFree) : kind === "fomb",
         visible: builder.visible !== false, status: builder.status === "sold-out" ? "sold-out" : "available",
-        isNew: Boolean(builder.isNew), promo: Boolean(builder.promo), immediate: Boolean(builder.immediate), allowPreorder: true,
+        isNew: Boolean(builder.isNew), promo: Boolean(builder.promo), immediate: Boolean(builder.immediate), allowPreorder: Boolean(builder.allowPreorder),
         requiresElectricity: Object.prototype.hasOwnProperty.call(builder, "requiresElectricity") ? Boolean(builder.requiresElectricity) : kind === "fonkies",
-        flavors: normalizeBuilderFlavors(builder.flavors)
+        flavors: normalizeBuilderFlavors(builder.flavors),
+        ...(["available", "preorder", "sold-out"].includes(builder.availabilityMode) ? availabilityFields(builder.availabilityMode) : {})
       };
       delete normalizedBuilder.stockQuantity;
       next.builders[kind] = normalizedBuilder;
@@ -1425,13 +1429,25 @@
     const products = state.products.filter(product => !product.deleted);
     const stats = [
       [products.length,"Productos","all"],
-      [products.filter(product => product.status !== "sold-out").length,"Disponibles","available"],
+      [products.filter(product => availabilityModeFor(product) === "available").length,"Disponibles hoy","available"],
       [products.filter(product => product.promo).length,"Promociones","promo"],
-      [products.filter(product => product.immediate).length,"Stock de hoy","immediate"]
+      [products.filter(product => availabilityModeFor(product) === "preorder").length,"Preordenar","preorder"]
     ];
     $("#stats").innerHTML = stats.map(([value,label,filter]) => `<button type="button" class="stat stat-link" data-dashboard-filter="${filter}" aria-label="Ver ${label.toLowerCase()}"><b>${value}</b><span>${label}</span><i aria-hidden="true">Ver →</i></button>`).join("");
     renderRecentActivity();
     renderDashboardOperations();
+  }
+
+  function availabilityModeFor(item = {}) {
+    if (["available", "preorder", "sold-out"].includes(item.availabilityMode)) return item.availabilityMode;
+    if (item.status === "sold-out") return item.allowPreorder ? "preorder" : "sold-out";
+    return "available";
+  }
+
+  function availabilityFields(mode) {
+    if (mode === "preorder") return {availabilityMode:"preorder",status:"sold-out",allowPreorder:true,immediate:false,minimumBusinessDays:2};
+    if (mode === "sold-out") return {availabilityMode:"sold-out",status:"sold-out",allowPreorder:false,immediate:false};
+    return {availabilityMode:"available",status:"available",allowPreorder:false,immediate:true,minimumBusinessDays:0};
   }
 
   function openProductFilter(status = "all") {
@@ -1444,12 +1460,12 @@
 
   function productBadges(product) {
     const badges = [];
-    badges.push(`<span class="badge ${product.status === "sold-out" ? "red" : "green"}">${product.status === "sold-out" ? "Agotado" : "Disponible"}</span>`);
+    const availabilityMode = availabilityModeFor(product);
+    const availabilityLabels = {available:"Disponible hoy",preorder:"Preordenar · 2 días","sold-out":"Agotado"};
+    badges.push(`<span class="badge ${availabilityMode === "sold-out" ? "red" : availabilityMode === "available" ? "green" : ""}">${availabilityLabels[availabilityMode]}</span>`);
     if (product.visible === false) badges.push('<span class="badge red">Oculto</span>');
-    if (product.allowPreorder) badges.push('<span class="badge">Pre-order</span>');
     if (product.isNew) badges.push('<span class="badge">Nuevo</span>');
     if (product.promo) badges.push('<span class="badge">Promo</span>');
-    if (product.immediate) badges.push('<span class="badge">Stock de hoy</span>');
     if (product.glutenFree) badges.push('<span class="badge">Sin gluten</span>');
     if (product.sugarFree) badges.push('<span class="badge">Sin azúcar</span>');
     if (product.lactoseFree) badges.push('<span class="badge">Sin lactosa</span>');
@@ -1464,14 +1480,15 @@
     return state.products.filter(product => !product.deleted).filter(product => {
       const textMatches = !query || `${product.name} ${product.description} ${product.ingredients}`.toLowerCase().includes(query);
       const categoryMatches = category === "all" || product.category === category;
-      const statusMatches = status === "all" || product.status === status || (status === "hidden" && product.visible === false) || (status === "preorder" && product.allowPreorder) || (status === "new" && product.isNew) || (status === "promo" && product.promo) || (status === "immediate" && product.immediate);
+      const availabilityMode = availabilityModeFor(product);
+      const statusMatches = status === "all" || (status === "available" && availabilityMode === "available") || (status === "sold-out" && availabilityMode === "sold-out") || (status === "hidden" && product.visible === false) || (status === "preorder" && availabilityMode === "preorder") || (status === "new" && product.isNew) || (status === "promo" && product.promo) || (status === "immediate" && availabilityMode === "available");
       return textMatches && categoryMatches && statusMatches;
     });
   }
 
   function renderProducts() {
     const products = filteredProducts();
-    const labels = {all:"Todos los productos",available:"Disponibles","sold-out":"Agotados",hidden:"Ocultos",preorder:"Pre-order",new:"Nuevos",promo:"Promociones",immediate:"Stock de hoy"};
+    const labels = {all:"Todos los productos",available:"Disponibles hoy","sold-out":"Agotados",hidden:"Ocultos",preorder:"Para preordenar",new:"Nuevos",promo:"Promociones",immediate:"Disponibles hoy"};
     const activeStatus = $("#statusFilter").value;
     $("#productFilterSummary").innerHTML = `<div><strong>${escapeHtml(labels[activeStatus] || "Resultados")}</strong><span>${products.length} producto${products.length === 1 ? "" : "s"}</span></div>${activeStatus !== "all" ? '<button type="button" data-clear-product-filter>Ver todos</button>' : ""}`;
     $("#productList").innerHTML = products.length ? products.map(product => `<article class="product-row" data-product-id="${escapeHtml(product.id)}">${productThumb(product,product.name)}<div><h3>${escapeHtml(product.name)}</h3><p>${escapeHtml(product.description || "Sin descripción")}</p></div><div class="badges">${productBadges(product)}<span class="badge">${escapeHtml(money(product.price))}</span></div><div class="row-actions"><button data-edit="${escapeHtml(product.id)}" aria-label="Editar ${escapeHtml(product.name)}">✎</button><button data-delete="${escapeHtml(product.id)}" aria-label="Eliminar ${escapeHtml(product.name)}">×</button></div></article>`).join("") : '<div class="empty-list">No hay productos que coincidan con estos filtros.</div>';
@@ -1537,12 +1554,13 @@
   }
 
   function openProduct(id) {
-    const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",brand:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:false,allowPreorder:false,requiresElectricity:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
+    const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",brand:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",availabilityMode:"available",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:true,allowPreorder:false,requiresElectricity:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
     if (!product) return;
     const form = $("#productForm");
     $("#dialogTitle").textContent = id ? "Editar producto" : "Nuevo producto";
     form.elements.originalId.value = id || "";
-    ["id","name","brand","category","description","ingredients","availabilityLabel","status","image"].forEach(field => { form.elements[field].value = product[field] ?? ""; });
+    ["id","name","brand","category","description","ingredients","availabilityLabel","image"].forEach(field => { form.elements[field].value = product[field] ?? ""; });
+    form.elements.availabilityMode.value = availabilityModeFor(product);
     const weight = parseProductWeight(product.weight);
     form.elements.weightEnabled.checked = weight.enabled;
     form.elements.weightValue.value = weight.value;
@@ -1550,13 +1568,10 @@
     form.elements.weightCustom.value = weight.custom;
     syncProductWeightForm(form);
     form.elements.price.value = product.price ?? "";
-    form.elements.minimumBusinessDays.value = product.minimumBusinessDays ?? 0;
     form.elements.stockQuantity.value = product.stockQuantity ?? "";
     form.elements.visible.checked = product.visible !== false;
     form.elements.isNew.checked = Boolean(product.isNew);
     form.elements.promo.checked = Boolean(product.promo);
-    form.elements.immediate.checked = Boolean(product.immediate);
-    form.elements.allowPreorder.checked = Boolean(product.allowPreorder);
     form.elements.requiresElectricity.checked = Boolean(product.requiresElectricity);
     form.elements.glutenFree.checked = Boolean(product.glutenFree);
     form.elements.sugarFree.checked = Boolean(product.sugarFree);
@@ -1625,18 +1640,24 @@
     const pricing = kind === "fonkies"
       ? `<label>Precio REF · 4 iguales<input data-builder-field="singlePrice" type="number" min="0" step=".01" value="${builder.singlePrice}"></label><label>Precio REF · 4 mixtas<input data-builder-field="mixedPrice" type="number" min="0" step=".01" value="${builder.mixedPrice}"></label><label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label><label>Mínimo<input data-builder-field="minimumQuantity" type="number" min="1" value="${builder.minimumQuantity}"></label>`
       : `<label>Precio REF · caja de 4<input data-builder-size="0" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[0]?.price ?? 15}"></label><label>Precio REF · caja de 12<input data-builder-size="1" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[1]?.price ?? 30}"></label><label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label>`;
-    const availability = builder.visible === false ? "Oculto" : builder.status === "sold-out" ? "Pre-Order manual" : "Inventario por sabor";
-    const flavorRows = builder.flavors.map((flavor,index) => `<div class="flavor-row" data-inventory-key="${escapeHtml(flavor.inventoryKey)}">${productThumb(flavor,`${title} · ${flavor.name}`)}<div class="flavor-copy"><div class="flavor-title"><h3>${escapeHtml(flavor.name)}</h3>${builderFlavorInventoryBadge(kind, flavor)}</div><p>${escapeHtml(flavor.ingredients)}</p></div><div class="row-actions"><button data-edit-flavor="${kind}:${index}" aria-label="Editar sabor">✎</button><button data-delete-flavor="${kind}:${index}" aria-label="Eliminar sabor">×</button></div></div>`).join("");
-    $(`#${kind}Editor`).innerHTML = `<article class="builder-card" data-builder="${kind}"><details class="builder-settings"><summary><span><b>Configuración general</b><small>Precios, sellos y pausa manual</small></span><span class="builder-state">${availability}</span></summary><div class="builder-form">${pricing}<label class="span-2">Disponibilidad manual<select data-builder-field="status"><option value="available" ${builder.status !== "sold-out" ? "selected" : ""}>Normal · manda el inventario por sabor</option><option value="sold-out" ${builder.status === "sold-out" ? "selected" : ""}>Pausar todo · ofrecer Pre-Order</option></select><small>La pausa manual afecta todos los sabores. Las cantidades reales se cambian únicamente en Inventario.</small></label><label class="switch"><input data-builder-field="visible" type="checkbox" ${builder.visible !== false ? "checked" : ""}><span>Visible en la tienda</span></label><label class="switch"><input data-builder-field="isNew" type="checkbox" ${builder.isNew ? "checked" : ""}><span>Etiqueta Nuevo</span></label><label class="switch"><input data-builder-field="promo" type="checkbox" ${builder.promo ? "checked" : ""}><span>Promoción del día</span></label><label class="switch"><input data-builder-field="glutenFree" type="checkbox" ${builder.glutenFree ? "checked" : ""}><span>Mostrar sello Sin gluten</span></label><label class="switch"><input data-builder-field="sugarFree" type="checkbox" ${builder.sugarFree ? "checked" : ""}><span>Mostrar sello Sin azúcar</span></label><label class="switch"><input data-builder-field="lactoseFree" type="checkbox" ${builder.lactoseFree ? "checked" : ""}><span>Mostrar sello Sin lactosa</span></label></div></details><div class="panel-head builder-flavor-head"><div><span class="eyebrow">${builder.flavors.length} sabores</span><h2>Sabores de ${title}</h2></div><div><button class="ghost" type="button" data-builder-inventory="${kind}">Ver inventario</button> <button class="ghost" type="button" data-add-flavor="${kind}">+ Agregar sabor</button></div></div><div class="flavor-admin-list">${flavorRows}</div><div class="builder-actions"><button class="primary" data-save-builder="${kind}" aria-label="Guardar ${title}">Guardar y publicar ${title}</button></div></article>`;
+    const builderMode = availabilityModeFor(builder);
+    const availability = builder.visible === false ? "Oculto" : builderMode === "preorder" ? "Preordenar · 2 días" : builderMode === "sold-out" ? "Agotado" : "Disponible hoy";
+    const flavorRows = builder.flavors.map((flavor,index) => {
+      const flavorMode = availabilityModeFor(flavor);
+      const flavorLabel = flavorMode === "preorder" ? "Preordenar · 2 días" : flavorMode === "sold-out" ? "Agotado" : "Disponible hoy";
+      return `<div class="flavor-row" data-inventory-key="${escapeHtml(flavor.inventoryKey)}">${productThumb(flavor,`${title} · ${flavor.name}`)}<div class="flavor-copy"><div class="flavor-title"><h3>${escapeHtml(flavor.name)}</h3><span class="badge ${flavorMode === "sold-out" ? "red" : flavorMode === "available" ? "green" : ""}">${flavorLabel}</span>${builderFlavorInventoryBadge(kind, flavor)}</div><p>${escapeHtml(flavor.ingredients)}</p></div><div class="row-actions"><button data-edit-flavor="${kind}:${index}" aria-label="Editar sabor">✎</button><button data-delete-flavor="${kind}:${index}" aria-label="Eliminar sabor">×</button></div></div>`;
+    }).join("");
+    $(`#${kind}Editor`).innerHTML = `<article class="builder-card" data-builder="${kind}"><details class="builder-settings"><summary><span><b>Configuración general</b><small>Precios, sellos y disponibilidad</small></span><span class="builder-state">${availability}</span></summary><div class="builder-form">${pricing}<label class="span-2">Disponibilidad en la tienda<select data-builder-availability><option value="available" ${builderMode === "available" ? "selected" : ""}>Disponible hoy</option><option value="preorder" ${builderMode === "preorder" ? "selected" : ""}>Preordenar · entrega en 2 días</option><option value="sold-out" ${builderMode === "sold-out" ? "selected" : ""}>Agotado · permitir consulta</option></select><small>Esta elección se aplica a toda la caja. El inventario por sabor sigue limitando las unidades reales.</small></label><label class="switch"><input data-builder-field="visible" type="checkbox" ${builder.visible !== false ? "checked" : ""}><span>Visible en la tienda</span></label><label class="switch"><input data-builder-field="isNew" type="checkbox" ${builder.isNew ? "checked" : ""}><span>Etiqueta Nuevo</span></label><label class="switch"><input data-builder-field="promo" type="checkbox" ${builder.promo ? "checked" : ""}><span>Promoción del día</span></label><label class="switch"><input data-builder-field="glutenFree" type="checkbox" ${builder.glutenFree ? "checked" : ""}><span>Mostrar sello Sin gluten</span></label><label class="switch"><input data-builder-field="sugarFree" type="checkbox" ${builder.sugarFree ? "checked" : ""}><span>Mostrar sello Sin azúcar</span></label><label class="switch"><input data-builder-field="lactoseFree" type="checkbox" ${builder.lactoseFree ? "checked" : ""}><span>Mostrar sello Sin lactosa</span></label></div></details><div class="panel-head builder-flavor-head"><div><span class="eyebrow">${builder.flavors.length} sabores</span><h2>Sabores de ${title}</h2></div><div><button class="ghost" type="button" data-builder-inventory="${kind}">Ver inventario</button> <button class="ghost" type="button" data-add-flavor="${kind}">+ Agregar sabor</button></div></div><div class="flavor-admin-list">${flavorRows}</div><div class="builder-actions"><button class="primary" data-save-builder="${kind}" aria-label="Guardar ${title}">Guardar y publicar ${title}</button></div></article>`;
     $(".builder-form", $(`#${kind}Editor`)).insertAdjacentHTML("beforeend", `<label class="switch"><input data-builder-field="eggFree" type="checkbox" ${builder.eggFree ? "checked" : ""}><span>Mostrar sello Sin huevo</span></label><label class="switch"><input data-builder-field="requiresElectricity" type="checkbox" ${builder.requiresElectricity ? "checked" : ""}><span>Requiere electricidad para producirse</span></label>`);
   }
 
   function openFlavor(kind,index) {
-    const flavor = Number.isInteger(index) ? state.builders[kind].flavors[index] : {name:"",ingredients:"",image:"",status:"available"};
+    const flavor = Number.isInteger(index) ? state.builders[kind].flavors[index] : {name:"",ingredients:"",image:"",availabilityMode:"available",status:"available"};
     const form = $("#flavorForm");
     form.elements.builder.value = kind;
     form.elements.index.value = Number.isInteger(index) ? index : "";
-    ["name","ingredients","image","status"].forEach(field => { form.elements[field].value = flavor[field] || ""; });
+    ["name","ingredients","image"].forEach(field => { form.elements[field].value = flavor[field] || ""; });
+    form.elements.availabilityMode.value = availabilityModeFor(flavor);
     $("#flavorDialogTitle").textContent = Number.isInteger(index) ? "Editar sabor" : "Nuevo sabor";
     $("#flavorImagePreview").style.backgroundImage = `url("${absoluteImage(flavor.image)}")`;
     $("#flavorDialog").showModal();
@@ -2080,8 +2101,9 @@
     if (duplicate) return toast("Ya existe un producto con ese identificador");
     const weight = productWeightFromForm(form);
     if (weight.error) return toast(weight.error);
+    const availability = availabilityFields(String(data.get("availabilityMode")));
     const product = {
-      id,name:String(data.get("name")).trim(),brand:String(data.get("brand") || "").trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:weight.value,availabilityLabel:String(data.get("availabilityLabel")).trim(),minimumBusinessDays:Number(data.get("minimumBusinessDays") || 0),status:data.get("status"),stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",immediate:data.get("immediate") === "on",allowPreorder:data.get("allowPreorder") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
+      id,name:String(data.get("name")).trim(),brand:String(data.get("brand") || "").trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:weight.value,availabilityLabel:String(data.get("availabilityLabel")).trim(),...availability,stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
     };
     const index = state.products.findIndex(item => item.id === originalId);
     if (index >= 0) state.products[index] = product; else state.products.push(product);
@@ -2127,7 +2149,10 @@
     const card = event.target.closest("[data-builder]");
     if (!card) return;
     const builder = state.builders[card.dataset.builder];
-    if (event.target.dataset.builderField) {
+    if (event.target.matches("[data-builder-availability]")) {
+      Object.assign(builder, availabilityFields(event.target.value));
+      markDirty();
+    } else if (event.target.dataset.builderField) {
       const field = event.target.dataset.builderField;
       builder[field] = event.target.type === "checkbox" ? event.target.checked : event.target.type === "number" ? Number(event.target.value) : event.target.value;
       markDirty();
@@ -2153,7 +2178,7 @@
     // A newly created flavor must never reuse the SKU of a deleted flavor.
     // Existing flavors keep their immutable key across renames.
     const inventoryKey = existing?.inventoryKey || freshInventoryKey(name, usedKeys);
-    const flavor = {...(existing || {}),name,ingredients:String(data.get("ingredients")).trim(),image:String(data.get("image")).trim(),status:data.get("status"),inventoryKey};
+    const flavor = {...(existing || {}),name,ingredients:String(data.get("ingredients")).trim(),image:String(data.get("image")).trim(),inventoryKey,...availabilityFields(String(data.get("availabilityMode")))};
     if (!localMode) delete flavor.stockQuantity;
     if (index >= 0) state.builders[kind].flavors[index] = flavor; else state.builders[kind].flavors.push(flavor);
     markDirty();

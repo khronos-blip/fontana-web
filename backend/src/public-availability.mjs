@@ -91,8 +91,9 @@ function inventoryResult(candidates, inventory) {
 
 export function applyPublicProductAvailability(product, candidates, inventory) {
   const productResult = inventoryResult(candidates, inventory);
+  const manualUnavailable = product.availabilityMode === "preorder" || product.availabilityMode === "sold-out";
   product.stockTracked = productResult.tracked;
-  if (productResult.available !== null) {
+  if (!manualUnavailable && productResult.available !== null) {
     product.status = productResult.available ? "available" : "sold-out";
   }
   for (const variant of product.variants || []) {
@@ -152,7 +153,8 @@ export function applyPublicBuilderAvailability(builder, candidates, inventory) {
     const flavorResult = inventoryResult(flavorCandidates, inventory);
     flavor.inventoryKey = builderFlavorInventoryKey(flavor);
     flavor.stockTracked = flavorResult.tracked;
-    if (flavorResult.available !== null) {
+    const manualFlavorUnavailable = flavor.availabilityMode === "preorder" || flavor.availabilityMode === "sold-out";
+    if (!manualFlavorUnavailable && flavorResult.available !== null) {
       flavor.status = flavorResult.available ? "available" : "sold-out";
     }
     delete flavor.stockQuantity;

@@ -322,7 +322,10 @@ function createBuilderAvailabilityState() {
     builders: {
       fonkies: {
         visible: true,
+        availabilityMode: "available",
         status: "available",
+        allowPreorder: false,
+        immediate: true,
         immediateBoxAvailable: true,
         requiresElectricity: false,
         minimumQuantity: 4,
@@ -333,32 +336,45 @@ function createBuilderAvailabilityState() {
         flavors: [
           {
             name: "Fonkie con stock real",
+            availabilityMode: "available",
             inventoryKey: "fonkie-stock-real",
             ingredients: "Harina de almendra y chocolate vegano oscuro",
             image: "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg",
             status: "available",
+            allowPreorder: false,
+            immediate: true,
             stockTracked: true
           },
           {
             name: "Fonkie para encargo",
+            availabilityMode: "preorder",
             inventoryKey: "fonkie-preorder",
             ingredients: "Harina de almendra y pistacho",
             image: "assets/fonkie-pistachio-white-chocolate-fontana-pro.jpg",
             status: "sold-out",
+            allowPreorder: true,
+            immediate: false,
+            minimumBusinessDays: 2,
             stockTracked: true
           },
           {
             name: "Fonkie sin inventario cargado",
+            availabilityMode: "available",
             inventoryKey: "fonkie-pending",
             ingredients: "Harina de almendra y canela",
             image: "assets/fonkie-cinnamon-roll-fontana-pro.jpg",
-            status: "available"
+            status: "available",
+            allowPreorder: false,
+            immediate: true
           }
         ]
       },
       fomb: {
         visible: true,
+        availabilityMode: "available",
         status: "available",
+        allowPreorder: false,
+        immediate: true,
         immediateBoxAvailable: true,
         minimumQuantity: 4,
         sizes: [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }],
@@ -367,26 +383,36 @@ function createBuilderAvailabilityState() {
         flavors: [
           {
             name: "Fomb con cantidad cargada",
+            availabilityMode: "available",
             inventoryKey: "fomb-stock-real",
             ingredients: "Pistacho y chocolate blanco vegano",
             image: "assets/fomb-pistachio-fontana-pro.jpg",
             status: "available",
+            allowPreorder: false,
+            immediate: true,
             stockTracked: true
           },
           {
             name: "Fomb para encargo",
+            availabilityMode: "preorder",
             inventoryKey: "fomb-preorder",
             ingredients: "Avellana y chocolate oscuro vegano",
             image: "assets/fomb-ferrero-fontana-pro.jpg",
             status: "sold-out",
+            allowPreorder: true,
+            immediate: false,
+            minimumBusinessDays: 2,
             stockTracked: true
           },
           {
             name: "Fomb sin inventario cargado",
+            availabilityMode: "available",
             inventoryKey: "fomb-pending",
             ingredients: "Coco y chocolate blanco vegano",
             image: "assets/fomb-raffaello-fontana-pro.jpg",
-            status: "available"
+            status: "available",
+            allowPreorder: false,
+            immediate: true
           }
         ]
       }
@@ -2864,7 +2890,7 @@ test("Fomb avisa al alcanzar el máximo disponible de un sabor", async ({ page }
   await expect(page.locator("#toast")).toContainText("Llegaste al máximo disponible de Pistacho");
 });
 
-test("Fonkies agotados pasan automáticamente a Pre-Order de dos días", async ({ page }) => {
+test("Fonkies configurados para preordenar anuncian entrega en dos días", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
@@ -2874,8 +2900,11 @@ test("Fonkies agotados pasan automáticamente a Pre-Order de dos días", async (
       builders: {
         fonkies: {
           visible: true,
+          availabilityMode: "preorder",
           status: "sold-out",
-          allowPreorder: false,
+          allowPreorder: true,
+          immediate: false,
+          minimumBusinessDays: 2,
           requiresElectricity: false,
           minimumQuantity: 4,
           singlePrice: 15,
@@ -2896,7 +2925,7 @@ test("Fonkies agotados pasan automáticamente a Pre-Order de dos días", async (
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await openFlavorChoice(page, ".fonkie-builder");
   const flavor = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
-  await expect(flavor).toContainText("Pre-Order");
+  await expect(flavor).toContainText("Preordenar · 2 días");
   for (let index = 0; index < 4; index += 1) await flavor.locator('[data-delta="1"]').click();
   await expect(page.locator("#fonkieValidation")).toContainText(/pre-order/i);
   await page.locator("#addFonkieBox").click();
@@ -2913,7 +2942,7 @@ test("Fonkies y Fomb anuncian el inventario real en galería, selector y vista a
   await page.emulateMedia({ reducedMotion: "reduce" });
   const availabilityCases = [
     { state: "immediate", copy: "Entrega inmediata" },
-    { state: "preorder", copy: "Pre-Order · 2 días hábiles" },
+    { state: "preorder", copy: "Preordenar · 2 días" },
     { state: "pending", copy: "Disponibilidad por confirmar" }
   ];
   const builders = [
@@ -3222,8 +3251,8 @@ test("Stock de hoy exige inventario suficiente para una caja mínima completa", 
   await page.goto("http://fontana.localhost:8767/");
   await expect(fonkies).toHaveAttribute("data-immediate", "true");
   await expect(fomb).toHaveAttribute("data-immediate", "true");
-  await expect(fonkies.locator(".builder-admin-tags")).toContainText("STOCK DE HOY");
-  await expect(fomb.locator(".builder-admin-tags")).toContainText("STOCK DE HOY");
+  await expect(fonkies.locator(".builder-admin-tags")).toContainText("DISPONIBLE HOY");
+  await expect(fomb.locator(".builder-admin-tags")).toContainText("DISPONIBLE HOY");
   await page.getByRole("button", { name: "Stock de hoy" }).click();
   await expect(fonkies).toBeVisible();
   await expect(fomb).toBeVisible();
@@ -3730,7 +3759,7 @@ test("reordenar sabores no fusiona cajas distintas de Fonkies ni Fomb", async ({
   ]);
 });
 
-test("checkout refresca el inventario si la dueña cambia el stock con la tienda abierta", async ({ page }) => {
+test("checkout bloquea la compra si el stock se agota sin activar preordenar", async ({ page }) => {
   let state = {
     ...createBuilderAvailabilityState(),
     operations: { verified: true, electricityEnabled: true }
@@ -3770,16 +3799,16 @@ test("checkout refresca el inventario si la dueña cambia el stock con la tienda
   flavor.stockTracked = true;
   await page.locator("#continueCheckout").click();
 
-  await expect(page.locator("#checkoutForm")).toBeVisible();
-  await expect(page.locator("#checkoutPreparationGuide .prepared")).toContainText("Caja de 4 Fonkies");
+  await expect(page.locator("#checkoutForm")).toBeHidden();
+  await expect(page.locator("#toast")).toContainText("temporalmente no disponible");
   const reconciled = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")[0]);
-  expect(reconciled.inventory).toMatchObject({ availability: "preorder", preorder: true });
+  expect(reconciled.inventory).toMatchObject({ availability: "unavailable", preorder: false });
   expect(reconciled.inventory.flavors).toEqual([
-    expect.objectContaining({ name: "Fonkie con stock real", preorder: true, stockState: "preorder" })
+    expect.objectContaining({ name: "Fonkie con stock real", preorder: false, stockState: "unavailable" })
   ]);
 });
 
-test("salados con stock cero pasan a Pre-Order y las tortas no cambian", async ({ page }) => {
+test("ningún producto agotado pasa a preordenar sin que la dueña lo elija", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.addInitScript(() => {
     localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
@@ -3794,12 +3823,13 @@ test("salados con stock cero pasan a Pre-Order y las tortas no cambian", async (
   });
   await openPreview(page);
   const salado = page.locator('[data-product-id="salado-cero"]');
-  await expect(salado.locator(".product-tags")).toContainText("PRE-ORDER");
-  await expect(salado.locator(".product-front .add")).toHaveText("PRE-ORDER");
+  await expect(salado.locator(".product-tags")).toContainText("AGOTADO");
+  await expect(salado.locator(".product-front .add")).toHaveCount(0);
   await salado.locator(".product-media").first().click();
   await expect(salado).toHaveClass(/product-flipped/);
-  await salado.locator(".product-back .add").click();
-  await expect(page.locator("#cartCount")).toHaveText("1");
+  await expect(salado.locator(".product-back .add")).toHaveCount(0);
+  await expect(salado.locator(".product-back .product-quote")).toContainText("Preguntar disponibilidad");
+  await expect(page.locator("#cartCount")).toHaveText("0");
   await expect(page.locator('[data-product-id="torta-cero"] .add')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
@@ -5296,7 +5326,7 @@ test("Bottega conserva sus 11 productos a REF 10 y no promete stock sin inventar
     const card = group.locator(`[data-product-id="${expectedProduct.id}"]`);
     await expect(card).toHaveCount(1);
     await expect(card.locator(".price").first()).toHaveText("REF 10,00");
-    await expect(card).toContainText("DISPONIBILIDAD POR CONFIRMAR");
+    await expect(card.locator(".diet")).not.toBeEmpty();
     await expect(card.locator(".add")).toBeVisible();
     await expect(card.locator(".product-quote")).toHaveCount(0);
     await expect(card).not.toContainText("ENTREGA INMEDIATA");
@@ -5334,7 +5364,7 @@ test("Bottega habilita compra, agotado y pre-order solo según el inventario adm
   const pending = group.locator(`[data-product-id="${ids[3]}"]`);
 
   await expect(immediate.locator(".price").first()).toHaveText("REF 10,00");
-  await expect(immediate).toContainText("ENTREGA INMEDIATA");
+  await expect(immediate).toContainText("DISPONIBLE HOY");
   await expect(immediate.locator(".add")).toBeVisible();
   await immediate.locator(".add").click();
   await expect.poll(() => page.evaluate(productId => {
@@ -5344,11 +5374,10 @@ test("Bottega habilita compra, agotado y pre-order solo según el inventario adm
 
   await expect(unavailable).toContainText("AGOTADO");
   await expect(unavailable.locator(".add")).toHaveCount(0);
-  await expect(unavailable).not.toContainText("PRE-ORDER");
+  await expect(unavailable).not.toContainText("PREORDENAR");
 
-  await expect(preorder).toContainText("PRE-ORDER");
-  await expect(preorder).not.toContainText("2 días");
-  await expect(preorder.locator(".add")).toHaveText("PRE-ORDER");
+  await expect(preorder).toContainText("PREORDENAR · 2 DÍAS");
+  await expect(preorder.locator(".add")).toHaveText("PREORDENAR");
   await page.setViewportSize({width:320,height:568});
   await preorder.scrollIntoViewIfNeeded();
   const preorderFit = await preorder.evaluate(element => {
@@ -5369,7 +5398,7 @@ test("Bottega habilita compra, agotado y pre-order solo según el inventario adm
   });
   expect(preorderFit).toEqual({overflow:[],outside:[],overlaps:[],pageOverflow:0});
 
-  await expect(pending).toContainText("DISPONIBILIDAD POR CONFIRMAR");
+  await expect(pending).toContainText("500 ML");
   await expect(pending.locator(".add")).toBeVisible();
   await expect(pending).not.toContainText("ENTREGA INMEDIATA");
 
@@ -5896,20 +5925,36 @@ test("los salados muestran sus instrucciones de preparación confirmadas", async
   await expect(page.locator('[data-product-id="raviolis"]')).toContainText("6 minutos en agua hirviendo");
 });
 
-test("el panel puede agotar un sabor Fomb y la tienda habilita su Pre-Order", async ({ page }) => {
+test("el panel puede poner Fomb en preordenar y la tienda respeta los dos días", async ({ page }) => {
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
   await page.getByRole("button", { name: "Fomb", exact: true }).click();
-  await page.locator('#fombEditor [data-edit-flavor="fomb:0"]').click();
-  await page.locator('#flavorForm [name="status"]').selectOption("sold-out");
-  await page.getByRole("button", { name: "Guardar sabor" }).click();
+  await page.locator('#fombEditor [data-builder="fomb"] summary').click();
+  await page.locator('#fombEditor [data-builder-availability]').selectOption("preorder");
   await page.getByRole("button", { name: "Guardar Fomb" }).click();
 
   await page.goto("/");
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
-  const soldOut = page.locator('.fomb-flavor[data-flavor="Pistacho"]');
-  await expect(soldOut).toContainText("Pre-Order");
-  await expect(soldOut.locator('[data-delta="1"]')).toBeEnabled();
+  const preorder = page.locator('.fomb-flavor[data-flavor="Pistacho"]');
+  await expect(preorder).toContainText("Preordenar · 2 días");
+  await expect(preorder.locator('[data-delta="1"]')).toBeEnabled();
+});
+
+test("el panel permite elegir la disponibilidad de cada sabor", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Fonkies", exact: true }).click();
+  await page.locator('#fonkiesEditor [data-edit-flavor="fonkies:0"]').click();
+  await page.locator('#flavorForm [name="availabilityMode"]').selectOption("preorder");
+  await page.getByRole("button", { name: "Guardar sabor" }).click();
+  await page.getByRole("button", { name: "Guardar Fonkies" }).click();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const selectedFlavor = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
+  await expect(selectedFlavor).toContainText("Preordenar · 2 días");
+  await expect(selectedFlavor.locator('[data-delta="1"]')).toBeEnabled();
+  await expect(page.locator('.fonkie-gallery-card[data-flavor="Chispa de Chocolate Blanco"]')).not.toContainText("Preordenar");
 });
 
 test("Inventario es la única cantidad de Fonkies y Fomb y actualiza la tienda", async ({ page }) => {
@@ -5974,7 +6019,7 @@ test("Inventario es la única cantidad de Fonkies y Fomb y actualiza la tienda",
 
   await page.goto("/");
   const preorderCard = page.locator('.fonkie-gallery-card[data-flavor="Chips de Chocolate Oscuro"]');
-  await expect(preorderCard.locator(".builder-flavor-availability")).toHaveText("Pre-Order · 2 días hábiles");
+  await expect(preorderCard.locator(".builder-flavor-availability")).toHaveText("Temporalmente no disponible");
   await expect(page.locator(".fonkie-builder")).toHaveAttribute("data-immediate", "false");
   const immediateFomb = page.locator('.builder-gallery-card[data-flavor="Pistacho"]');
   await expect(immediateFomb.locator(".builder-flavor-availability")).toHaveText("Entrega inmediata");
@@ -6062,7 +6107,7 @@ test("el panel administrador permite entrar, editar y reflejar el catálogo en l
   const ballerine = page.locator('[data-product-id="ballerine"]');
   await expect(ballerine).toBeVisible();
   await expect(ballerine).toContainText("Disponible para celebrar hoy.");
-  await expect(ballerine.locator(".product-tag")).toHaveText("PROMOCIÓN DEL DÍA");
+  await expect(ballerine.locator(".product-tag").first()).toHaveText("PROMOCIÓN DEL DÍA");
 });
 
 test("el panel permite editar u ocultar el peso y volumen de cada producto", async ({ page }) => {
@@ -6231,7 +6276,7 @@ test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mi
   const fallbackCards = page.locator('.catalog-group[data-catalog-group="bottega"] .product[data-category="bottega"]');
   await expect(fallbackCards).toHaveCount(expectedBottegaProducts.length);
   await expect(fallbackCards.locator(".price")).toHaveText(Array(expectedBottegaProducts.length).fill("REF\u00a010,00"));
-  await expect(fallbackCards).toContainText(Array(expectedBottegaProducts.length).fill("DISPONIBILIDAD POR CONFIRMAR"));
+  await expect(fallbackCards).toContainText(Array(expectedBottegaProducts.length).fill("Consultar disponibilidad"));
   expect(await fallbackCards.evaluateAll(cards => cards.every(card => card.dataset.catalogManaged === "false"))).toBe(true);
   await expect(fallbackCards.locator(".add")).toHaveCount(0);
   const consultationLinks = fallbackCards.locator('.product-quote');
@@ -6377,7 +6422,7 @@ test("Bottega publicada por la API respeta el stock real disponible o en cero", 
   const unpublished = group.locator(`.product[data-category="bottega"]:not([data-product-id="${productIds[0]}"]):not([data-product-id="${productIds[1]}"])`);
 
   await expect(group.locator('.product[data-category="bottega"]')).toHaveCount(expectedBottegaProducts.length);
-  await expect(immediate).toContainText("ENTREGA INMEDIATA");
+  await expect(immediate).toContainText("DISPONIBLE HOY");
   await expect(immediate).toHaveAttribute("data-catalog-managed", "true");
   await expect(immediate.locator(".add")).toBeVisible();
   await immediate.locator(".add").click();
@@ -6410,7 +6455,7 @@ test("Bottega publicada por la API respeta el stock real disponible o en cero", 
   await expect(soldOut).toContainText("AGOTADO");
   await expect(soldOut.locator(".add")).toHaveCount(0);
   await expect(unpublished).toHaveCount(expectedBottegaProducts.length - productIds.length);
-  await expect(unpublished).toContainText(Array(expectedBottegaProducts.length - productIds.length).fill("DISPONIBILIDAD POR CONFIRMAR"));
+  await expect(unpublished).toContainText(Array(expectedBottegaProducts.length - productIds.length).fill("Consultar disponibilidad"));
   await expect(unpublished.locator(".add")).toHaveCount(0);
 });
 
@@ -6437,22 +6482,25 @@ test("el panel controla los sellos visibles de cada producto", async ({ page }, 
   await expect(seals).toHaveText(["Sin gluten", "Sin azúcar"]);
 });
 
-test("el panel publica stock, etiquetas y pre-order sin romper el carrito", async ({ page }) => {
+test("el panel publica disponible hoy, preordenar y agotado sin romper el carrito", async ({ page }) => {
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
   await page.getByRole("button", { name: "Productos", exact: true }).click();
   await page.locator('[data-product-id="ballerine"] [data-edit="ballerine"]').click();
   await page.locator('#productForm [name="stockQuantity"]').fill("0");
-  await page.locator('#productForm [name="allowPreorder"]').check();
+  await page.locator('#productForm [name="availabilityMode"]').selectOption("preorder");
   await page.locator('#productForm [name="isNew"]').check();
   await page.locator('#productForm [name="customLabels"]').fill("EDICIÓN ESPECIAL");
+  await page.getByRole("button", { name: "Guardar producto" }).click();
+  await page.locator('[data-product-id="san-pellegrino"] [data-edit="san-pellegrino"]').click();
+  await page.locator('#productForm [name="availabilityMode"]').selectOption("sold-out");
   await page.getByRole("button", { name: "Guardar producto" }).click();
   await page.getByRole("button", { name: "Guardar cambios" }).click();
 
   await page.goto("/");
   const ballerine = page.locator('[data-product-id="ballerine"]');
-  await expect(ballerine.locator(".product-tags")).toContainText("AGOTADO");
-  await expect(ballerine.locator(".product-tags")).toContainText("PRE-ORDER");
+  await expect(ballerine.locator(".product-tags")).toContainText("PREORDENAR · 2 DÍAS");
+  await expect(ballerine.locator(".product-tags")).not.toContainText("AGOTADO");
   await expect(ballerine.locator(".product-tags")).toContainText("NUEVO");
   await expect(ballerine.locator(".product-tags")).toContainText("EDICIÓN ESPECIAL");
   await openProductCard(page, ballerine);
@@ -6460,6 +6508,11 @@ test("el panel publica stock, etiquetas y pre-order sin romper el carrito", asyn
   await closeProductCard(page);
   await page.locator("#cartButton").click();
   await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días hábiles");
+  await page.locator("#closeCart").click();
+  const soldOut = page.locator('[data-product-id="san-pellegrino"]');
+  await expect(soldOut.locator(".product-tags")).toContainText("AGOTADO");
+  await expect(soldOut.locator(".add")).toHaveCount(0);
+  await expect(soldOut.locator(".product-quote")).toContainText("Preguntar disponibilidad");
 });
 
 test("el panel puede ocultar un producto de toda la tienda", async ({ page }) => {
@@ -6780,7 +6833,7 @@ test("el panel administra sabores especiales en tarjetas compactas y conserva el
     };
   });
   expect(compactLayout.columns).toBe(2);
-  expect(compactLayout.tallestCard).toBeLessThanOrEqual(78);
+  expect(compactLayout.tallestCard).toBeLessThanOrEqual(86);
   expect(compactLayout.fitsViewport).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("fonkies-admin-compacto-movil.png"), fullPage: false });
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -7408,13 +7461,13 @@ test("las métricas del resumen abren productos con su filtro en móvil y escrit
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
-  await page.locator('#stats [data-dashboard-filter="immediate"]').click();
+  await page.locator('#stats [data-dashboard-filter="available"]').click();
   await expect(page.getByRole("heading", { name: "Productos", exact: true })).toBeVisible();
-  await expect(page.locator("#statusFilter")).toHaveValue("immediate");
-  await expect(page.locator("#productFilterSummary")).toContainText("Stock de hoy");
+  await expect(page.locator("#statusFilter")).toHaveValue("available");
+  await expect(page.locator("#productFilterSummary")).toContainText("Disponibles hoy");
   await expect(page.locator("#productFilterSummary")).toContainText(/\d+ productos?/);
   expect(await page.locator("#productList .product-row").count()).toBeGreaterThan(0);
-  await page.screenshot({ path: testInfo.outputPath("resumen-stock-filtrado-movil.png"), fullPage: false });
+  await page.screenshot({ path: testInfo.outputPath("resumen-disponibles-filtrado-movil.png"), fullPage: false });
 
   await page.getByRole("button", { name: "Ver todos", exact: true }).click();
   await expect(page.locator("#statusFilter")).toHaveValue("all");
@@ -7443,8 +7496,9 @@ test("el inventario usa reservas transaccionales, vencimiento y contabilidad aut
   expect(worker).toContain('/v1/orders/reserve');
   expect(worker).toContain('/v1/orders/validate');
   expect(worker).toContain('resolveStockChecks');
-  expect(worker).toContain('automaticPreorderForProduct');
-  expect(worker).toContain('automaticPreorderForBuilder');
+  expect(worker).not.toContain('automaticPreorderForProduct');
+  expect(worker).not.toContain('automaticPreorderForBuilder');
+  expect(worker).toContain('product.allowPreorder === true');
   expect(worker).toContain('resolveReservationCart(publicState');
   expect(worker).toContain('/v1/admin/inventory');
   expect(worker).toContain('/v1/admin/orders');

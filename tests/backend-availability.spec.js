@@ -115,3 +115,19 @@ test("un producto agotado por inventario conserva la política configurada de pr
     expect.objectContaining({ id: "bottega-agotado-con-preorder", status: "sold-out", stockTracked: true, allowPreorder: true })
   ]);
 });
+
+test("la selección manual de preordenar o agotado no es anulada por inventario con unidades", async () => {
+  const { applyPublicProductAvailability } = await import("../backend/src/public-availability.mjs");
+  const preorder = { id:"preorden", availabilityMode:"preorder", status:"sold-out", allowPreorder:true };
+  const soldOut = { id:"agotado", availabilityMode:"sold-out", status:"sold-out", allowPreorder:false };
+  const inventory = new Map([
+    ["product:preorden:base:base", { trackStock:true, available:8 }],
+    ["product:agotado:base:base", { trackStock:true, available:8 }]
+  ]);
+
+  applyPublicProductAvailability(preorder, [{ sku:"product:preorden:base:base" }], inventory);
+  applyPublicProductAvailability(soldOut, [{ sku:"product:agotado:base:base" }], inventory);
+
+  expect(preorder).toMatchObject({ availabilityMode:"preorder", status:"sold-out", allowPreorder:true, stockTracked:true });
+  expect(soldOut).toMatchObject({ availabilityMode:"sold-out", status:"sold-out", allowPreorder:false, stockTracked:true });
+});
