@@ -120,6 +120,106 @@ test("hover no descarga Bottega y la vista expandida termina en el original", as
   }))).toEqual({srcset:null,original:true,complete:true});
 });
 
+test("la primera carga fría mantiene un fondo lila hasta que la imagen esté pintada", async ({ browser }) => {
+  const viewports = [
+    { width:390, height:844 },
+    { width:1366, height:900 }
+  ];
+
+  for (const viewport of viewports) {
+    const context = await browser.newContext({ viewport, deviceScaleFactor:2 });
+    const page = await context.newPage();
+    let releaseCatalog;
+    let releaseImage;
+    const catalogGate = new Promise(resolve => { releaseCatalog = resolve; });
+    const imageGate = new Promise(resolve => { releaseImage = resolve; });
+    let imageRequests = 0;
+    const state = catalogState();
+    state.products.unshift({
+      id:"pistacho", category:"cakes", name:"Torta de Pistacho y Frambuesa", price:60,
+      image:"assets/pistachio-raspberry-fontana-v2.jpg", description:"Producto de prueba.",
+      ingredients:"Harina de almendra.", weight:"1 KG", visible:true, status:"available"
+    });
+    const responsiveRoute = /\/assets\/responsive\/pistachio-raspberry-fontana-v2-[a-f0-9]+-(?:360|640|960)\.webp(?:\?.*)?$/;
+
+    await page.route("https://api.fontanasingluten.com/v1/catalog", async route => {
+      await catalogGate;
+      await route.fulfill({
+        status:200,
+        contentType:"application/json",
+        headers:{"access-control-allow-origin":"*"},
+        body:JSON.stringify({state})
+      });
+    });
+    await page.route(responsiveRoute, async route => {
+      imageRequests += 1;
+      await imageGate;
+      await route.continue();
+    });
+
+    try {
+      await page.goto(builtStorefront, { waitUntil:"domcontentloaded" });
+      const staticCard = page.locator('[data-id="pistacho"]');
+      await staticCard.scrollIntoViewIfNeeded();
+      const staticMedia = staticCard.locator(".product-media");
+      const staticImage = staticMedia.locator("img");
+      await expect.poll(() => imageRequests).toBeGreaterThan(0);
+      await expect.poll(() => staticImage.evaluate(image => ({
+        pending:image.classList.contains("catalog-image-pending"),
+        loading:image.closest(".product-media").classList.contains("catalog-image-loading"),
+        opacity:getComputedStyle(image).opacity,
+        background:getComputedStyle(image.closest(".product-media")).backgroundImage,
+        ready:image.complete && image.naturalWidth > 0
+      }))).toEqual({
+        pending:true,
+        loading:true,
+        opacity:"0",
+        background:expect.stringContaining("linear-gradient"),
+        ready:false
+      });
+
+      releaseCatalog();
+      const hydratedCard = page.locator('[data-product-id="pistacho"]');
+      await expect(hydratedCard).toHaveClass(/product-flip-ready/);
+      const hydratedImage = hydratedCard.locator(".product-front .product-media img");
+      const blockedFrames = await hydratedImage.evaluate(async image => {
+        const frames = [];
+        for (let index = 0; index < 12; index += 1) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          const media = image.closest(".product-media");
+          frames.push({
+            pending:image.classList.contains("catalog-image-pending"),
+            loading:media.classList.contains("catalog-image-loading"),
+            opacity:getComputedStyle(image).opacity,
+            background:getComputedStyle(media).backgroundImage,
+            ready:image.complete && image.naturalWidth > 0
+          });
+        }
+        return frames;
+      });
+      for (const frame of blockedFrames) {
+        expect(frame.pending).toBe(true);
+        expect(frame.loading).toBe(true);
+        expect(frame.opacity).toBe("0");
+        expect(frame.background).toContain("linear-gradient");
+        expect(frame.ready).toBe(false);
+      }
+
+      releaseImage();
+      await expect.poll(() => hydratedImage.evaluate(image => ({
+        ready:image.complete && image.naturalWidth > 0,
+        pending:image.classList.contains("catalog-image-pending"),
+        loading:image.closest(".product-media").classList.contains("catalog-image-loading"),
+        opacity:getComputedStyle(image).opacity
+      }))).toEqual({ready:true,pending:false,loading:false,opacity:"1"});
+    } finally {
+      releaseCatalog?.();
+      releaseImage?.();
+      await context.close();
+    }
+  }
+});
+
 test("el filtro cambia al instante y conserva un fondo estable hasta pintar el WebP de Bottega", async ({ page }) => {
   let releaseResponsive;
   const responsiveGate = new Promise(resolve => { releaseResponsive = resolve; });

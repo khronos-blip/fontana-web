@@ -4,6 +4,7 @@
   const config = window.FONTANA_CONFIG || {};
   const $ = (selector, context = document) => context.querySelector(selector);
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
+  const catalogImageSelector = ".product-media img, .fonkie-gallery-card img, .builder-gallery-card img";
   const soldOutStyle = document.createElement("style");
   soldOutStyle.textContent = ".builder-flavor-expanded-sold-out img,.product-expanded.product-sold-out:not(.product-temporarily-unavailable) .product-media img{filter:brightness(.5) saturate(.62)}";
   document.head.append(soldOutStyle);
@@ -25,6 +26,11 @@
   // The catalogue request can be slow or offline; the visible menu heading
   // must not wait for it before running its existing entrance animation.
   setupMenuIntro();
+  // Protect the catalogue's server-rendered images before waiting for the
+  // remote inventory. On a cold connection that request may take several
+  // seconds; installing the loading state here prevents an unfinished image
+  // from exposing the dark card background during that interval.
+  setupCatalogImageStability();
   let adminState = await readAdminState();
   const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
   let productionWithElectricity = localMode ? adminState?.settings?.productionWithElectricity !== false : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
@@ -4955,8 +4961,6 @@
     }
     syncCatalogGroups();
   }
-
-  const catalogImageSelector = ".product-media img, .fonkie-gallery-card img, .builder-gallery-card img";
 
   function waitForCatalogPaint() {
     return new Promise(resolve => {
