@@ -2982,6 +2982,10 @@ test("Fonkies y Fomb anuncian el inventario real en galería, selector y vista a
         const compactCard = builder.locator(`${builderCase.card}[data-flavor="${flavorName}"]`);
         await expect(compactCard).toHaveAttribute("data-stock-state", expected.state);
         await expect(compactCard.locator(".builder-flavor-availability")).toHaveText(expected.copy);
+        if (expected.state === "preorder") {
+          await expect(compactCard).not.toHaveClass(/builder-flavor-sold-out/);
+          await expect(compactCard).toHaveCSS("opacity", "1");
+        }
         if (expected.state === "pending") await expect(compactCard).not.toContainText("Entrega inmediata");
       }
 
@@ -2992,6 +2996,10 @@ test("Fonkies y Fomb anuncian el inventario real en galería, selector y vista a
         const selectorRow = builder.locator(`${builderCase.row}[data-flavor="${flavorName}"]`);
         await expect(selectorRow).toHaveAttribute("data-stock-state", expected.state);
         await expect(selectorRow.locator(".builder-flavor-availability")).toHaveText(expected.copy);
+        if (expected.state === "preorder") {
+          await expect(selectorRow).not.toHaveClass(/builder-flavor-sold-out/);
+          await expect(selectorRow).toHaveCSS("opacity", "1");
+        }
         if (expected.state === "pending") await expect(selectorRow).not.toContainText("Entrega inmediata");
       }
 
@@ -5423,12 +5431,19 @@ test("Bottega habilita compra, agotado y pre-order solo según el inventario adm
   }, ids[0])).toBe("immediate");
 
   await expect(unavailable).toContainText("AGOTADO");
+  await expect(unavailable).toHaveClass(/product-sold-out/);
+  await expect(unavailable).toHaveCSS("opacity", "0.66");
   await expect(unavailable.locator(".add")).toHaveCount(0);
   await expect(unavailable).not.toContainText("PREORDENAR");
 
   await expect(preorder).toContainText("PREORDENAR · 2 DÍAS");
+  await expect(preorder).not.toHaveClass(/product-sold-out/);
+  await expect(preorder).toHaveCSS("opacity", "1");
   await expect(preorder.locator(".add")).toHaveText("PREORDENAR");
   await page.setViewportSize({width:320,height:568});
+  await openProductCard(page, unavailable);
+  await expect(unavailable.locator(".product-expanded-media img")).not.toHaveCSS("filter", "none");
+  await closeProductCard(page);
   await preorder.scrollIntoViewIfNeeded();
   const preorderFit = await preorder.evaluate(element => {
     const footer = element.querySelector(".product-front .product-footer"), outer = footer.getBoundingClientRect();
@@ -5987,11 +6002,17 @@ test("el panel puede poner Fomb en preordenar y la tienda respeta los dos días"
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   const preorder = page.locator('.fomb-flavor[data-flavor="Pistacho"]');
   await expect(preorder).toContainText("Preordenar · 2 días");
+  await expect(preorder).toHaveAttribute("data-stock-state", "preorder");
+  await expect(preorder).not.toHaveClass(/builder-flavor-sold-out/);
+  await expect(preorder).toHaveCSS("opacity", "1");
   await expect(preorder.locator('[data-delta="1"]')).toBeEnabled();
   await page.emulateMedia({reducedMotion:"reduce"});
-  await page.locator('.builder-gallery-card[data-flavor="Pistacho"]').click();
+  const preorderCard = page.locator('.builder-gallery-card[data-flavor="Pistacho"]');
+  await expect(preorderCard).not.toHaveClass(/builder-flavor-sold-out/);
+  await preorderCard.click();
   const expanded = page.locator('.builder-flavor-flip-card[data-flavor="Pistacho"]');
   await expect(expanded.locator(".builder-flavor-expanded-availability")).toHaveText("Preordenar · 2 días");
+  await expect(expanded).not.toHaveClass(/builder-flavor-expanded-sold-out/);
   await expect(expanded.locator('.builder-flavor-quantity-button').last()).toBeEnabled();
   await expanded.locator(".builder-flavor-expanded-media").click();
 });
@@ -6027,14 +6048,20 @@ test("un sabor agotado bloquea la cantidad y permite preguntar su disponibilidad
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   const row = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
   await expect(row.locator(".builder-flavor-availability")).toHaveText("Agotado");
+  await expect(row).toHaveAttribute("data-sold-out", "true");
   await expect(row.locator('[data-delta="1"]')).toBeDisabled();
   const consult = row.locator(".builder-flavor-consult");
   await expect(consult).toHaveText("Preguntar disponibilidad");
   await expect(consult).toHaveAttribute("href", /wa\.me\/.*Chips%20de%20Chocolate%20Oscuro/);
 
-  await page.locator('.fonkie-gallery-card[data-flavor="Chips de Chocolate Oscuro"]').click();
+  const soldOutCard = page.locator('.fonkie-gallery-card[data-flavor="Chips de Chocolate Oscuro"]');
+  await expect(soldOutCard).toHaveClass(/builder-flavor-sold-out/);
+  await expect(soldOutCard).toHaveCSS("opacity", "0.58");
+  await soldOutCard.click();
   const expanded = page.locator('.builder-flavor-flip-card[data-flavor="Chips de Chocolate Oscuro"]');
   await expect(expanded.locator(".builder-flavor-expanded-availability")).toHaveText("Agotado");
+  await expect(expanded).toHaveClass(/builder-flavor-expanded-sold-out/);
+  await expect(expanded.locator(".builder-flavor-expanded-media img")).not.toHaveCSS("filter", "none");
   await expect(expanded.locator(".builder-flavor-expanded-consult")).toBeVisible();
   await expect(expanded.locator('.builder-flavor-quantity-button').last()).toBeDisabled();
 });
@@ -6606,6 +6633,8 @@ test("el panel publica disponible hoy, preordenar y agotado sin romper el carrit
   await page.goto("/");
   const ballerine = page.locator('[data-product-id="ballerine"]');
   await expect(ballerine.locator(".product-tags")).toContainText("PREORDENAR · 2 DÍAS");
+  await expect(ballerine).not.toHaveClass(/product-sold-out/);
+  await expect(ballerine).toHaveCSS("opacity", "1");
   await expect(ballerine.locator(".product-tags")).not.toContainText("AGOTADO");
   await expect(ballerine.locator(".product-tags")).toContainText("NUEVO");
   await expect(ballerine.locator(".product-tags")).toContainText("EDICIÓN ESPECIAL");
@@ -6617,8 +6646,14 @@ test("el panel publica disponible hoy, preordenar y agotado sin romper el carrit
   await page.locator("#closeCart").click();
   const soldOut = page.locator('[data-product-id="san-pellegrino"]');
   await expect(soldOut.locator(".product-tags")).toContainText("AGOTADO");
+  await expect(soldOut).toHaveClass(/product-sold-out/);
+  await expect(soldOut).toHaveCSS("opacity", "0.66");
   await expect(soldOut.locator(".add")).toHaveCount(0);
   await expect(soldOut.locator(".product-quote")).toContainText("Preguntar disponibilidad");
+  await openProductCard(page, soldOut);
+  await expect(soldOut).toHaveCSS("opacity", "1");
+  await expect(soldOut.locator(".product-expanded-media img")).not.toHaveCSS("filter", "none");
+  await closeProductCard(page);
 });
 
 test("el panel puede ocultar un producto de toda la tienda", async ({ page }) => {

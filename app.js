@@ -4,6 +4,9 @@
   const config = window.FONTANA_CONFIG || {};
   const $ = (selector, context = document) => context.querySelector(selector);
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
+  const soldOutStyle = document.createElement("style");
+  soldOutStyle.textContent = ".builder-flavor-expanded-sold-out img,.product-expanded.product-sold-out:not(.product-temporarily-unavailable) .product-media img{filter:brightness(.5) saturate(.62)}";
+  document.head.append(soldOutStyle);
   const adminStorageKey = "fontana-admin-catalog-v1";
   const localMode = ["localhost", "127.0.0.1"].includes(location.hostname);
   let storefrontReady = false;
@@ -702,11 +705,16 @@
     return `<small class="builder-flavor-availability" data-stock-state="${details.state}">${details.label}</small>`;
   }
 
+  function builderFlavorShowsSoldOut(details = {}) {
+    return details.state === "unavailable" && details.temporarilyUnavailable !== true;
+  }
+
   function decorateStaticBuilderAvailability(builder, cardSelector, rowSelector, details) {
     const decorate = (element, labelHost) => {
+      const showsSoldOut = builderFlavorShowsSoldOut(details);
       element.dataset.stockState = details.state;
-      element.dataset.soldOut = String(details.soldOut);
-      element.classList.toggle("builder-flavor-sold-out", details.soldOut);
+      element.dataset.soldOut = String(showsSoldOut);
+      element.classList.toggle("builder-flavor-sold-out", showsSoldOut);
       const host = labelHost(element);
       if (!host) return;
       let label = $(".builder-flavor-availability", host);
@@ -928,12 +936,14 @@
       if (count) count.textContent = `${flavors.length} sabores`;
       if (gallery) gallery.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
-        return `<figure class="fonkie-gallery-card${stock.soldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
+        const showsSoldOut = builderFlavorShowsSoldOut(stock);
+        return `<figure class="fonkie-gallery-card${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
       }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
+        const showsSoldOut = builderFlavorShowsSoldOut(stock);
         const consult = builderFlavorConsultMarkup(stock, `${flavor.name} de Fonkies`);
-        return `<div class="fonkie-flavor" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${stock.state === "unavailable" ? "disabled" : ""}>+</button></div></div>`;
+        return `<div class="fonkie-flavor${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${stock.state === "unavailable" ? "disabled" : ""}>+</button></div></div>`;
       }).join("");
       const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       fonkieBuilder.dataset.ingredients = availableIngredients;
@@ -970,12 +980,14 @@
       if (count) count.textContent = `${flavors.length} sabores`;
       if (gallery) gallery.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
-        return `<figure class="builder-gallery-card${stock.soldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
+        const showsSoldOut = builderFlavorShowsSoldOut(stock);
+        return `<figure class="builder-gallery-card${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
       }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
+        const showsSoldOut = builderFlavorShowsSoldOut(stock);
         const consult = builderFlavorConsultMarkup(stock, `${flavor.name} de Fomb`);
-        return `<div class="fomb-flavor" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${stock.soldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${stock.state === "unavailable" ? "disabled" : ""}>+</button></div></div>`;
+        return `<div class="fomb-flavor${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${stock.state === "unavailable" ? "disabled" : ""}>+</button></div></div>`;
       }).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
@@ -2271,6 +2283,9 @@
       state.ingredients.textContent = nextMeta?.ingredients?.trim() || "Ingredientes pendientes de confirmar con Fontana.";
       state.availability.textContent = nextStock.label;
       state.availability.dataset.stockState = nextStock.state;
+      const showsSoldOut = builderFlavorShowsSoldOut(nextStock);
+      state.overlay.dataset.soldOut = String(showsSoldOut);
+      state.overlay.classList.toggle("builder-flavor-expanded-sold-out", showsSoldOut);
       const consultHref = soldOutConsultHref(`${nextName} de ${state.kind === "fonkies" ? "Fonkies" : "Fomb"}`);
       state.consult.hidden = nextStock.state !== "unavailable" || nextStock.temporarilyUnavailable || !consultHref;
       if (consultHref) state.consult.href = consultHref;
