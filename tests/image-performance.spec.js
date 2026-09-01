@@ -120,6 +120,141 @@ test("hover no descarga Bottega y la vista expandida termina en el original", as
   }))).toEqual({srcset:null,original:true,complete:true});
 });
 
+test("el filtro cambia al instante y conserva un fondo estable hasta pintar el WebP de Bottega", async ({ page }) => {
+  let releaseResponsive;
+  const responsiveGate = new Promise(resolve => { releaseResponsive = resolve; });
+  let responsiveRequests = 0;
+  const responsiveRoute = /\/assets\/responsive\/de-cecco-tortiglioni-fontana-[a-f0-9]+-(?:360|640|960)\.webp(?:\?.*)?$/;
+  await page.route(responsiveRoute, async route => {
+    responsiveRequests += 1;
+    await responsiveGate;
+    await route.continue();
+  });
+
+  try {
+    await openBuiltCatalog(page);
+
+    const cakesFilter = page.getByRole("button", {name:"Foncake · Tortas completas", exact:true});
+    const bottegaFilter = page.getByRole("button", {name:"Bottega", exact:true});
+    const cake = page.locator('[data-product-id="ballerine"]');
+    const bottega = page.locator('[data-product-id="bottega-de-cecco-tortiglioni"]');
+    const bottegaImage = bottega.locator(".product-front .product-media img");
+    const bottegaMedia = bottega.locator(".product-front .product-media");
+
+    await cakesFilter.click();
+    await expect(cakesFilter).toHaveClass(/active/);
+    await expect(cake).toBeVisible();
+    await expect(bottega).toBeHidden();
+
+    await bottegaFilter.click();
+    await expect(bottegaFilter).toHaveAttribute("aria-busy", "true");
+    await expect.poll(() => responsiveRequests).toBeGreaterThan(0);
+
+    await expect(bottegaFilter).toHaveClass(/active/);
+    await expect(cake).toBeHidden();
+    await expect(bottega).toBeVisible();
+    await expect(bottegaImage).toHaveClass(/catalog-image-pending/);
+    const loadingPaint = await bottegaImage.evaluate(image => ({
+      opacity:getComputedStyle(image).opacity,
+      transition:getComputedStyle(image).transitionDuration,
+      background:getComputedStyle(image.closest(".product-media")).backgroundImage
+    }));
+    expect(loadingPaint).toEqual({
+      opacity:"0",
+      transition:"0s",
+      background:expect.stringContaining("linear-gradient")
+    });
+
+    // A rapid round trip must share the same warm-up instead of leaving the
+    // responsive image permanently eager or cancelling the active busy state.
+    await cakesFilter.click();
+    await bottegaFilter.click();
+    await bottegaFilter.click();
+    await expect(bottegaFilter).toHaveAttribute("aria-busy", "true");
+
+    releaseResponsive();
+    await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(bottegaFilter).toHaveClass(/active/);
+    await expect(cake).toBeHidden();
+    await expect(bottega).toBeVisible();
+    await expect.poll(() => bottegaImage.evaluate(image => ({
+      complete:image.complete && image.naturalWidth > 0,
+      opacity:getComputedStyle(image).opacity,
+      pending:image.classList.contains("catalog-image-pending")
+    }))).toEqual({complete:true,opacity:"1",pending:false});
+    await expect(bottegaMedia).not.toHaveClass(/catalog-image-loading/);
+    await expect(bottegaImage).toHaveAttribute("loading", "lazy");
+  } finally {
+    releaseResponsive?.();
+    await page.unroute(responsiveRoute);
+  }
+});
+
+test("volver a Bottega ya cargada no oculta la imagen ni repite su descarga", async ({ page }) => {
+  const bottegaRequests = [];
+  page.on("request", request => {
+    if (request.resourceType() === "image" && /\/assets\/(?:responsive\/)?de-cecco-tortiglioni-fontana-?/.test(request.url())) {
+      bottegaRequests.push(request.url());
+    }
+  });
+  await openBuiltCatalog(page);
+
+  const cakesFilter = page.getByRole("button", {name:"Foncake · Tortas completas", exact:true});
+  const bottegaFilter = page.getByRole("button", {name:"Bottega", exact:true});
+  const bottega = page.locator('[data-product-id="bottega-de-cecco-tortiglioni"]');
+  const bottegaImage = bottega.locator(".product-front .product-media img");
+
+  await cakesFilter.click();
+  await expect(cakesFilter).toHaveClass(/active/);
+  await bottegaFilter.click();
+  await expect(bottegaFilter).toHaveClass(/active/);
+  await expect(bottega).toBeVisible();
+  await expect.poll(() => bottegaImage.evaluate(image => ({
+    complete:image.complete && image.naturalWidth > 0,
+    opacity:getComputedStyle(image).opacity,
+    pending:image.classList.contains("catalog-image-pending")
+  }))).toEqual({complete:true,opacity:"1",pending:false});
+  expect(bottegaRequests.length).toBeGreaterThan(0);
+
+  const loadedSource = await bottegaImage.evaluate(image => image.currentSrc);
+  const requestCountAfterLoad = bottegaRequests.length;
+  await cakesFilter.click();
+  await expect(cakesFilter).toHaveClass(/active/);
+
+  const frames = await page.evaluate(async () => {
+    const filter = [...document.querySelectorAll(".filter")]
+      .find(button => button.dataset.filter === "bottega");
+    const card = document.querySelector('[data-product-id="bottega-de-cecco-tortiglioni"]');
+    const media = card.querySelector(".product-front .product-media");
+    const image = media.querySelector("img");
+    filter.click();
+    const samples = [];
+    for (let index = 0; index < 12; index += 1) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      samples.push({
+        active:filter.classList.contains("active"),
+        hidden:card.classList.contains("hidden"),
+        opacity:getComputedStyle(image).opacity,
+        pending:image.classList.contains("catalog-image-pending"),
+        loading:media.classList.contains("catalog-image-loading"),
+        currentSrc:image.currentSrc
+      });
+    }
+    return samples;
+  });
+
+  expect(frames.some(frame => frame.active && !frame.hidden)).toBe(true);
+  for (const frame of frames) {
+    expect(frame.opacity).toBe("1");
+    expect(frame.pending).toBe(false);
+    expect(frame.loading).toBe(false);
+    expect(frame.currentSrc).toBe(loadedSource);
+  }
+  await expect(bottegaFilter).toHaveClass(/active/);
+  await expect(bottega).toBeVisible();
+  expect(bottegaRequests).toHaveLength(requestCountAfterLoad);
+});
+
 async function expectResponsiveFlavorPromotion(page, scenario) {
   let releaseOriginal;
   const originalGate = new Promise(resolve => { releaseOriginal = resolve; });

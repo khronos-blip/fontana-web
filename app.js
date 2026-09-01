@@ -4958,6 +4958,12 @@
 
   const catalogImageSelector = ".product-media img, .fonkie-gallery-card img, .builder-gallery-card img";
 
+  function waitForCatalogPaint() {
+    return new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  }
+
   function stabilizeCatalogImage(image) {
     if (image.dataset.catalogImageStability === "true") return;
     image.dataset.catalogImageStability = "true";
@@ -4974,10 +4980,14 @@
       }
       Promise.resolve(decoded).catch(() => {}).then(() => {
         if (epoch !== revealEpoch || !image.isConnected || image.naturalWidth <= 0) return;
+        // Safari can resolve decode() one paint before the texture reaches the compositor.
         requestAnimationFrame(() => {
           if (epoch !== revealEpoch || !image.isConnected) return;
-          image.classList.remove("catalog-image-pending");
-          frame?.classList.remove("catalog-image-loading");
+          requestAnimationFrame(() => {
+            if (epoch !== revealEpoch || !image.isConnected) return;
+            image.classList.remove("catalog-image-pending");
+            frame?.classList.remove("catalog-image-loading");
+          });
         });
       });
     };
@@ -4997,6 +5007,83 @@
     $$(catalogImageSelector).forEach(stabilizeCatalogImage);
   }
 
+  function waitForCatalogImage(image, timeout = 1600) {
+    if (image.complete) return Promise.resolve();
+    return new Promise(resolve => {
+      let settled = false;
+      let timer;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        image.removeEventListener("load", finish);
+        image.removeEventListener("error", finish);
+        resolve();
+      };
+      image.addEventListener("load", finish, { once:true });
+      image.addEventListener("error", finish, { once:true });
+      timer = setTimeout(finish, timeout);
+    });
+  }
+
+  const catalogImageWarmPromises = new WeakMap();
+
+  function warmCatalogImage(image) {
+    if (!image?.isConnected) return Promise.resolve();
+    const currentWarm = catalogImageWarmPromises.get(image);
+    if (currentWarm) return currentWarm;
+
+    const previousLoading = image.getAttribute("loading");
+    const warming = (async () => {
+      try {
+        if (!image.complete || image.naturalWidth <= 0) image.loading = "eager";
+        await waitForCatalogImage(image);
+        if (!image.complete || image.naturalWidth <= 0) return;
+        try {
+          if (typeof image.decode === "function") await image.decode();
+        } catch (_error) {}
+        if (!image.isConnected || image.naturalWidth <= 0) return;
+        await waitForCatalogPaint();
+        if (!image.isConnected) return;
+        image.classList.remove("catalog-image-pending");
+        image.closest(".product-media, .fonkie-gallery-card, .builder-gallery-card")?.classList.remove("catalog-image-loading");
+      } finally {
+        if (previousLoading) image.setAttribute("loading", previousLoading);
+        else image.removeAttribute("loading");
+        catalogImageWarmPromises.delete(image);
+      }
+    })();
+    catalogImageWarmPromises.set(image, warming);
+    return warming;
+  }
+
+  async function warmCatalogFilter(filter) {
+    // Prioritize only the first viewport for the selected category. This keeps
+    // its placeholder stable without bringing back full-catalog eager loading.
+    const compactImages = [];
+    const selector = ".product-front .product-media img, .fonkie-gallery-track .fonkie-gallery-card img, .builder-gallery-track .builder-gallery-card img";
+    $$(".product, .fonkie-builder, .builder-panel")
+      .filter(item => catalogItemMatchesFilter(item, filter))
+      .forEach(item => {
+        $$(selector, item).forEach(image => {
+          if (!compactImages.includes(image)) compactImages.push(image);
+        });
+      });
+    const warmLimit = innerWidth <= 640 ? 2 : innerWidth <= 960 ? 3 : 4;
+    await Promise.all(compactImages.slice(0, warmLimit).map(warmCatalogImage));
+  }
+
+  function centerCatalogFilter(button) {
+    const rail = button.closest(".filters");
+    if (!rail) return;
+    const railRect = rail.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    rail.scrollBy({
+      left:buttonRect.left - railRect.left - ((railRect.width - buttonRect.width) / 2),
+      behavior:"smooth"
+    });
+  }
+
   applyAdminCatalog();
   applyAdminBuilders();
   renderDynamicCatalog();
@@ -5005,12 +5092,23 @@
   const stockTodayFilter = $('.filter[data-filter="immediate"]');
   if (stockTodayFilter && !stockTodayOpen) stockTodayFilter.hidden = true;
   setupProductQuantityControls();
+  let catalogFilterEpoch = 0;
   $$(".filter").forEach(button => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
+      centerCatalogFilter(button);
+      if (button.classList.contains("active")) {
+        return;
+      }
+      const epoch = ++catalogFilterEpoch;
+      $$(".filter").forEach(item => item.removeAttribute("aria-busy"));
+      button.setAttribute("aria-busy", "true");
+      const warming = warmCatalogFilter(button.dataset.filter);
       $$(".filter").forEach(item => item.classList.remove("active"));
       button.classList.add("active");
-      button.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
       filterProducts(button.dataset.filter);
+      await warming;
+      if (epoch !== catalogFilterEpoch) return;
+      button.removeAttribute("aria-busy");
     });
   });
 
