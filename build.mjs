@@ -8,7 +8,9 @@ import { builderProducts, categoryPages, dietaryFor, site, staticProducts } from
 
 const outputDirectory = "dist";
 const responsiveImageDirectory = `${outputDirectory}/assets/responsive`;
+const responsiveImageRecipe = "fontana-webp-q95-smart-v1";
 const responsiveImages = new Map();
+const catalogImagePaths = new Set();
 
 function fingerprint(contents) {
   return createHash("sha256").update(contents).digest("hex").slice(0, 12);
@@ -146,9 +148,13 @@ async function prepareResponsiveImages(images) {
       if (!metadata.width || !metadata.height) continue;
       const widths = [360, 640, 960].filter(width => width < metadata.width);
       const basename = path.basename(image, path.extname(image)).replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
+      const assetHash = fingerprint(Buffer.concat([
+        Buffer.from(`${responsiveImageRecipe}\0`),
+        await readFile(input)
+      ])).slice(0, 7);
       const sources = [];
       for (const width of widths) {
-        const filename = `${basename}-${width}.webp`;
+        const filename = `${basename}-${assetHash}-${width}.webp`;
         const destination = `${responsiveImageDirectory}/${filename}`;
         await sharp(input)
           .resize({ width, withoutEnlargement: true })
@@ -169,13 +175,29 @@ function enhanceHomepageImages(html) {
     if (/\bsrcset=/.test(tag)) return tag;
     const responsive = responsiveImages.get(image);
     if (!responsive) return tag;
-    const sourceSet = responsive.sources.map(source => `${source.path} ${source.width}w`).join(", ");
+    // The homepage only renders compact cards. Its original remains the `src`
+    // fallback and is promoted after decode on expansion, so it does not need
+    // to inflate every compact `srcset` as an eager high-DPR candidate.
+    const sourceSet = responsive.sources
+      .filter(source => source.path !== image)
+      .map(source => `${source.path} ${source.width}w`)
+      .join(",");
     const sizes = /(?:logo|seal|brand)/i.test(`${before} ${image} ${after}`)
       ? "(max-width: 640px) 180px, 260px"
-      : "(max-width: 640px) 92vw, (max-width: 1100px) 50vw, 540px";
+      : catalogImagePaths.has(image)
+        ? "(max-width:640px) calc(50vw - 18.5px),(max-width:959px) calc(50vw - 29px),380px"
+        : "(max-width: 640px) 92vw, (max-width: 1100px) 50vw, 540px";
     const dimensions = `${/\bwidth=/.test(tag) ? "" : ` width="${responsive.width}"`}${/\bheight=/.test(tag) ? "" : ` height="${responsive.height}"`}`;
-    return `<img${before}src="${image}" srcset="${sourceSet}" sizes="${sizes}"${dimensions}${after}>`;
+    const responsiveAttributes = sourceSet ? ` srcset="${sourceSet}" sizes="${sizes}"` : "";
+    return `<img${before}src="${image}"${responsiveAttributes}${dimensions}${after}>`;
   });
+}
+
+function responsiveManifestScript() {
+  const manifest = Object.fromEntries([...responsiveImages.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([image, responsive]) => [image, responsive]));
+  return `window.FONTANA_RESPONSIVE_IMAGES=${JSON.stringify(manifest)};\n`;
 }
 
 function navigation() {
@@ -318,6 +340,9 @@ const configuredProducts = Array.isArray(configContext.window.FONTANA_CONFIG?.dy
 const products = [...staticProducts, ...builderProducts, ...configuredProducts]
   .filter(product => product?.id && product.visible !== false && !product.deleted)
   .map(product => ({ ...product, image: String(product.image || site.defaultImage).replace(/^\//, "") }));
+[...staticProducts, ...configuredProducts]
+  .filter(product => product?.image)
+  .forEach(product => catalogImagePaths.add(String(product.image).replace(/^\//, "")));
 const homepageImages = [...sourceHtml.matchAll(/src="(assets\/[^"]+\.(?:jpe?g|png|webp))"/gi)].map(match => match[1]);
 await prepareResponsiveImages([...products.map(product => product.image), ...homepageImages, site.logo, site.defaultImage]);
 await sharp(String(site.defaultImage).replace(/^\//, ""))
@@ -326,19 +351,22 @@ await sharp(String(site.defaultImage).replace(/^\//, ""))
   .toFile(`${outputDirectory}${site.defaultSocialImage}`);
 const configVersion = fingerprint(configContents);
 const appVersion = fingerprint(appContents);
+const responsiveManifestContents = responsiveManifestScript();
+const responsiveManifestVersion = fingerprint(responsiveManifestContents);
 const adminScriptVersion = fingerprint(adminScriptContents);
 const adminStyleVersion = fingerprint(adminStyleContents);
 const seoStyleVersion = fingerprint(seoStyleContents);
 const seoStyleFile = `seo.${seoStyleVersion}.css`;
 
 await writeFile(`${outputDirectory}/config.${configVersion}.js`, configContents);
+await writeFile(`${outputDirectory}/images.${responsiveManifestVersion}.js`, responsiveManifestContents);
 await writeFile(`${outputDirectory}/app.${appVersion}.js`, appContents);
 await writeFile(`${outputDirectory}/admin/admin.${adminScriptVersion}.js`, adminScriptContents);
 await writeFile(`${outputDirectory}/admin/admin.${adminStyleVersion}.css`, adminStyleContents);
 await writeFile(`${outputDirectory}/${seoStyleFile}`, seoStyleContents);
 
 let html = sourceHtml
-  .replace('<script src="config.js"></script>', `<script src="config.${configVersion}.js"></script>`)
+  .replace('<script src="config.js"></script>', `<script src="config.${configVersion}.js"></script><script src="images.${responsiveManifestVersion}.js"></script>`)
   .replace('<script src="app.js"></script>', `<script src="app.${appVersion}.js"></script>`)
   .replaceAll("https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg", `${site.origin}${site.defaultSocialImage}`)
   .replace('<meta property="og:image:width" content="1448">', '<meta property="og:image:width" content="1200">')

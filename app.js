@@ -55,6 +55,112 @@
     return optimizedAssetPaths.get(path) || path;
   }
 
+  const compactProductImageSizes = "(max-width:640px) calc(50vw - 18.5px),(max-width:959px) calc(50vw - 29px),380px";
+  const compactGalleryImageSizes = "(max-width:640px) calc(100vw - 26px),(max-width:959px) calc(100vw - 40px),460px";
+  const decodedImagePreloads = new Map();
+
+  function localImageKey(source) {
+    const value = String(source || "").trim();
+    if (!value || /^(?:data|blob):/i.test(value)) return "";
+    try {
+      const url = new URL(value, location.href);
+      if (url.origin !== location.origin) return "";
+      const assetsIndex = url.pathname.indexOf("/assets/");
+      return assetsIndex >= 0
+        ? url.pathname.slice(assetsIndex + 1)
+        : url.pathname.replace(/^\/+/, "");
+    } catch (_error) {
+      return value.replace(/^\/+/, "").split(/[?#]/, 1)[0];
+    }
+  }
+
+  function responsiveImageDetails(source) {
+    const key = localImageKey(source);
+    return key ? window.FONTANA_RESPONSIVE_IMAGES?.[key] || null : null;
+  }
+
+  function responsiveImageMarkup(source, alt, { sizes = compactProductImageSizes, loading = "lazy" } = {}) {
+    const image = optimizedProductImage(source || "assets/logo.png");
+    const responsive = responsiveImageDetails(image);
+    const fullImageKey = localImageKey(image);
+    const compactSources = responsive?.sources
+      ?.filter(candidate => localImageKey(candidate.path) !== fullImageKey) || [];
+    const attributes = [
+      `src="${escapeHtml(image)}"`,
+      compactSources.length
+        ? `srcset="${compactSources.map(candidate => `${escapeHtml(candidate.path)} ${Number(candidate.width)}w`).join(", ")}"`
+        : "",
+      compactSources.length ? `sizes="${escapeHtml(sizes)}"` : "",
+      `data-full-src="${escapeHtml(image)}"`,
+      responsive?.width ? `width="${Number(responsive.width)}"` : "",
+      responsive?.height ? `height="${Number(responsive.height)}"` : "",
+      loading ? `loading="${escapeHtml(loading)}"` : "",
+      `decoding="async"`,
+      `alt="${escapeHtml(alt || "")}"`
+    ].filter(Boolean);
+    return `<img ${attributes.join(" ")}>`;
+  }
+
+  function fullImageSource(image) {
+    return image?.dataset.fullSrc || image?.getAttribute("src") || "";
+  }
+
+  function preloadDecodedImage(source) {
+    const value = String(source || "").trim();
+    if (!value) return Promise.resolve(false);
+    if (decodedImagePreloads.has(value)) return decodedImagePreloads.get(value);
+    const task = new Promise(resolve => {
+      const preload = new Image();
+      const finish = success => resolve(Boolean(success && preload.naturalWidth > 0));
+      preload.decoding = "async";
+      preload.addEventListener("load", async () => {
+        try {
+          if (typeof preload.decode === "function") await preload.decode();
+          finish(true);
+        } catch (_error) {
+          finish(preload.complete);
+        }
+      }, { once:true });
+      preload.addEventListener("error", () => finish(false), { once:true });
+      preload.src = value;
+    });
+    decodedImagePreloads.set(value, task);
+    task.then(success => {
+      if (!success) decodedImagePreloads.delete(value);
+    });
+    return task;
+  }
+
+  function waitForDecodedImage(source, timeout = 5000) {
+    return Promise.race([
+      preloadDecodedImage(source),
+      new Promise(resolve => window.setTimeout(() => resolve(false), timeout))
+    ]);
+  }
+
+  function absoluteImageUrl(source) {
+    try {
+      return new URL(source, location.href).href;
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function useDecodedImageSource(target, source, fullSource = source) {
+    if (!target || !source) return false;
+    target.removeAttribute("srcset");
+    target.removeAttribute("sizes");
+    target.dataset.fullSrc = fullSource || source;
+    target.src = source;
+    return true;
+  }
+
+  function useFullResolutionImage(target, sourceImage = target) {
+    const source = fullImageSource(sourceImage);
+    if (!target || !source) return false;
+    return useDecodedImageSource(target, source, source);
+  }
+
   function productHasLocalTrackedStock(product = {}) {
     return localMode
       && product.stockQuantity !== null
@@ -937,7 +1043,7 @@
       if (gallery) gallery.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
         const showsSoldOut = builderFlavorShowsSoldOut(stock);
-        return `<figure class="fonkie-gallery-card${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fonkie ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
+        return `<figure class="fonkie-gallery-card${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}">${responsiveImageMarkup(flavor.image || "assets/logo.png", `Fonkie ${flavor.name}`, { sizes:compactGalleryImageSizes })}<span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
       }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
@@ -981,7 +1087,7 @@
       if (gallery) gallery.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
         const showsSoldOut = builderFlavorShowsSoldOut(stock);
-        return `<figure class="builder-gallery-card${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><img src="${escapeHtml(flavor.image || "assets/logo.png")}" alt="Fomb ${escapeHtml(flavor.name)}" loading="lazy" decoding="async"><span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
+        return `<figure class="builder-gallery-card${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}">${responsiveImageMarkup(flavor.image || "assets/logo.png", `Fomb ${flavor.name}`, { sizes:compactGalleryImageSizes })}<span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
       }).join("");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
@@ -1363,6 +1469,7 @@
       let sourceCardRect = null;
       let geometryFrame = 0;
       let motionEpoch = 0;
+      let compactImageState = null;
       const motionDuration = 860;
       const targetTransform = "perspective(1800px) translate3d(0, 0, 0) scale(1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg)";
 
@@ -1550,6 +1657,21 @@
           || document.querySelector(".builder-flavor-flip-card")
         ) return;
         restoreTarget = trigger || media;
+        const liveImage = $("img", media);
+        compactImageState = liveImage ? {
+          image:liveImage,
+          src:liveImage.getAttribute("src"),
+          srcset:liveImage.getAttribute("srcset"),
+          sizes:liveImage.getAttribute("sizes")
+        } : null;
+        const fullSource = fullImageSource(liveImage);
+        const fullUrl = absoluteImageUrl(fullSource);
+        if (liveImage && fullSource && (liveImage.hasAttribute("srcset") || !fullUrl || liveImage.currentSrc !== fullUrl)) {
+          preloadDecodedImage(fullSource).then(ready => {
+            if (!ready || activeCard !== card || !liveImage.isConnected) return;
+            useFullResolutionImage(liveImage);
+          });
+        }
         const rect = card.getBoundingClientRect();
         sourceCardRect = { width:rect.width, height:rect.height };
         const geometry = resolveExpandedGeometry(sourceCardRect);
@@ -1707,6 +1829,15 @@
           front.setAttribute("aria-hidden", "false");
           back.setAttribute("aria-hidden", "true");
           media.setAttribute("aria-expanded", "false");
+          if (compactImageState?.image?.isConnected) {
+            const compactImage = compactImageState.image;
+            compactImage.setAttribute("src", compactImageState.src || fullImageSource(compactImage));
+            if (compactImageState.srcset) compactImage.setAttribute("srcset", compactImageState.srcset);
+            else compactImage.removeAttribute("srcset");
+            if (compactImageState.sizes) compactImage.setAttribute("sizes", compactImageState.sizes);
+            else compactImage.removeAttribute("sizes");
+          }
+          compactImageState = null;
           // Finish any pending row-height work while the viewport is still
           // frozen. Otherwise a lazy image or the previous close can reflow the
           // next card between unlock and the final scroll restoration.
@@ -2198,29 +2329,73 @@
       };
     };
 
-    const preloadFlavorImage = card => {
+    const flavorPreviewSource = card => {
       const image = $("img", card);
-      const source = image?.currentSrc || image?.getAttribute("src");
-      if (!source) return Promise.resolve();
-      const preload = new Image();
-      preload.src = source;
-      const decoded = typeof preload.decode === "function"
-        ? preload.decode().catch(() => {})
-        : new Promise(resolve => {
-          preload.addEventListener("load", resolve, { once: true });
-          preload.addEventListener("error", resolve, { once: true });
-        });
-      return Promise.race([
-        decoded,
-        new Promise(resolve => window.setTimeout(resolve, 260))
-      ]);
+      if (!image) return "";
+      if (image.complete && image.naturalWidth > 0 && image.currentSrc) return image.currentSrc;
+      const fullSource = fullImageSource(image);
+      const fullSourceKey = localImageKey(fullSource);
+      const responsive = responsiveImageDetails(fullSource);
+      const compactSources = responsive?.sources
+        ?.filter(candidate => localImageKey(candidate.path) !== fullSourceKey)
+        .sort((left, right) => Number(left.width) - Number(right.width)) || [];
+      return compactSources.at(-1)?.path || image.currentSrc || image.getAttribute("src") || "";
+    };
+
+    const preloadFlavorPreview = async (card, timeout = 180) => {
+      const source = flavorPreviewSource(card);
+      return {
+        source,
+        ready:source ? await waitForDecodedImage(source, timeout) : false
+      };
     };
 
     const warmAdjacentFlavorImages = state => {
       if (state.cards.length < 2) return;
       [-1, 1].forEach(direction => {
         const index = (state.currentIndex + direction + state.cards.length) % state.cards.length;
-        preloadFlavorImage(state.cards[index]);
+        preloadDecodedImage(flavorPreviewSource(state.cards[index]));
+      });
+    };
+
+    const clearFlavorImageLoading = state => {
+      state.backImage.classList.remove("catalog-image-pending");
+      state.media.classList.remove("catalog-image-loading");
+    };
+
+    const promoteFlavorOriginal = (state, card, { reveal = false } = {}) => {
+      const image = $("img", card);
+      const source = fullImageSource(image);
+      if (!source) return;
+      preloadDecodedImage(source).then(ready => {
+        if (!ready || active !== state || state.closing || state.currentSource !== card) return;
+        useFullResolutionImage(state.backImage, image);
+        if (reveal) clearFlavorImageLoading(state);
+      });
+    };
+
+    const renderFlavorImage = (state, card, { source, ready }) => {
+      const image = $("img", card);
+      const fullSource = fullImageSource(image);
+      if (!source || !useDecodedImageSource(state.backImage, source, fullSource)) {
+        promoteFlavorOriginal(state, card, { reveal:true });
+        return;
+      }
+      state.backImage.classList.toggle("catalog-image-pending", !ready);
+      state.media.classList.toggle("catalog-image-loading", !ready);
+      if (ready) {
+        clearFlavorImageLoading(state);
+        promoteFlavorOriginal(state, card);
+        return;
+      }
+      preloadDecodedImage(source).then(previewReady => {
+        if (active !== state || state.closing || state.currentSource !== card) return;
+        if (previewReady) {
+          clearFlavorImageLoading(state);
+          promoteFlavorOriginal(state, card);
+        } else {
+          promoteFlavorOriginal(state, card, { reveal:true });
+        }
       });
     };
 
@@ -2263,7 +2438,7 @@
       state.done.disabled = state.quantityBusy;
     };
 
-    const renderFlavor = (state, card) => {
+    const renderFlavor = (state, card, { preserveImage = false, imageSource = "", imageReady = false } = {}) => {
       const nextName = flavorName(card);
       const nextMeta = flavorMeta(state.kind, nextName);
       const builderElement = card.closest(".fonkie-builder, .fomb-builder");
@@ -2276,8 +2451,7 @@
       state.currentSource = card;
       state.currentIndex = state.cards.indexOf(card);
       state.currentName = nextName;
-      const source = nextImage?.getAttribute("src") || nextImage?.currentSrc;
-      if (source) state.backImage.setAttribute("src", source);
+      if (!preserveImage) renderFlavorImage(state, card, { source:imageSource || flavorPreviewSource(card), ready:imageReady });
       state.backImage.alt = nextImage?.alt || `${state.kind === "fonkies" ? "Fonkie" : "Fomb"} ${nextName}`;
       state.heading.textContent = nextName;
       state.ingredients.textContent = nextMeta?.ingredients?.trim() || "Ingredientes pendientes de confirmar con Fontana.";
@@ -2393,17 +2567,16 @@
       syncFlavorCue(state);
       const nextIndex = (state.currentIndex + direction + state.cards.length) % state.cards.length;
       const nextCard = state.cards[nextIndex];
-      await preloadFlavorImage(nextCard);
-      if (active !== state || state.closing || switchEpoch !== state.flavorSwitchEpoch) return;
-
-      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const exitAngle = direction > 0 ? -89.8 : 89.8;
-      const entryAngle = -exitAngle;
-      const exitFadeAngle = direction > 0 ? -81 : 81;
-      const entryFadeAngle = -exitFadeAngle;
       try {
+        const preview = await preloadFlavorPreview(nextCard);
+        if (active !== state || state.closing || switchEpoch !== state.flavorSwitchEpoch) return;
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const exitAngle = direction > 0 ? -89.8 : 89.8;
+        const entryAngle = -exitAngle;
+        const exitFadeAngle = direction > 0 ? -81 : 81;
+        const entryFadeAngle = -exitFadeAngle;
         if (reduceMotion) {
-          renderFlavor(state, nextCard);
+          renderFlavor(state, nextCard, { imageSource:preview.source, imageReady:preview.ready });
         } else {
           state.flavorMotion = state.back.animate([
             { transform: "perspective(1500px) rotateY(0deg) scale(1)", opacity: 1, offset: 0 },
@@ -2416,7 +2589,7 @@
           });
           await state.flavorMotion.finished;
           if (active !== state || state.closing || switchEpoch !== state.flavorSwitchEpoch) return;
-          renderFlavor(state, nextCard);
+          renderFlavor(state, nextCard, { imageSource:preview.source, imageReady:preview.ready });
           state.back.style.transform = `perspective(1500px) rotateY(${entryAngle}deg) scale(.985)`;
           state.back.style.opacity = "0";
           state.flavorMotion.cancel();
@@ -3002,7 +3175,8 @@
       };
       state.quantityBuilder?.addEventListener("fontana:flavor-change", state.quantityChangeHandler);
       active = state;
-      renderFlavor(state, source);
+      renderFlavor(state, source, { preserveImage:true });
+      promoteFlavorOriginal(state, source);
       const refreshGeometry = () => scheduleExpandedFlavorGeometryRefresh(state);
       window.addEventListener("resize", refreshGeometry, { signal: layoutController.signal });
       window.addEventListener("orientationchange", refreshGeometry, { signal: layoutController.signal });
@@ -3287,7 +3461,7 @@
       if (immediate) badges.push("DISPONIBLE HOY");
       (Array.isArray(product.customLabels) ? product.customLabels : []).forEach(label => { if (label) badges.push(String(label).slice(0,40)); });
       const image = product.image
-        ? `<img src="${escapeHtml(product.image)}" alt="${escapeHtml(name)}" loading="lazy" decoding="async">`
+        ? responsiveImageMarkup(product.image, name)
         : `<div class="product-placeholder"><div><b>${escapeHtml(name)}</b><small>Foto por actualizar</small></div></div>`;
       const sizePrices = availableSizes.map(size => Number(size.price)).filter(value => Number.isFinite(value));
       const minimumSizePrice = sizePrices.length ? Math.min(...sizePrices) : null;
@@ -4763,9 +4937,6 @@
 
   function filterProducts(filter) {
     const catalogItems = $$(".product, .fonkie-builder, .builder-panel");
-    if (filter !== "all") {
-      primeCatalogImages(catalogItems.filter(product => catalogItemMatchesFilter(product, filter)));
-    }
     catalogItems.forEach(product => {
       product.classList.toggle("hidden", !catalogItemMatchesFilter(product, filter));
     });
@@ -4790,6 +4961,7 @@
   function stabilizeCatalogImage(image) {
     if (image.dataset.catalogImageStability === "true") return;
     image.dataset.catalogImageStability = "true";
+    const frame = image.closest(".product-media, .fonkie-gallery-card, .builder-gallery-card");
     let revealEpoch = 0;
     const reveal = () => {
       if (!image.complete || image.naturalWidth <= 0) return;
@@ -4805,33 +4977,24 @@
         requestAnimationFrame(() => {
           if (epoch !== revealEpoch || !image.isConnected) return;
           image.classList.remove("catalog-image-pending");
-          image.style.removeProperty("opacity");
+          frame?.classList.remove("catalog-image-loading");
         });
       });
     };
     if (!image.complete || image.naturalWidth <= 0) {
       image.classList.add("catalog-image-pending");
-      image.style.opacity = "0";
+      frame?.classList.add("catalog-image-loading");
     }
     image.addEventListener("load", reveal);
     image.addEventListener("error", () => {
       image.classList.add("catalog-image-pending");
-      image.style.opacity = "0";
+      frame?.classList.add("catalog-image-loading");
     });
     if (image.complete && image.naturalWidth > 0) reveal();
   }
 
   function setupCatalogImageStability() {
     $$(catalogImageSelector).forEach(stabilizeCatalogImage);
-  }
-
-  function primeCatalogImages(items) {
-    items.forEach(item => {
-      $$(catalogImageSelector, item).forEach(image => {
-        stabilizeCatalogImage(image);
-        if (!image.complete || image.naturalWidth <= 0) image.loading = "eager";
-      });
-    });
   }
 
   applyAdminCatalog();
@@ -4843,16 +5006,6 @@
   if (stockTodayFilter && !stockTodayOpen) stockTodayFilter.hidden = true;
   setupProductQuantityControls();
   $$(".filter").forEach(button => {
-    const prime = () => {
-      const filter = button.dataset.filter;
-      if (filter === "all") return;
-      const items = $$(".product, .fonkie-builder, .builder-panel")
-        .filter(product => catalogItemMatchesFilter(product, filter));
-      primeCatalogImages(items);
-    };
-    button.addEventListener("pointerenter", prime);
-    button.addEventListener("pointerdown", prime);
-    button.addEventListener("focus", prime);
     button.addEventListener("click", () => {
       $$(".filter").forEach(item => item.classList.remove("active"));
       button.classList.add("active");

@@ -22,17 +22,20 @@ const bottegaAssets = [
 test("el build publica JavaScript versionado sin inflar el HTML principal", async () => {
   const html = await readFile(path.join(process.cwd(), "dist/index.html"), "utf8");
   expect(html).toMatch(/<script src="config\.[a-f0-9]{12}\.js"><\/script>/);
+  expect(html).toMatch(/<script src="images\.[a-f0-9]{12}\.js"><\/script>/);
   expect(html).toMatch(/<script src="app\.[a-f0-9]{12}\.js"><\/script>/);
   expect(html).not.toContain("data-store-app");
   expect(html).toContain("Precios expresados en REF.");
   expect(html).not.toMatch(/>\$\d/);
-  expect(Buffer.byteLength(html)).toBeLessThan(153_000);
-  expect(gzipSync(html).byteLength).toBeLessThan(32_000);
+  expect(Buffer.byteLength(html)).toBeLessThan(153_100);
+  expect(gzipSync(html).byteLength).toBeLessThan(32_100);
   const files = await readdir(path.join(process.cwd(), "dist"));
   const appFile = files.find(file => /^app\.[a-f0-9]{12}\.js$/.test(file));
   const configFile = files.find(file => /^config\.[a-f0-9]{12}\.js$/.test(file));
+  const imageManifestFile = files.find(file => /^images\.[a-f0-9]{12}\.js$/.test(file));
   expect(appFile).toBeTruthy();
   expect(configFile).toBeTruthy();
+  expect(imageManifestFile).toBeTruthy();
   expect((await stat(path.join(process.cwd(), "dist", appFile))).size).toBeGreaterThan(100_000);
 });
 
@@ -72,10 +75,19 @@ test("el build publica confianza, privacidad y una página 404 útil", async ({ 
 test("las imágenes responsivas conservan el original de alta resolución", async () => {
   const homepage = await readFile(path.join(process.cwd(), "dist/index.html"), "utf8");
   const category = await readFile(path.join(process.cwd(), "dist/tortas-sin-gluten-carabobo/index.html"), "utf8");
+  const files = await readdir(path.join(process.cwd(), "dist"));
+  const imageManifestFile = files.find(file => /^images\.[a-f0-9]{12}\.js$/.test(file));
+  const manifest = await readFile(path.join(process.cwd(), "dist", imageManifestFile), "utf8");
   expect(homepage).toContain("assets/responsive/");
-  expect(homepage).toContain("assets/pistachio-raspberry-fontana-v2.jpg 1448w");
   expect(category).toContain("/assets/responsive/");
   expect(category).toContain("/assets/pistachio-raspberry-fontana-v2.jpg 1448w");
+  expect(manifest).toContain('"assets/pistachio-raspberry-fontana-v2.jpg","width":1448');
+  expect(manifest).toContain('"assets/bottega/de-cecco-penne-rigate-fontana.jpg"');
+  expect(manifest).toMatch(/de-cecco-penne-rigate-fontana-[a-f0-9]{7}-360\.webp/);
+  expect(manifest).toContain('"assets/fonkie-dark-chocolate-chips-fontana-pro.jpg"');
+  expect(manifest).toContain('"assets/fomb-pistachio-fontana-pro.jpg"');
+  expect(homepage).toMatch(/src="assets\/fonkie-dark-chocolate-chips-fontana-pro\.jpg"[^>]+sizes="\(max-width: 640px\) 92vw, \(max-width: 1100px\) 50vw, 540px"/);
+  expect(homepage).not.toContain('srcset=""');
   expect(homepage).toContain("https://fontanasingluten.com/assets/fontana-og-share.jpg");
   expect((await stat(path.join(process.cwd(), "dist/assets/fontana-og-share.jpg"))).size).toBeGreaterThan(100_000);
 });

@@ -7050,53 +7050,59 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   expect(browserErrors).toEqual([]);
 });
 
-test("los cambios de categoría no muestran imágenes negras mientras terminan de cargar", async ({ page }) => {
-  const cases = [
-    { viewport:{width:390,height:844}, id:"bottega-barilla-pesto-sin-ajo", image:"barilla-pesto-sin-ajo-fontana.jpg" },
-    { viewport:{width:1366,height:900}, id:"bottega-cirio-passata", image:"cirio-passata-fontana.jpg" }
-  ];
-
-  for (const scenario of cases) {
-    await page.setViewportSize(scenario.viewport);
-    let releaseImage;
-    let requestStarted = false;
-    const gate = new Promise(resolve => { releaseImage = resolve; });
-    await page.route(`**/${scenario.image}`, async route => {
+test("los filtros no precargan categorías completas y conservan un fondo lila al cargar", async ({ page }) => {
+  await page.setViewportSize({width:390,height:844});
+  let releaseImage;
+  let requestStarted = false;
+  let bottegaRequests = 0;
+  const gate = new Promise(resolve => { releaseImage = resolve; });
+  await page.route("**/assets/bottega/**", async route => {
+    bottegaRequests += 1;
+    if (route.request().url().endsWith("de-cecco-tortiglioni-fontana.jpg")) {
       requestStarted = true;
       await gate;
-      await route.continue();
-    }, {times:1});
-
-    try {
-      await openPreview(page);
-      await page.getByRole("button", {name:"Bottega",exact:true}).click();
-      await expect.poll(() => requestStarted).toBe(true);
-      const card = page.locator(`.product[data-product-id="${scenario.id}"]`);
-      const image = card.locator(".product-front .product-media img");
-      await expect(image).toHaveClass(/catalog-image-pending/);
-      const loadingPaint = await image.evaluate(element => {
-        const media = element.closest(".product-media");
-        return {
-          opacity:getComputedStyle(element).opacity,
-          backgroundImage:getComputedStyle(media).backgroundImage,
-          cardTransformStyle:getComputedStyle(element.closest(".product-flip-ready")).transformStyle,
-          galleryWillChange:getComputedStyle(document.querySelector(".fonkie-gallery-card")).willChange
-        };
-      });
-      expect(loadingPaint.opacity).toBe("0");
-      expect(loadingPaint.backgroundImage).toContain("linear-gradient");
-      expect(loadingPaint.cardTransformStyle).toBe("flat");
-      expect(loadingPaint.galleryWillChange).toBe("auto");
-      releaseImage();
-      await expect.poll(() => image.evaluate(element => ({
-        pending:element.classList.contains("catalog-image-pending"),
-        complete:element.complete,
-        naturalWidth:element.naturalWidth
-      }))).toEqual({pending:false,complete:true,naturalWidth:1200});
-    } finally {
-      releaseImage?.();
-      await page.unroute(`**/${scenario.image}`);
     }
+    await route.continue();
+  });
+
+  try {
+    await openPreview(page);
+    const filter = page.getByRole("button", {name:"Bottega",exact:true});
+    await filter.hover();
+    await filter.focus();
+    await page.waitForTimeout(120);
+    expect(bottegaRequests).toBe(0);
+    await expect(page.getByRole("button", {name:"Ver todo"})).toHaveClass(/active/);
+
+    await filter.click();
+    await expect.poll(() => requestStarted).toBe(true);
+    const card = page.locator('.product[data-product-id="bottega-de-cecco-tortiglioni"]');
+    const image = card.locator(".product-front .product-media img");
+    await expect(image).toHaveAttribute("loading", "lazy");
+    await expect(page.locator('.catalog-group[data-catalog-group="bottega"] img[loading="eager"]')).toHaveCount(0);
+    await expect(image).toHaveClass(/catalog-image-pending/);
+    const loadingPaint = await image.evaluate(element => {
+      const media = element.closest(".product-media");
+      return {
+        opacity:getComputedStyle(element).opacity,
+        backgroundImage:getComputedStyle(media).backgroundImage,
+        cardTransformStyle:getComputedStyle(element.closest(".product-flip-ready")).transformStyle,
+        galleryWillChange:getComputedStyle(document.querySelector(".fonkie-gallery-card")).willChange
+      };
+    });
+    expect(loadingPaint.opacity).toBe("0");
+    expect(loadingPaint.backgroundImage).toContain("linear-gradient");
+    expect(loadingPaint.cardTransformStyle).toBe("flat");
+    expect(loadingPaint.galleryWillChange).toBe("auto");
+    releaseImage();
+    await expect.poll(() => image.evaluate(element => ({
+      pending:element.classList.contains("catalog-image-pending"),
+      complete:element.complete,
+      naturalWidth:element.naturalWidth
+    }))).toEqual({pending:false,complete:true,naturalWidth:1200});
+  } finally {
+    releaseImage?.();
+    await page.unroute("**/assets/bottega/**");
   }
 });
 
