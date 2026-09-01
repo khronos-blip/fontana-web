@@ -7044,7 +7044,9 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   await expect(page.locator(".menu-intro")).toHaveClass(/menu-intro-visible/);
   await expect(page.locator(".menu-section")).toHaveClass(/menu-entry-visible/);
   await expect(page.locator(".menu-title-letter")).toHaveCount(13);
-  await expect(page.locator(".menu-title-letter").first()).toHaveCSS("animation-name", "menu-letter-in");
+  await expect(page.locator(".menu-title-letter").first()).toHaveCSS("animation-name", "none");
+  await expect(page.locator(".menu-title-letter").first()).toHaveCSS("opacity", "1");
+  await expect(page.locator(".menu-title-letter").first()).toHaveCSS("filter", "none");
   await bottega.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("catalogo-movil.png"), fullPage: false });
   expect(browserErrors).toEqual([]);
@@ -7106,7 +7108,7 @@ test("los filtros no precargan categorías completas y conservan un fondo lila a
   }
 });
 
-test("Elige tu antojo se activa al entrar en pantalla, no antes", async ({ page }) => {
+test("Elige tu antojo permanece nítido antes y después de entrar en pantalla", async ({ page }) => {
   for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
     await page.setViewportSize(viewport);
     await openPreview(page);
@@ -7122,7 +7124,9 @@ test("Elige tu antojo se activa al entrar en pantalla, no antes", async ({ page 
 
     await intro.scrollIntoViewIfNeeded();
     await expect(intro).toHaveClass(/menu-intro-visible/);
-    await expect(page.locator(".menu-title-letter").first()).toHaveCSS("animation-name", "menu-letter-in");
+    await expect(page.locator(".menu-title-letter").first()).toHaveCSS("animation-name", "none");
+    await expect(page.locator(".menu-title-letter").first()).toHaveCSS("opacity", "1");
+    await expect(page.locator(".menu-title-letter").first()).toHaveCSS("filter", "none");
     const activation = await intro.evaluate(element => ({
       top: element.getBoundingClientRect().top,
       viewportHeight: window.innerHeight
@@ -7506,6 +7510,45 @@ test("el catálogo tardío conserva el contenido realmente visible sin saltar", 
       visible: true
     }))
   ];
+  const builderFlavor = (name, image, prefix) => ({
+    name,
+    image,
+    inventoryKey:`${prefix}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    status:"available",
+    stockTracked:true,
+    ingredients:"Ingredientes de prueba."
+  });
+  const delayedBuilders = {
+    fonkies: {
+      visible:true,
+      status:"available",
+      allowPreorder:true,
+      minimumQuantity:4,
+      flavors:[
+        ["Chips de Chocolate Oscuro", "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg"],
+        ["Chispa de Chocolate Blanco", "assets/fonkie-white-chocolate-chips-fontana-pro.jpg"],
+        ["Pistacho con Chocolate Blanco", "assets/fonkie-pistachio-white-chocolate-fontana-pro.jpg"],
+        ["Triple Chocolate Fudge", "assets/fonkie-triple-chocolate-fudge-fontana-pro.jpg"],
+        ["Nutella Fit", "assets/fonkie-nutella-fit-fontana-pro.jpg"],
+        ["Almond Caramel", "assets/fonkie-almond-caramel-fontana-pro.jpg"],
+        ["Cinnamon Roll", "assets/fonkie-cinnamon-roll-fontana-pro.jpg"],
+        ["Kinder Bueno", "assets/fonkie-kinder-bueno-fontana-pro.jpg"],
+        ["Chips Ahoy Fit", "assets/fonkie-chips-ahoy-fit-fontana-pro.jpg"]
+      ].map(([name, image]) => builderFlavor(name, image, "fonkie"))
+    },
+    fomb: {
+      visible:true,
+      status:"available",
+      allowPreorder:true,
+      sizes:[{ quantity:4, price:15 }, { quantity:12, price:30 }],
+      flavors:[
+        ["Pistacho", "assets/fomb-pistachio-fontana-pro.jpg"],
+        ["Dubai", "assets/fomb-dubai-fontana-pro.jpg"],
+        ["Ferrero", "assets/fomb-ferrero-fontana-pro.jpg"],
+        ["Raffaello", "assets/fomb-raffaello-fontana-pro.jpg"]
+      ].map(([name, image]) => builderFlavor(name, image, "fomb"))
+    }
+  };
   let releaseHydration;
   let hydrationGate = new Promise(resolve => { releaseHydration = resolve; });
   await page.route("https://api.fontanasingluten.com/v1/catalog", async route => {
@@ -7514,13 +7557,45 @@ test("el catálogo tardío conserva el contenido realmente visible sin saltar", 
       status: 200,
       contentType: "application/json",
       headers: { "access-control-allow-origin": "*" },
-      body: JSON.stringify({ state: { products: delayedProducts, operations: { verified: true, electricityEnabled: true }, settings: { stockTodayOpen: true } } })
+      body: JSON.stringify({ state: { products: delayedProducts, builders:delayedBuilders, operations: { verified: true, electricityEnabled: true }, settings: { stockTodayOpen: true } } })
     });
   });
 
   await page.goto("http://fontana.localhost:8767/");
-  const initialCard = page.locator('#products > .product[data-id="pistacho"]');
+  const preparedCatalog = page.locator("#products .product");
+  await expect(preparedCatalog).toHaveCount(34);
+  await expect(page.locator('#products .product[data-product-id="bottega-de-cecco-penne-rigate"] .product-safety')).toHaveCount(1);
+  await expect(page.locator('#products .product[data-product-id="bottega-de-cecco-penne-rigate"] .product-dietary-seals')).toHaveCount(1);
+  await expect(page.locator("#products > .catalog-group")).toHaveCount(6);
+  const preparedGeometry = await page.locator("#products").evaluate(element => ({
+    height: element.getBoundingClientRect().height,
+    productCount: element.querySelectorAll(".product").length,
+    mediaWithoutArea: [...element.querySelectorAll(".product .product-media")]
+      .filter(media => media.getBoundingClientRect().width < 1 || media.getBoundingClientRect().height < 1)
+      .length
+  }));
+  expect(preparedGeometry.productCount).toBe(34);
+  expect(preparedGeometry.height).toBeGreaterThan(5000);
+  expect(preparedGeometry.mediaWithoutArea).toBe(0);
+  const initialCard = page.locator('#products .product[data-id="pistacho"]');
   await expect(initialCard).toBeVisible();
+  await page.evaluate(() => {
+    const card = document.querySelector('#products .product[data-id="pistacho"]');
+    const bottega = document.querySelector('#products .product[data-product-id="bottega-de-cecco-penne-rigate"]');
+    window.__catalogHydrationNodes = {
+      card,
+      media:card?.querySelector(".product-media"),
+      image:card?.querySelector("img"),
+      bottega,
+      bottegaMedia:bottega?.querySelector(".product-media"),
+      bottegaImage:bottega?.querySelector("img"),
+      galleryNodes:[...document.querySelectorAll(".fonkie-gallery-card, .builder-gallery-card")].map(galleryCard => ({
+        src:galleryCard.querySelector("img")?.getAttribute("src"),
+        card:galleryCard,
+        image:galleryCard.querySelector("img")
+      }))
+    };
+  });
   await initialCard.evaluate(element => window.scrollTo({
     top: window.scrollY + element.getBoundingClientRect().top - 240,
     behavior: "instant"
@@ -7533,13 +7608,53 @@ test("el catálogo tardío conserva el contenido realmente visible sin saltar", 
   await page.evaluate(() => document.fonts?.ready);
   await page.waitForTimeout(500);
   const after = await hydratedCard.evaluate(element => ({ top: element.getBoundingClientRect().top, scrollY }));
+  const preservedNodes = await page.evaluate(() => {
+    const stored = window.__catalogHydrationNodes;
+    const card = document.querySelector('#products [data-product-id="pistacho"]');
+    const bottega = document.querySelector('#products [data-product-id="bottega-de-cecco-penne-rigate"]');
+    return {
+      card:stored.card === card,
+      media:stored.media === card?.querySelector(".product-media"),
+      image:stored.image === card?.querySelector("img"),
+      bottega:stored.bottega === bottega,
+      bottegaMedia:stored.bottegaMedia === bottega?.querySelector(".product-media"),
+      bottegaImage:stored.bottegaImage === bottega?.querySelector("img"),
+      galleryNodes:stored.galleryNodes.every(storedNode => {
+        const image = [...document.querySelectorAll(".fonkie-gallery-card img, .builder-gallery-card img")]
+          .find(candidate => candidate.getAttribute("src") === storedNode.src);
+        return storedNode.image === image && storedNode.card === image?.parentElement;
+      }),
+      cakeOrder:[...document.querySelectorAll('[data-catalog-group="cakes"] .product')]
+        .map(product => product.dataset.productId),
+      productCount:document.querySelectorAll("#products .product").length,
+      groupCount:document.querySelectorAll("#products > .catalog-group").length,
+      failedImages:[...document.querySelectorAll("#products img")].filter(image => image.complete && image.naturalWidth === 0).length
+    };
+  });
   expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(2);
   expect(after.scrollY).toBeGreaterThan(before.scrollY);
+  expect(preservedNodes).toMatchObject({
+    card:true,
+    media:true,
+    image:true,
+    bottega:true,
+    bottegaMedia:true,
+    bottegaImage:true,
+    galleryNodes:true,
+    groupCount:5,
+    failedImages:0
+  });
+  expect(preservedNodes.cakeOrder).toEqual([
+    "producto-tardio-0", "producto-tardio-1", "producto-tardio-2", "producto-tardio-3",
+    "producto-tardio-4", "producto-tardio-5", "producto-tardio-6", "producto-tardio-7",
+    "pistacho"
+  ]);
+  expect(preservedNodes.productCount).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.documentElement.style.overflowAnchor)).toBe("");
 
   hydrationGate = new Promise(resolve => { releaseHydration = resolve; });
   await page.goto("http://fontana.localhost:8767/");
-  await expect(page.locator('#products > .product[data-id="pistacho"]')).toBeVisible();
+  await expect(page.locator('#products .product[data-id="pistacho"]')).toBeVisible();
   const menuIntro = page.locator(".menu-intro");
   await menuIntro.evaluate(element => {
     const rect = element.getBoundingClientRect();
@@ -7578,7 +7693,7 @@ test("el catálogo tardío conserva el contenido realmente visible sin saltar", 
 
   hydrationGate = new Promise(resolve => { releaseHydration = resolve; });
   await page.goto("http://fontana.localhost:8767/");
-  await expect(page.locator('#products > .product[data-id="pistacho"]')).toBeVisible();
+  await expect(page.locator('#products .product[data-id="pistacho"]')).toBeVisible();
   const storyHeading = page.locator("#historia h2");
   await storyHeading.evaluate(element => window.scrollTo({
     top: window.scrollY + element.getBoundingClientRect().top - 180,
@@ -7597,6 +7712,83 @@ test("el catálogo tardío conserva el contenido realmente visible sin saltar", 
   expect(Math.abs(storyAfter.top - storyBefore.top)).toBeLessThanOrEqual(2);
   expect(Math.abs(storyAfter.scrollY - storyBefore.scrollY)).toBeGreaterThan(100);
   expect(storyAfter.overflowAnchor).toBe("");
+
+  hydrationGate = new Promise(resolve => { releaseHydration = resolve; });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto("http://fontana.localhost:8767/");
+  await expect(page.locator("#products .product")).toHaveCount(34);
+  const desktopGapCard = page.locator('#products .product[data-product-id="bottega-de-cecco-penne-rigate"]');
+  await desktopGapCard.evaluate(element => window.scrollTo({
+    // Put the 280 px anchor line just above the card, inside the grid gap.
+    // The nearest visible row must still be preserved through hydration.
+    top: window.scrollY + element.getBoundingClientRect().top - 280.25,
+    behavior: "instant"
+  }));
+  const desktopBefore = await desktopGapCard.evaluate(element => ({
+    top: element.getBoundingClientRect().top,
+    scrollY
+  }));
+  expect(desktopBefore.top).toBeGreaterThan(280);
+  releaseHydration();
+  const desktopHydratedCard = page.locator('#products [data-product-id="bottega-de-cecco-penne-rigate"]');
+  await expect(desktopHydratedCard).toHaveClass(/product-flip-ready/, { timeout: 4000 });
+  await page.evaluate(async () => {
+    await document.fonts?.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  });
+  await page.waitForTimeout(300);
+  const desktopAfter = await desktopHydratedCard.evaluate(element => ({
+    top: element.getBoundingClientRect().top,
+    minHeight: document.querySelector("#products").style.minHeight,
+    overflowAnchor: document.documentElement.style.overflowAnchor
+  }));
+  expect(Math.abs(desktopAfter.top - desktopBefore.top)).toBeLessThanOrEqual(2);
+  expect(desktopAfter.minHeight).toBe("");
+  expect(desktopAfter.overflowAnchor).toBe("");
+});
+
+test("el catálogo tardío respeta cuando la dueña oculta todos los productos", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let releaseHydration;
+  const hydrationGate = new Promise(resolve => { releaseHydration = resolve; });
+  let hiddenProducts = [];
+  await page.route("https://api.fontanasingluten.com/v1/catalog", async route => {
+    await hydrationGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        state: {
+          products:hiddenProducts,
+          builders:{
+            fonkies:{ visible:false, status:"sold-out", flavors:[] },
+            fomb:{ visible:false, status:"sold-out", flavors:[], sizes:[] }
+          },
+          operations:{ verified:true, electricityEnabled:true },
+          settings:{ stockTodayOpen:true }
+        }
+      })
+    });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect(page.locator("#products .product")).toHaveCount(34);
+  hiddenProducts = await page.locator("#products .product").evaluateAll(products => products.map(product => ({
+    id:product.dataset.productId,
+    deleted:true,
+    visible:false
+  })));
+  releaseHydration();
+
+  await expect(page.locator("#products .product")).toHaveCount(0);
+  await expect(page.locator(".fonkie-builder")).toBeHidden();
+  await expect(page.locator(".fomb-builder")).toBeHidden();
+  await expect(page.locator("#products > .catalog-group:visible")).toHaveCount(0);
+  await expect(page.locator("#emptyFilterState")).toBeVisible();
+  await expect(page.locator("#emptyFilterTitle")).toHaveText("Menú en actualización");
+  await expect(page.locator("#emptyFilterMessage")).toHaveText("Fontana publicará aquí los productos disponibles.");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("las métricas del resumen abren productos con su filtro en móvil y escritorio", async ({ page }, testInfo) => {

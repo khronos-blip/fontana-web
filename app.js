@@ -31,10 +31,13 @@
   // seconds; installing the loading state here prevents an unfinished image
   // from exposing the dark card background during that interval.
   setupCatalogImageStability();
-  let adminState = await readAdminState();
-  const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
-  let productionWithElectricity = localMode ? adminState?.settings?.productionWithElectricity !== false : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
-  let stockTodayOpen = adminState?.settings?.stockTodayOpen !== false;
+  // Start the request immediately, but do not leave the browser with the much
+  // shorter hand-written fallback catalogue while it is in flight. The full
+  // local snapshot is laid out below before we await this promise.
+  const adminStatePromise = readAdminState();
+  let adminState = null;
+  let productionWithElectricity = localMode;
+  let stockTodayOpen = true;
   const drawer = $("#drawer");
   const backdrop = $("#backdrop");
   const toast = $("#toast");
@@ -44,7 +47,7 @@
   const drawerTitle = $("#drawerTitle");
   const backToCart = $("#backToCart");
   const storageKey = "fontana-cart-v1";
-  let cart = readCart();
+  let cart = [];
   const productAddQueues = new Map();
   const quantityQueueIdleResolvers = [];
   const quantityCommitTasks = new Set();
@@ -303,11 +306,30 @@
   function captureCatalogHydrationScrollAnchor() {
     if (window.scrollY < 2) return null;
     const viewportLine = Math.min(window.innerHeight * 0.35, 280);
-    const catalogItems = $$("#products > .product, #products > .fonkie-builder, #products > .builder-panel");
-    const visibleItem = catalogItems.find(item => {
-      const rect = item.getBoundingClientRect();
-      return rect.top <= viewportLine && rect.bottom > viewportLine;
-    });
+    const catalogRect = $("#products")?.getBoundingClientRect();
+    const lineInsideCatalog = Boolean(catalogRect
+      && catalogRect.top <= viewportLine
+      && catalogRect.bottom > viewportLine);
+    const catalogItems = $$("#products .product, #products .fonkie-builder, #products .builder-panel");
+    const visibleCatalogItems = catalogItems
+      .map(item => ({ item, rect:item.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.bottom > 0 && rect.top < window.innerHeight);
+    const itemAtLine = visibleCatalogItems.find(({ rect }) => (
+      rect.top <= viewportLine && rect.bottom > viewportLine
+    ));
+    // The line can land in the 11–18 px grid gap or in a category heading.
+    // Anchoring only an intersecting card left those perfectly normal scroll
+    // positions unprotected, especially on desktop. Use the nearest visible
+    // card in that case so the same row stays under the customer's eyes.
+    const nearestVisibleItem = (lineInsideCatalog ? visibleCatalogItems : [])
+      .map(candidate => ({
+        ...candidate,
+        distance: candidate.rect.top > viewportLine
+          ? candidate.rect.top - viewportLine
+          : viewportLine - candidate.rect.bottom
+      }))
+      .sort((left, right) => left.distance - right.distance)[0];
+    const visibleItem = (itemAtLine || nearestVisibleItem)?.item || null;
     const stableSelectors = ["#historia", "#ubicacion", "#resenas", ".final", "footer"];
     const fallbackSelector = stableSelectors.find(selector => {
       const rect = document.querySelector(selector)?.getBoundingClientRect();
@@ -382,7 +404,6 @@
 
   function applyAdminCatalog() {
     if (!adminState || !Array.isArray(adminState.products)) return;
-    $$("#products > .product").forEach(product => product.remove());
     const configuredProducts = Array.isArray(config.dynamicCatalog) ? config.dynamicCatalog : [];
     const managedIds = new Set(adminState.products.map(product => product.id));
     // Bottega must remain visible while the owner finishes publishing its
@@ -410,6 +431,102 @@
         label: product.leadTimeLabel || `${product.name}: sujeto a confirmación por WhatsApp`
       };
     });
+  }
+
+  function syncElementAttributes(current, next) {
+    const nextNames = new Set([...next.attributes].map(attribute => attribute.name));
+    [...current.attributes].forEach(attribute => {
+      if (!nextNames.has(attribute.name)) current.removeAttribute(attribute.name);
+    });
+    [...next.attributes].forEach(attribute => {
+      if (current.getAttribute(attribute.name) !== attribute.value) {
+        current.setAttribute(attribute.name, attribute.value);
+      }
+    });
+  }
+
+  function morphCatalogElement(current, next) {
+    const frameSelector = ".product-media, .fonkie-gallery-card, .builder-gallery-card";
+    const currentFrame = current.matches(frameSelector) ? current : current.querySelector(".product-media");
+    const nextFrame = next.matches(frameSelector) ? next : next.querySelector(".product-media");
+    const currentImage = currentFrame?.querySelector("img");
+    const nextImage = nextFrame?.querySelector("img");
+    const frameWasLoading = currentFrame?.classList.contains("catalog-image-loading");
+    if (
+      currentImage
+      && nextImage
+      && currentImage.getAttribute("src") === nextImage.getAttribute("src")
+    ) {
+      const imageWasPending = currentImage.classList.contains("catalog-image-pending");
+      const imageWasStabilized = currentImage.dataset.catalogImageStability === "true";
+      syncElementAttributes(currentImage, nextImage);
+      if (imageWasPending) currentImage.classList.add("catalog-image-pending");
+      if (imageWasStabilized) currentImage.dataset.catalogImageStability = "true";
+      nextImage.replaceWith(currentImage);
+      if (currentFrame !== current && nextFrame !== next) {
+        syncElementAttributes(currentFrame, nextFrame);
+        if (frameWasLoading) currentFrame.classList.add("catalog-image-loading");
+        currentFrame.replaceChildren(...nextFrame.childNodes);
+        nextFrame.replaceWith(currentFrame);
+      }
+    }
+    syncElementAttributes(current, next);
+    if (currentFrame === current && frameWasLoading) current.classList.add("catalog-image-loading");
+    current.replaceChildren(...next.childNodes);
+    return current;
+  }
+
+  function reconcileGalleryCards(gallery, markup, cardSelector) {
+    if (!gallery) return;
+    const template = document.createElement("template");
+    template.innerHTML = markup;
+    const desiredCards = [...template.content.querySelectorAll(cardSelector)];
+    const existingCards = [...gallery.querySelectorAll(`:scope > ${cardSelector}`)];
+    const cardKey = card => card.dataset.inventoryKey || card.dataset.flavor || "";
+    const imageKey = card => card.querySelector("img")?.getAttribute("src") || "";
+    const existingByKey = new Map(existingCards
+      .filter(card => cardKey(card))
+      .map(card => [cardKey(card), card]));
+    const existingByImage = new Map();
+    existingCards.forEach(card => {
+      const key = imageKey(card);
+      if (!key) return;
+      const matches = existingByImage.get(key) || [];
+      matches.push(card);
+      existingByImage.set(key, matches);
+    });
+    const usedCards = new Set();
+    const reconciledCards = desiredCards.map(next => {
+      const keyedCard = existingByKey.get(cardKey(next));
+      const imageCard = (existingByImage.get(imageKey(next)) || [])
+        .find(card => !usedCards.has(card));
+      const current = keyedCard && !usedCards.has(keyedCard)
+        ? keyedCard
+        : imageCard && !usedCards.has(imageCard)
+          ? imageCard
+          : null;
+      if (current) usedCards.add(current);
+      return current ? morphCatalogElement(current, next) : next;
+    });
+    // Moving the already-decoded <img> nodes into the verified cards in one
+    // synchronous commit prevents an empty or dark gallery frame from painting.
+    gallery.replaceChildren(...reconciledCards);
+  }
+
+  function holdCatalogHydrationHeight() {
+    const container = $("#products");
+    if (!container) return null;
+    const height = Math.ceil(container.getBoundingClientRect().height);
+    if (height <= 0) return null;
+    const previousMinHeight = container.style.minHeight;
+    container.style.minHeight = `${height}px`;
+    return { container, previousMinHeight };
+  }
+
+  function releaseCatalogHydrationHeight(state) {
+    if (!state?.container?.isConnected) return;
+    if (state.previousMinHeight) state.container.style.minHeight = state.previousMinHeight;
+    else state.container.style.removeProperty("min-height");
   }
 
   function reconcileCartEntries(stored) {
@@ -1046,11 +1163,12 @@
       const chooser = $(".fonkie-flavors", fonkieBuilder);
       const count = $(".gallery-label-meta span", fonkieBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => {
+      const galleryMarkup = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
         const showsSoldOut = builderFlavorShowsSoldOut(stock);
         return `<figure class="fonkie-gallery-card${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}">${responsiveImageMarkup(flavor.image || "assets/logo.png", `Fonkie ${flavor.name}`, { sizes:compactGalleryImageSizes })}<span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
       }).join("");
+      reconcileGalleryCards(gallery, galleryMarkup, ".fonkie-gallery-card");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
         const showsSoldOut = builderFlavorShowsSoldOut(stock);
@@ -1090,11 +1208,12 @@
       const chooser = $(".fomb-flavors", fombBuilder);
       const count = $(".gallery-label-meta span", fombBuilder);
       if (count) count.textContent = `${flavors.length} sabores`;
-      if (gallery) gallery.innerHTML = flavors.map(flavor => {
+      const galleryMarkup = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
         const showsSoldOut = builderFlavorShowsSoldOut(stock);
         return `<figure class="builder-gallery-card${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}">${responsiveImageMarkup(flavor.image || "assets/logo.png", `Fomb ${flavor.name}`, { sizes:compactGalleryImageSizes })}<span>${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}</span></figure>`;
       }).join("");
+      reconcileGalleryCards(gallery, galleryMarkup, ".builder-gallery-card");
       if (chooser) chooser.innerHTML = flavors.map(flavor => {
         const stock = builderFlavorStockDetails(flavor, stockContext);
         const showsSoldOut = builderFlavorShowsSoldOut(stock);
@@ -1118,6 +1237,9 @@
       if (!product.dataset.ingredients) return;
       const body = $(".product-body", product);
       const footer = $(".product-footer", product);
+      if (!body || !footer) return;
+      $(".product-safety", body)?.remove();
+      $(".product-expanded-ingredients", body)?.remove();
       const details = document.createElement("details");
       details.className = "product-safety";
       const summary = document.createElement("summary");
@@ -3423,11 +3545,12 @@
     });
   }
 
-  function renderDynamicCatalog() {
+  function renderDynamicCatalog({ reconcile = false } = {}) {
     const products = Array.isArray(config.dynamicCatalog) ? config.dynamicCatalog : [];
     const container = $("#products");
     const emptyState = $("#emptyFilterState");
-    if (!container || !emptyState || !products.length) return;
+    if (!container || !emptyState) return;
+    if (!products.length && !reconcile) return;
     const allowedCategories = new Set(["cakes", "snacks", "salado", "beverages", "bottega"]);
     const cards = products.map((product, index) => {
       const category = allowedCategories.has(product.category) ? product.category : "snacks";
@@ -3509,12 +3632,40 @@
       const footerCopy = product.weight || product.availabilityLabel || availabilityCopy || (category === "bottega" ? bottegaAvailabilityLabel : "");
       return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${immediate}" data-stock-state="${bottegaAvailability || "pending"}" data-catalog-managed="${catalogManaged}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${catalogManaged && hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Preordenar" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PREORDENAR" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
-    emptyState.insertAdjacentHTML("beforebegin", cards);
+    if (!reconcile) {
+      emptyState.insertAdjacentHTML("beforebegin", cards);
+      return;
+    }
+
+    const template = document.createElement("template");
+    template.innerHTML = cards;
+    const desiredCards = [...template.content.children].filter(card => card.matches(".product"));
+    const cardKey = card => card.dataset.productId || card.dataset.id || "";
+    const existingCards = $$(".product", container);
+    const existingByKey = new Map(existingCards.map(card => [cardKey(card), card]));
+    const desiredKeys = new Set(desiredCards.map(cardKey));
+
+    const reconciledCards = [];
+    desiredCards.forEach(next => {
+      const key = cardKey(next);
+      const existing = existingByKey.get(key);
+      const card = existing ? morphCatalogElement(existing, next) : next;
+      reconciledCards.push(card);
+      const currentGroup = card.closest(".catalog-group")?.dataset.catalogGroup || "";
+      if (!currentGroup || currentGroup !== card.dataset.category) {
+        container.insertBefore(card, emptyState);
+      }
+    });
+    existingCards.forEach(card => {
+      if (!desiredKeys.has(cardKey(card))) card.remove();
+    });
+    return reconciledCards;
   }
 
-  function setupCatalogGroups() {
+  function setupCatalogGroups(orderedProducts = []) {
     const container = $("#products");
-    if (!container || container.classList.contains("catalog-organized")) return;
+    if (!container) return;
+    const productOrder = new Map(orderedProducts.map((product, index) => [product, index]));
     const categories = ["cakes", "fonkies", "fomb", "salado", "beverages", "bottega", "snacks"];
     const categoryLabels = {
       cakes: "Tortas",
@@ -3528,24 +3679,41 @@
     const catalogItems = $$(".product, .fonkie-builder, .builder-panel", container);
     categories.forEach(category => {
       const items = catalogItems.filter(item => item.dataset.category === category);
-      if (!items.length) return;
-      const group = document.createElement("section");
-      group.className = "catalog-group";
-      group.dataset.catalogGroup = category;
-      const heading = document.createElement("div");
-      heading.className = "catalog-group-heading";
-      const line = document.createElement("span");
-      line.className = "catalog-group-line";
-      line.setAttribute("aria-hidden", "true");
-      const title = document.createElement("h3");
-      title.id = `catalog-heading-${category}`;
-      title.textContent = categoryLabels[category];
-      heading.append(line, title);
-      group.setAttribute("aria-labelledby", title.id);
-      const grid = document.createElement("div");
-      grid.className = "catalog-group-grid";
-      items.forEach(item => grid.appendChild(item));
-      group.append(heading, grid);
+      if (productOrder.size) {
+        items.sort((left, right) => {
+          const leftOrder = productOrder.get(left);
+          const rightOrder = productOrder.get(right);
+          if (leftOrder === undefined || rightOrder === undefined) return 0;
+          return leftOrder - rightOrder;
+        });
+      }
+      let group = $(`.catalog-group[data-catalog-group="${category}"]`, container);
+      if (!items.length) {
+        group?.remove();
+        return;
+      }
+      if (!group) {
+        group = document.createElement("section");
+        group.className = "catalog-group";
+        group.dataset.catalogGroup = category;
+        const heading = document.createElement("div");
+        heading.className = "catalog-group-heading";
+        const line = document.createElement("span");
+        line.className = "catalog-group-line";
+        line.setAttribute("aria-hidden", "true");
+        const title = document.createElement("h3");
+        title.id = `catalog-heading-${category}`;
+        title.textContent = categoryLabels[category];
+        heading.append(line, title);
+        group.setAttribute("aria-labelledby", title.id);
+        const grid = document.createElement("div");
+        grid.className = "catalog-group-grid";
+        group.append(heading, grid);
+      }
+      const grid = $(".catalog-group-grid", group);
+      items.forEach(item => {
+        if (productOrder.size || item.parentElement !== grid) grid.appendChild(item);
+      });
       container.insertBefore(group, $("#emptyFilterState"));
     });
     container.classList.add("catalog-organized");
@@ -3554,7 +3722,7 @@
   function syncCatalogGroups() {
     $$(".catalog-group").forEach(group => {
       const items = [...group.querySelector(".catalog-group-grid").children];
-      const visibleItems = items.filter(item => !item.classList.contains("hidden"));
+      const visibleItems = items.filter(item => !item.hidden && !item.classList.contains("hidden"));
       group.hidden = visibleItems.length === 0;
     });
     scheduleProductCardHeightSync();
@@ -4946,9 +5114,12 @@
     catalogItems.forEach(product => {
       product.classList.toggle("hidden", !catalogItemMatchesFilter(product, filter));
     });
-    const visibleCount = catalogItems.filter(product => !product.classList.contains("hidden")).length;
+    const visibleCount = catalogItems.filter(product => (
+      !product.hidden && !product.classList.contains("hidden")
+    )).length;
     const emptyState = $("#emptyFilterState");
     const emptyCopy = {
+      all: ["Menú en actualización", "Fontana publicará aquí los productos disponibles."],
       promo: ["Promo del día", "Las promociones activas aparecerán aquí cuando Fontana las publique."],
       beverages: ["Bebidas", "Las bebidas confirmadas aparecerán aquí cuando se incorporen al menú."],
       bottega: ["Bottega", "Los productos de Bottega aparecerán aquí cuando se incorporen al catálogo."],
@@ -5088,13 +5259,32 @@
     });
   }
 
+  // Build the same 34-card geometry the verified catalogue normally returns
+  // before waiting for the network. This removes the first-visit jump from a
+  // seven-card fallback to the complete menu while the customer is scrolling.
+  renderDynamicCatalog();
+  enhanceDietarySeals();
+  enhanceProductSafety();
+  setupCatalogImageStability();
+  setupCatalogGroups();
+
+  adminState = await adminStatePromise;
+  const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
+  const catalogHydrationHeight = catalogHydrationScrollAnchor ? holdCatalogHydrationHeight() : null;
+  productionWithElectricity = localMode
+    ? adminState?.settings?.productionWithElectricity !== false
+    : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
+  stockTodayOpen = adminState?.settings?.stockTodayOpen !== false;
+  cart = readCart();
+
   applyAdminCatalog();
   applyAdminBuilders();
-  renderDynamicCatalog();
-  setupCatalogGroups();
+  const reconciledCatalogProducts = adminState ? renderDynamicCatalog({ reconcile:true }) : [];
+  setupCatalogGroups(reconciledCatalogProducts);
   setupCatalogImageStability();
   const stockTodayFilter = $('.filter[data-filter="immediate"]');
   if (stockTodayFilter && !stockTodayOpen) stockTodayFilter.hidden = true;
+  filterProducts($(".filter.active")?.dataset.filter || "all");
   setupProductQuantityControls();
   let catalogFilterEpoch = 0;
   $$(".filter").forEach(button => {
@@ -5365,6 +5555,10 @@
           // delayed correction on top of the explicit one above.
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
+              releaseCatalogHydrationHeight(catalogHydrationHeight);
+              if (!hydrationInterruptedByCustomer) {
+                restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
+              }
               hydrationInputController.abort();
               releaseCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
             });
