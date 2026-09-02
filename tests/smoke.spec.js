@@ -2999,7 +2999,7 @@ test("Fonkies bloquea cajas de menos de cuatro unidades", async ({ page }) => {
   expect(Math.abs(fombImageBox.height - fombCardBox.height)).toBeLessThanOrEqual(1);
 });
 
-test("Fonkies nunca permite seleccionar ni pedir más unidades que el inventario", async ({ page }, testInfo) => {
+test("Fonkies respeta el inventario y muestra el máximo sin tapar el carrito", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
     localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
@@ -3049,7 +3049,76 @@ test("Fonkies nunca permite seleccionar ni pedir más unidades que el inventario
   await page.locator("#cartButton").click();
   await page.locator('.cart-item .qty button[aria-label="Sumar"]').click();
   await expect(page.locator(".cart-item .qty b")).toHaveText("1");
-  await expect(page.locator("#toast")).toContainText("Llegaste al máximo disponible de Caja de 6 Fonkies");
+  await expect(page.locator("#drawerStatus.show")).toContainText("Llegaste al máximo disponible de Caja de 6 Fonkies");
+
+  const checkCompactCart = async label => {
+    await page.waitForTimeout(300);
+    const layout = await page.evaluate(() => {
+      const drawer = document.querySelector("#drawer");
+      const items = document.querySelector("#cartItems");
+      const item = document.querySelector(".cart-item");
+      const itemCopy = item.children[1];
+      const remove = item.querySelector(".remove");
+      const status = document.querySelector("#drawerStatus");
+      const footer = document.querySelector("#cartFooter");
+      const total = footer.querySelector(".total");
+      const action = document.querySelector("#continueCheckout");
+      const box = element => {
+        const rect = element.getBoundingClientRect();
+        return { left:rect.left, right:rect.right, top:rect.top, bottom:rect.bottom, width:rect.width, height:rect.height };
+      };
+      const intersects = (first, second) => Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left))
+        * Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top));
+      const drawerBox = box(drawer);
+      const itemBox = box(item);
+      const copyBox = box(itemCopy);
+      const removeBox = box(remove);
+      const statusBox = box(status);
+      const footerBox = box(footer);
+      const totalBox = box(total);
+      const actionBox = box(action);
+      return {
+        viewport:{ width:innerWidth, height:innerHeight },
+        drawerBox,itemBox,statusBox,footerBox,actionBox,
+        cartView:drawer.classList.contains("cart-view"),
+        itemToStatus:statusBox.top - itemBox.bottom,
+        statusToFooter:footerBox.top - statusBox.bottom,
+        statusFooterIntersection:intersects(statusBox, footerBox),
+        statusTotalIntersection:intersects(statusBox, totalBox),
+        statusActionIntersection:intersects(statusBox, actionBox),
+        copyRemoveIntersection:intersects(copyBox, removeBox),
+        contained:drawerBox.left >= 0 && drawerBox.right <= innerWidth && drawerBox.top >= 0 && drawerBox.bottom <= innerHeight,
+        noHorizontalOverflow:[drawer,items,item,status,footer].every(element => element.scrollWidth <= element.clientWidth + 1)
+          && document.documentElement.scrollWidth <= innerWidth,
+        actionEnabled:!action.disabled,
+        quantity:item.querySelector(".qty b").textContent.trim()
+      };
+    });
+    expect(layout.cartView, label).toBe(true);
+    expect(layout.contained, label).toBe(true);
+    expect(layout.noHorizontalOverflow, label).toBe(true);
+    expect(layout.drawerBox.height, label).toBeLessThan(layout.viewport.height * .78);
+    expect(layout.itemToStatus, label).toBeGreaterThanOrEqual(0);
+    expect(layout.itemToStatus, label).toBeLessThanOrEqual(20);
+    expect(layout.statusToFooter, label).toBeGreaterThanOrEqual(0);
+    expect(layout.statusToFooter, label).toBeLessThanOrEqual(20);
+    expect(layout.statusFooterIntersection, label).toBe(0);
+    expect(layout.statusTotalIntersection, label).toBe(0);
+    expect(layout.statusActionIntersection, label).toBe(0);
+    expect(layout.copyRemoveIntersection, label).toBe(0);
+    expect(layout.actionBox.height, label).toBeGreaterThanOrEqual(44);
+    expect(layout.actionEnabled, label).toBe(true);
+    expect(layout.quantity, label).toBe("1");
+    await page.screenshot({ path:testInfo.outputPath(`carrito-maximo-${label}.png`), fullPage:false });
+  };
+
+  await checkCompactCart("390x844");
+  await page.locator("#closeCart").click();
+  await page.setViewportSize({ width:1366, height:900 });
+  await page.locator("#cartButton").click();
+  await page.locator('.cart-item .qty button[aria-label="Sumar"]').click();
+  await expect(page.locator("#drawerStatus.show")).toContainText("Llegaste al máximo disponible de Caja de 6 Fonkies");
+  await checkCompactCart("1366x900");
 });
 
 test("Fomb avisa al alcanzar el máximo disponible de un sabor", async ({ page }) => {
@@ -3912,7 +3981,7 @@ test("el carrito migra claves una vez, sobrevive renombres y rechaza sabores rec
   state.builders.fomb.flavors[0].inventoryKey = "fomb-identidad-recreada";
   await page.locator("#continueCheckout").click();
   await expect(page.locator("#checkoutForm")).toBeHidden();
-  await expect(page.locator("#toast")).toContainText("temporalmente no disponible");
+  await expect(page.locator("#drawerStatus")).toContainText("temporalmente no disponible");
   const recreated = await readBuilderCart();
   expect(recreated).toEqual(expect.arrayContaining([
     expect.objectContaining({
@@ -4057,7 +4126,7 @@ test("checkout bloquea la compra si el stock se agota sin activar preordenar", a
   await page.locator("#continueCheckout").click();
 
   await expect(page.locator("#checkoutForm")).toBeHidden();
-  await expect(page.locator("#toast")).toContainText("temporalmente no disponible");
+  await expect(page.locator("#drawerStatus")).toContainText("temporalmente no disponible");
   const reconciled = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")[0]);
   expect(reconciled.inventory).toMatchObject({ availability: "unavailable", preorder: false });
   expect(reconciled.inventory.flavors).toEqual([
@@ -5768,7 +5837,7 @@ test("el carrito Bottega reconcilia la disponibilidad vigente antes del checkout
     await expect(item.locator(".cart-choices")).toHaveText(expected.choices);
   }
   await expect(page.locator("#checkoutForm")).toBeHidden();
-  await expect(page.locator("#toast")).toContainText("temporalmente no disponible");
+  await expect(page.locator("#drawerStatus")).toContainText("temporalmente no disponible");
   await expect(page.locator("#continueCheckout")).toBeDisabled();
   await expect(page.locator("#drawer")).not.toContainText("2 días");
 });

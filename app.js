@@ -41,6 +41,7 @@
   const drawer = $("#drawer");
   const backdrop = $("#backdrop");
   const toast = $("#toast");
+  const drawerStatus = $("#drawerStatus");
   const cartItems = $("#cartItems");
   const cartFooter = $("#cartFooter");
   const checkoutForm = $("#checkoutForm");
@@ -3802,10 +3803,12 @@
   }
 
   function say(message) {
-    toast.textContent = message;
-    toast.classList.add("show");
+    [toast, drawerStatus].forEach(surface => surface.classList.remove("show"));
+    const surface = drawer.classList.contains("open") ? drawerStatus : toast;
+    surface.textContent = message;
+    surface.classList.add("show");
     clearTimeout(say.timer);
-    say.timer = setTimeout(() => toast.classList.remove("show"), 2800);
+    say.timer = setTimeout(() => surface.classList.remove("show"), 2800);
   }
 
   function stockLimitNotice(error, itemName = "este producto") {
@@ -3816,6 +3819,7 @@
 
   function openCart() {
     showCartStep();
+    toast.classList.remove("show");
     drawer.classList.add("open");
     backdrop.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
@@ -3823,6 +3827,7 @@
   }
 
   function closeCart() {
+    drawerStatus.classList.remove("show");
     drawer.classList.remove("open");
     backdrop.classList.remove("open");
     drawer.setAttribute("aria-hidden", "true");
@@ -4746,6 +4751,8 @@
     cartItems.hidden = true;
     cartFooter.hidden = true;
     checkoutForm.hidden = false;
+    drawer.classList.remove("cart-view");
+    drawer.classList.add("checkout-view");
     backToCart.hidden = false;
     drawerTitle.textContent = "Datos del pedido";
     renderAllergyItemNotes();
@@ -4759,6 +4766,8 @@
     cartItems.hidden = false;
     cartFooter.hidden = false;
     checkoutForm.hidden = true;
+    drawer.classList.remove("checkout-view");
+    drawer.classList.add("cart-view");
     backToCart.hidden = true;
     drawerTitle.textContent = "Tu pedido";
   }

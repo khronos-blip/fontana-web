@@ -18,6 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="cart.css">
   <meta property="og:title" content="Postres sin gluten y sin azúcar | Fontana">
   <meta property="og:description" content="Tortas, Fonkies, bombones y opciones saladas sin gluten. Pickup en Mañongo, delivery en Carabobo y pedidos por WhatsApp.">
   <meta property="og:type" content="website">
@@ -469,8 +470,6 @@
     }
     @media(max-width:899px){.delivery-plan-options,.split-delivery-fields{grid-template-columns:1fr}}
     [hidden]{display:none!important}
-    .toast{position:fixed;z-index:80;left:50%;bottom:25px;transform:translate(-50%,30px);background:#211321;color:#fff;border-radius:999px;padding:13px 20px;font-size:.82rem;opacity:0;pointer-events:none;transition:.3s ease;box-shadow:0 12px 35px rgba(0,0,0,.22)}.toast.show{opacity:1;transform:translate(-50%,0)}
-
     @media(max-width:960px){
       .nav-links{display:none}.menu-btn{display:grid}.hero{min-height:auto}.hero-grid{grid-template-columns:1fr;gap:45px}.hero-copy{text-align:center}.hero-lead{margin-left:auto;margin-right:auto}.hero-actions,.trust-row{justify-content:center}.hero-visual{max-width:600px;margin:auto}.pillars-grid{grid-template-columns:1fr 1fr}.pillar:nth-child(2){border-right:0}.pillar:nth-child(-n+2){border-bottom:1px solid var(--line)}.products{grid-template-columns:1fr 1fr}.story-grid{grid-template-columns:1fr;gap:54px}.story-visual{max-width:640px;width:100%;margin:auto}.location-card{grid-template-columns:1fr}.location-visual{min-height:340px}.quotes{grid-template-columns:1fr}.footer-grid{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1}
     }
@@ -1135,6 +1134,7 @@
       <button class="close" id="closeCart" type="button" aria-label="Cerrar">×</button>
     </div>
     <div class="cart-items" id="cartItems"></div>
+    <div class="drawer-status" id="drawerStatus" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="drawer-foot" id="cartFooter"><div class="total"><span>Total estimado</span><span id="cartTotal">REF&nbsp;0,00</span></div><button class="btn btn-green" id="continueCheckout" type="button">Continuar pedido</button><small>El pago se confirma directamente con Fontana.</small></div>
     <form class="checkout-form" id="checkoutForm" novalidate hidden>
       <p class="checkout-intro">Completa tus datos. Prepararemos el pedido para enviarlo directamente al WhatsApp de Fontana.</p>

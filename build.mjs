@@ -333,6 +333,7 @@ const appContents = await readFile("app.js", "utf8");
 const adminScriptContents = await readFile("admin/admin.js", "utf8");
 const adminStyleContents = await readFile("admin/admin.css", "utf8");
 const seoStyleContents = await readFile("seo.css", "utf8");
+const cartStyleContents = await readFile("cart.css", "utf8");
 const sourceHtml = await readFile("index.html", "utf8");
 const configContext = { window: {} };
 vm.runInNewContext(configContents, configContext);
@@ -357,6 +358,8 @@ const adminScriptVersion = fingerprint(adminScriptContents);
 const adminStyleVersion = fingerprint(adminStyleContents);
 const seoStyleVersion = fingerprint(seoStyleContents);
 const seoStyleFile = `seo.${seoStyleVersion}.css`;
+const cartStyleVersion = fingerprint(cartStyleContents);
+const cartStyleFile = `cart.${cartStyleVersion}.css`;
 
 await writeFile(`${outputDirectory}/config.${configVersion}.js`, configContents);
 await writeFile(`${outputDirectory}/images.${responsiveManifestVersion}.js`, responsiveManifestContents);
@@ -364,8 +367,10 @@ await writeFile(`${outputDirectory}/app.${appVersion}.js`, appContents);
 await writeFile(`${outputDirectory}/admin/admin.${adminScriptVersion}.js`, adminScriptContents);
 await writeFile(`${outputDirectory}/admin/admin.${adminStyleVersion}.css`, adminStyleContents);
 await writeFile(`${outputDirectory}/${seoStyleFile}`, seoStyleContents);
+await writeFile(`${outputDirectory}/${cartStyleFile}`, cartStyleContents);
 
 let html = sourceHtml
+  .replace('href="cart.css"', `href="${cartStyleFile}"`)
   .replace('<script src="config.js"></script>', `<script src="config.${configVersion}.js"></script><script src="images.${responsiveManifestVersion}.js"></script>`)
   .replace('<script src="app.js"></script>', `<script src="app.${appVersion}.js"></script>`)
   .replaceAll("https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg", `${site.origin}${site.defaultSocialImage}`)
