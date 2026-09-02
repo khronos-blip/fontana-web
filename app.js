@@ -352,6 +352,43 @@
     return "DISPONIBILIDAD POR CONFIRMAR";
   }
 
+  function prepareFallbackCakeAvailability() {
+    const fallbackPrices = new Map([
+      ["pistacho", 59],
+      ["chocolate", 45],
+      ["vainilla", 45],
+      ["lemon", 45]
+    ]);
+    $$('.product[data-category="cakes"]').forEach(card => {
+      const legacyId = card.dataset.productId || card.dataset.id || "";
+      if (!legacyId || !Number.isFinite(Number(card.dataset.price))) return;
+      const productId = legacyId.replace(/^catalog-/, "");
+      card.dataset.productId = productId;
+      if (fallbackPrices.has(productId)) {
+        const price = fallbackPrices.get(productId);
+        card.dataset.price = String(price);
+        const priceLabel = $(".price", card);
+        if (priceLabel) priceLabel.textContent = money(price);
+      }
+      card.dataset.availabilityMode = "preorder";
+      card.dataset.soldOut = "true";
+      card.dataset.preorder = "true";
+      card.dataset.preorderAllowed = "true";
+      card.dataset.stockState = "preorder";
+      card.classList.add("product-preorder");
+      card.classList.remove("product-sold-out", "product-temporarily-unavailable");
+      const media = $(".product-media", card);
+      if (media && !$(".product-tags", media)) {
+        media.insertAdjacentHTML("beforeend", '<div class="product-tags"><span class="product-tag status-preorder">PREORDENAR · 2 DÍAS</span></div>');
+      }
+      const add = $(".add", card);
+      if (add) {
+        add.textContent = "PREORDENAR";
+        add.setAttribute("aria-label", `Preordenar ${card.dataset.name || "torta"}`);
+      }
+    });
+  }
+
   function soldOutConsultHref(name) {
     const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
     if (!whatsappNumber) return "";
@@ -677,7 +714,7 @@
     for (const storedItem of stored) {
       const item = {...storedItem, inventory:{...(storedItem.inventory || {})}};
       if (item.inventory.kind === "product") {
-        if (refreshBottegaCartAvailability(item)) changed = true;
+        if (refreshProductCartAvailability(item)) changed = true;
       }
       if (item.inventory.kind === "fonkies" || item.inventory.kind === "fomb") {
         if (refreshBuilderCartAvailability(item)) changed = true;
@@ -754,8 +791,11 @@
       const itemQuantity = Math.max(0, Number(item.qty || 0));
       if (!itemQuantity) continue;
       if (inventory.kind === "product") {
-        if (inventory.preorder) continue;
-        checks.push({kind:"product",productId:inventory.productId || item.productId,size:inventory.size || "",variant:inventory.variant || "",quantity:itemQuantity});
+        const check = {kind:"product",productId:inventory.productId || item.productId,size:inventory.size || "",variant:inventory.variant || "",quantity:itemQuantity};
+        // A pre-order does not consume today's stock, but the Worker must still
+        // confirm that the owner currently allows this product to be pre-ordered.
+        if (inventory.preorder) check.preorder = true;
+        checks.push(check);
         continue;
       }
       if (inventory.kind !== "fonkies" && inventory.kind !== "fomb") continue;
@@ -832,8 +872,23 @@
       let configuredQuantity = null;
       if (check.kind === "product") {
         const product = adminState.products?.find(item => item.id === check.productId);
-        const size = product?.sizes?.find(item => item.name === check.size);
-        const variant = product?.variants?.find(item => item.name === check.variant);
+        if (!product || product.deleted === true || product.visible === false) return false;
+        if (!productionWithElectricity && product.requiresElectricity === true) return false;
+        const sizes = Array.isArray(product.sizes) ? product.sizes : [];
+        const variants = Array.isArray(product.variants) ? product.variants : [];
+        const size = sizes.find(item => item.name === check.size);
+        const variant = variants.find(item => item.name === check.variant);
+        if ((sizes.length && !size) || (variants.length && !variant)) return false;
+        const unavailable = product.status === "sold-out"
+          || size?.status === "sold-out"
+          || variant?.status === "sold-out";
+        const preorder = check.preorder === true
+          && unavailable
+          && product.allowPreorder === true;
+        if (unavailable && !preorder) return false;
+        // Igual que el Worker: un preorden autorizado no descuenta el stock
+        // disponible de hoy, pero sí exige que producto y opciones sigan vigentes.
+        if (preorder) continue;
         configuredQuantity = variant?.stockQuantity ?? size?.stockQuantity ?? product?.stockQuantity ?? null;
       } else {
         const configuredKey = String(check.inventoryKey || "").trim();
@@ -913,6 +968,12 @@
       maximumFractionDigits: 2
     }).format(value);
     return `${config.displayCurrency || "REF"}\u00a0${amount}`;
+  }
+
+  function cartPriceCopy(value) {
+    return value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0
+      ? money(Number(value))
+      : "Cotizar";
   }
 
   function setupWhatsappChatLink() {
@@ -1182,31 +1243,63 @@
     return "DISPONIBILIDAD POR CONFIRMAR";
   }
 
-  function refreshBottegaCartAvailability(item) {
+  function refreshProductCartAvailability(item) {
     const inventory = item.inventory || {};
     if (inventory.kind !== "product") return false;
     const catalogAvailable = Boolean(adminState && Array.isArray(adminState.products));
     const productId = inventory.productId || item.productId;
     const product = adminState?.products?.find(candidate => candidate.id === productId);
-    if (item.category !== "bottega" && product?.category !== "bottega") return false;
     // Without a verified/current catalogue, preserve the last known state. A
     // refresh with a real catalogue is what authoritatively changes the cart.
     if (!catalogAvailable) return false;
 
+    const before = JSON.stringify({
+      id:item.id,
+      productId:item.productId,
+      category:item.category,
+      name:item.name,
+      price:item.price,
+      image:item.image,
+      ingredients:item.ingredients,
+      choices:item.choices,
+      inventory
+    });
     const missingOrHidden = !product || product.deleted === true || product.visible === false;
     const variants = Array.isArray(product?.variants) ? product.variants : [];
     const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
-    const availableVariants = variants.filter(variant => variant.status !== "sold-out" && variant.stockQuantity !== 0);
-    const availableSizes = sizes.filter(size => size.status !== "sold-out" && size.stockQuantity !== 0);
+    const selectedVariant = inventory.variant
+      ? variants.find(variant => variant.name === inventory.variant)
+      : null;
+    const selectedSize = inventory.size
+      ? sizes.find(size => size.name === inventory.size)
+      : null;
+    const missingOption = (inventory.variant ? !selectedVariant : variants.length > 0)
+      || (inventory.size ? !selectedSize : sizes.length > 0);
+    const basePrice = product?.price;
+    const hasBasePrice = basePrice !== null
+      && basePrice !== ""
+      && Number.isFinite(Number(basePrice))
+      && Number(basePrice) >= 0;
+    const priceSource = selectedSize ? selectedSize.price : basePrice;
+    // La reserva del Worker exige un precio base además de cualquier precio
+    // específico de presentación. No permitimos que un carrito viejo llegue a
+    // checkout en un estado que el servidor rechazará después.
+    const hasOrderablePrice = hasBasePrice
+      && priceSource !== null
+      && priceSource !== ""
+      && Number.isFinite(Number(priceSource))
+      && Number(priceSource) >= 0;
+    const selectedOptionSoldOut = selectedVariant?.status === "sold-out"
+      || selectedVariant?.stockQuantity === 0
+      || selectedSize?.status === "sold-out"
+      || selectedSize?.stockQuantity === 0;
     const availabilityMode = productAvailabilityMode(product || {});
     const soldOut = availabilityMode === "preorder"
       || availabilityMode === "sold-out"
       || product?.status === "sold-out"
       || product?.stockQuantity === 0
-      || (variants.length > 0 && availableVariants.length === 0)
-      || (sizes.length > 0 && availableSizes.length === 0);
-    const preorderAllowed = availabilityMode === "preorder";
-    const preorder = soldOut && preorderAllowed;
+      || selectedOptionSoldOut;
+    const preorder = soldOut && availabilityMode === "preorder" && !missingOption;
     const temporarilyUnavailable = Boolean(product?.temporarilyUnavailable
       || (!productionWithElectricity && product?.requiresElectricity));
     const availability = resolvedBottegaAvailability({
@@ -1214,21 +1307,60 @@
       soldOut,
       preorder,
       availabilityMode,
-      unavailable: missingOrHidden || temporarilyUnavailable
+      unavailable: missingOrHidden || missingOption || !hasOrderablePrice || temporarilyUnavailable
     });
     const effectivePreorder = availability === "preorder";
+    const isBottega = (product?.category || item.category) === "bottega";
+    const availabilityCopy = isBottega
+      ? bottegaAvailabilityCopy(availability)
+      : availability === "preorder"
+        ? "PRE-ORDER · 2 días"
+        : availability === "unavailable"
+          ? "AGOTADO"
+          : "";
     const choices = [
       inventory.size,
       inventory.variant,
-      bottegaAvailabilityCopy(availability)
+      availabilityCopy
     ].filter(Boolean).join(" · ");
-    const changed = inventory.availability !== availability
-      || Boolean(inventory.preorder) !== effectivePreorder
-      || item.choices !== choices;
+
+    if (product && !missingOrHidden) {
+      const identityChoices = [inventory.size, inventory.variant].filter(Boolean);
+      const choiceSlug = identityChoices.join("-").toLowerCase().normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+      item.id = choiceSlug ? `catalog-${product.id}-${choiceSlug}` : `catalog-${product.id}`;
+      item.productId = product.id;
+      item.category = product.category || item.category || "";
+      item.name = product.name || item.name;
+      item.image = optimizedProductImage(product.image || item.image);
+      if (Object.prototype.hasOwnProperty.call(product, "ingredients")) {
+        item.ingredients = String(product.ingredients ?? "");
+      } else item.ingredients = item.ingredients || "";
+      if (!missingOption) item.price = hasOrderablePrice ? Number(priceSource) : null;
+      inventory.productId = product.id;
+      inventory.minimumBusinessDays = effectivePreorder
+        ? Math.max(1, Number(product.minimumBusinessDays) || 2)
+        : 0;
+    }
     inventory.preorder = effectivePreorder;
     inventory.availability = availability;
-    item.choices = choices;
-    return changed;
+    if (choices) item.choices = choices;
+    else delete item.choices;
+
+    const after = JSON.stringify({
+      id:item.id,
+      productId:item.productId,
+      category:item.category,
+      name:item.name,
+      price:item.price,
+      image:item.image,
+      ingredients:item.ingredients,
+      choices:item.choices,
+      inventory
+    });
+    return before !== after;
   }
 
   function refreshBuilderCartAvailability(item) {
@@ -4011,7 +4143,8 @@
     say.timer = setTimeout(() => surface.classList.remove("show"), 2800);
   }
 
-  function stockLimitNotice(error, itemName = "este producto") {
+  function stockLimitNotice(error, itemName = "este producto", code = "") {
+    if (code === "unavailable_product") return `${itemName} ya no está disponible. Revisa su estado actualizado.`;
     if (/No pudimos|momento|Inténtalo/i.test(error || "")) return error;
     if (!/suficientes|disponible|inventario|stock|cantidad/i.test(error || "")) return error;
     return `Llegaste al máximo disponible de ${itemName}. No puedes agregar más por ahora.`;
@@ -4082,7 +4215,15 @@
         image: card.dataset.image,
         ingredients: productIngredients(card.dataset.id),
         choices: selectedChoices.join(" · ") || undefined,
-        inventory: { kind:"product", productId:card.dataset.productId || card.dataset.id, size:selectedSize, variant:selectedVariant, preorder, availability:stockState || undefined },
+        inventory: {
+          kind:"product",
+          productId:card.dataset.productId || card.dataset.id,
+          size:selectedSize,
+          variant:selectedVariant,
+          preorder,
+          availability:stockState || undefined,
+          minimumBusinessDays:preorder ? 2 : 0
+        },
         qty: 0
       }
     };
@@ -4091,7 +4232,13 @@
   function addItemQuantity(item, quantity) {
     if (quantity <= 0) return;
     const found = cart.find(entry => entry.id === item.id);
-    if (found) found.qty += quantity;
+    if (found && item.inventory?.kind === "product") {
+      const nextQuantity = Number(found.qty || 0) + quantity;
+      Object.assign(found, item, {
+        qty:nextQuantity,
+        inventory:{...(item.inventory || {})}
+      });
+    } else if (found) found.qty += quantity;
     else cart.push({...item, qty:quantity});
   }
 
@@ -4102,7 +4249,9 @@
   async function maximumValidAddition(item, requested) {
     const fullValidation = await validateStockMutation(productMutationChecks(item, requested));
     if (fullValidation.ok) return {quantity:requested};
-    if (/No pudimos|momento|Inténtalo/i.test(fullValidation.error || "")) return {quantity:0,error:fullValidation.error};
+    if (/No pudimos|momento|Inténtalo/i.test(fullValidation.error || "")) {
+      return {quantity:0,error:fullValidation.error,code:fullValidation.code || ""};
+    }
     let low = 0;
     let high = requested - 1;
     while (low < high) {
@@ -4111,7 +4260,7 @@
       if (validation.ok) low = middle;
       else high = middle - 1;
     }
-    return {quantity:low,error:fullValidation.error};
+    return {quantity:low,error:fullValidation.error,code:fullValidation.code || ""};
   }
 
   function serializeStockQuantityMutation(task) {
@@ -4221,9 +4370,18 @@
         return { accepted, result };
       });
       if (outcome.accepted) {
-        say(outcome.accepted === 1 ? "Añadido a tu pedido 💜" : `${outcome.accepted} unidades añadidas a tu pedido 💜`);
+        const preorderCopy = queue.item.inventory?.preorder === true;
+        say(preorderCopy
+          ? outcome.accepted === 1
+            ? "Pre-order añadido a tu pedido 💜"
+            : `${outcome.accepted} pre-orders añadidos a tu pedido 💜`
+          : outcome.accepted === 1
+            ? "Añadido a tu pedido 💜"
+            : `${outcome.accepted} unidades añadidas a tu pedido 💜`);
       }
-      if (outcome.accepted < requested && outcome.result.error) say(stockLimitNotice(outcome.result.error, queue.item.name));
+      if (outcome.accepted < requested && outcome.result.error) {
+        say(stockLimitNotice(outcome.result.error, queue.item.name, outcome.result.code));
+      }
     }
     queue.processing = false;
     if (!queue.pending && !queue.inFlight) productAddQueues.delete(id);
@@ -4236,11 +4394,6 @@
     const selection = productSelection(card);
     if (selection.error) return say(selection.error);
     quantityMutationVersion += 1;
-    if (selection.preorder) {
-      addItemQuantity(selection.item, 1);
-      save();
-      return say("Pre-order añadido a tu pedido 💜");
-    }
     const queue = scheduleProductQueue(selection);
     queue.pending += 1;
     syncProductQuantityControls();
@@ -4847,7 +5000,12 @@
       if (quantity > 0) visibleCart.push({ item: queue.item, quantity });
     }
     const count = visibleCart.reduce((sum, entry) => sum + entry.quantity, 0);
-    const total = visibleCart.reduce((sum, entry) => sum + entry.item.price * entry.quantity, 0);
+    const total = visibleCart.reduce((sum, entry) => {
+      const price = entry.item.price;
+      return price !== null && price !== "" && Number.isFinite(Number(price))
+        ? sum + Number(price) * entry.quantity
+        : sum;
+    }, 0);
     $("#cartCount").textContent = count;
     $("#cartTotal").textContent = money(total);
     const blocked = visibleCart.some(entry => isElectricityBlockedCartItem(entry.item));
@@ -4858,7 +5016,7 @@
           <img src="${item.image}" alt="">
           <div>
             <h4>${escapeHtml(item.name)}</h4>
-            <small>${money(item.price)}</small>
+            <small>${cartPriceCopy(item.price)}</small>
             ${item.choices ? `<small class="cart-choices">${escapeHtml(item.choices)}</small>` : ""}
             ${isElectricityBlockedCartItem(item) ? `<small class="cart-unavailable-copy">Temporalmente no disponible. Elimínalo para continuar.</small>` : ""}
             <div class="qty">
@@ -4877,7 +5035,7 @@
     if (item.inventory?.kind === "fonkies" || item.inventory?.kind === "fomb") {
       return item.inventory.availability === "unavailable";
     }
-    if (item.category === "bottega" && item.inventory?.kind === "product") {
+    if (item.inventory?.kind === "product" && item.inventory.availability === "unavailable") {
       return item.inventory.availability === "unavailable";
     }
     if (productionWithElectricity) return false;
@@ -4993,16 +5151,21 @@
   }
 
   function itemLeadTime(item) {
-    if (item.category === "bottega") {
+    if (item.inventory?.kind === "product") {
       if (item.inventory?.preorder) {
-        const configured = Number(config.leadTimesByProduct?.[item.inventory?.productId || item.productId || item.id]?.minimumBusinessDays);
+        const configured = Number(item.inventory.minimumBusinessDays
+          ?? config.leadTimesByProduct?.[item.inventory?.productId || item.productId || item.id]?.minimumBusinessDays);
         return Number.isFinite(configured) && configured > 0 ? configured : null;
       }
-      return item.inventory?.availability === "immediate" ? 0 : null;
+      if (item.inventory?.availability === "immediate") return 0;
+      if (item.inventory?.availability === "unavailable") return null;
+      const configured = Number(config.leadTimesByProduct?.[item.inventory?.productId || item.productId || item.id]?.minimumBusinessDays);
+      return Number.isFinite(configured) ? Math.max(0, configured) : null;
     }
-    if (item.inventory?.preorder) return 2;
     if (item.inventory?.kind === "fonkies" || item.inventory?.kind === "fomb") {
-      return item.inventory.availability === "immediate" ? 0 : null;
+      if (item.inventory.availability === "immediate") return 0;
+      if (item.inventory.availability === "preorder" || item.inventory.preorder) return 2;
+      return null;
     }
     const leadTime = config.leadTimesByProduct?.[item.inventory?.productId || item.productId || item.id];
     const days = Number(leadTime?.minimumBusinessDays);
@@ -5549,6 +5712,9 @@
   // Build the same 34-card geometry the verified catalogue normally returns
   // before waiting for the network. This removes the first-visit jump from a
   // seven-card fallback to the complete menu while the customer is scrolling.
+  // Cakes are made to order in the durable snapshot too, so a slow catalogue
+  // never flashes an immediate-sale button or drops the two-day label.
+  prepareFallbackCakeAvailability();
   renderDynamicCatalog();
   enhanceDietarySeals();
   enhanceProductSafety();
@@ -5797,6 +5963,15 @@
       if (stableMatches.length === 1) return stableMatches[0];
       if (stableMatches.length > 1) return null;
     }
+    if (identity.legacyId) {
+      const legacyMatches = products.filter(product => (
+        product.dataset.productId === identity.legacyId
+        || product.dataset.id === identity.legacyId
+        || product.dataset.id === `catalog-${identity.legacyId}`
+      ));
+      if (legacyMatches.length === 1) return legacyMatches[0];
+      if (legacyMatches.length > 1) return null;
+    }
     const expectedName = normalizedStockFlavor({ flavor:identity.name });
     const corroboratesIdentity = product => (
       (!expectedName || normalizedStockFlavor({ flavor:product.dataset.name }) === expectedName)
@@ -5804,12 +5979,6 @@
     );
     const corroboratedProducts = products.filter(corroboratesIdentity);
     if (expectedName && corroboratedProducts.length !== 1) return null;
-    if (identity.legacyId) {
-      const legacyMatches = corroboratedProducts.filter(product => (
-        product.dataset.id === identity.legacyId || product.dataset.productId === identity.legacyId
-      ));
-      if (legacyMatches.length === 1) return legacyMatches[0];
-    }
     if (!expectedName) return null;
     return corroboratedProducts[0] || null;
   }

@@ -35,32 +35,44 @@ window.FONTANA_CONFIG = {
       description: "Individual para 1–2 personas (180 g aprox.). Base y topping a elección por WhatsApp.",
       ingredients: "Base vainilla: harina de almendra, monkfruit, huevo, leche sin lactosa y aceite de coco. Base chocolate: los mismos ingredientes más cacao.",
       weight: "180 G APROX.",
-      availabilityLabel: "POR ENCARGO · 1–2 DÍAS",
-      status: "available"
+      availabilityLabel: "POR ENCARGO · 2 DÍAS",
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2
     },
     {
       id: "tentacion-coco",
       category: "cakes",
       name: "Torta de Tentación de Coco",
-      price: 47,
+      price: 45,
       image: "assets/tentacion-coco-fontana-pro.jpg",
       description: "Torta de coco con crema de coco y glaseado vegano sin azúcar.",
       ingredients: "Harina de almendra, monkfruit, aceite de coco, huevo, crema de coco, coco rallado y glaseado vegano sin azúcar.",
       weight: "TORTA COMPLETA",
-      availabilityLabel: "POR ENCARGO · 1–2 DÍAS",
-      status: "available"
+      availabilityLabel: "POR ENCARGO · 2 DÍAS",
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2
     },
     {
       id: "crumbl-blueberry",
       category: "cakes",
       name: "Torta de Crumbl de Blueberry",
-      price: 47,
+      price: 45,
       image: "assets/blueberry-fontana-v2.jpg",
       description: "Torta de blueberry con glaseado vegano y crumbl.",
       ingredients: "Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, blueberry, alulosa y glaseado vegano.",
       weight: "TORTA COMPLETA",
-      availabilityLabel: "POR ENCARGO · 1–2 DÍAS",
-      status: "available"
+      availabilityLabel: "POR ENCARGO · 2 DÍAS",
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2
     },
     {
       id: "brownie-fit",
@@ -71,8 +83,12 @@ window.FONTANA_CONFIG = {
       description: "Torta completa de brownie Fontana.",
       ingredients: "Harina de almendra, cacao, aceite de coco, alulosa, monkfruit, chispas de chocolate vegano, huevo, sal Maldon y harina de yuca (5 %).",
       weight: "TORTA COMPLETA",
-      availabilityLabel: "POR ENCARGO · 1–2 DÍAS",
-      status: "available"
+      availabilityLabel: "POR ENCARGO · 2 DÍAS",
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2
     },
     {
       id: "mini-cake",
@@ -83,8 +99,12 @@ window.FONTANA_CONFIG = {
       description: "Mini cake de sabor a elección, sujeto a confirmación por WhatsApp.",
       ingredients: "Base vainilla: harina de almendra, monkfruit, huevo, leche sin lactosa y aceite de coco. Base chocolate: los mismos ingredientes más cacao.",
       weight: "MINI CAKE",
-      availabilityLabel: "POR ENCARGO · 1–2 DÍAS",
-      status: "available"
+      availabilityLabel: "POR ENCARGO · 2 DÍAS",
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2
     },
     {
       id: "layer-cake",
@@ -96,7 +116,11 @@ window.FONTANA_CONFIG = {
       ingredients: "",
       weight: "PERSONALIZADA",
       availabilityLabel: "SABOR Y PRESUPUESTO POR WHATSAPP",
-      status: "available"
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2
     },
     {
       id: "torta-personalizada",
@@ -108,7 +132,11 @@ window.FONTANA_CONFIG = {
       ingredients: "",
       weight: "PERSONALIZADA",
       availabilityLabel: "SABOR Y PRESUPUESTO POR WHATSAPP",
-      status: "available"
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2
     },
     {
       id: "cachito-fit",

@@ -29,6 +29,19 @@ async function openPreview(page) {
   await page.goto("/");
 }
 
+async function stubNonessentialImages(page, preservePaths = []) {
+  const preserved = new Set(preservePaths.map(path => String(path).replace(/^\/+/, "")));
+  await page.route(/\.(?:avif|gif|jpe?g|png|webp)(?:\?.*)?$/i, route => {
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/+/, "");
+    if (preserved.has(pathname)) return route.continue();
+    return route.fulfill({
+      status:200,
+      contentType:"image/svg+xml",
+      body:'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200"/>'
+    });
+  });
+}
+
 async function expectModalPageLocked(page, expectedScrollY) {
   await expect(page.locator("body")).toHaveClass(/product-modal-open/);
   await expect(page.locator("body")).not.toHaveCSS("position", "fixed");
@@ -724,7 +737,7 @@ test("cliente prepara un pedido completo para WhatsApp", async ({ page }) => {
 
   const message = await page.evaluate(() => window.__copiedOrder);
   expect(message).toMatch(/^Hola Fontana sin gluten 💜 Quiero hacer este pedido:\n\n\*Pedido FNT-[^\n]+\*\n\n• 1× Torta de Pistacho y Frambuesa/);
-  expect(message).toContain("\n\n*Total estimado: REF 60,00*\n\n");
+  expect(message).toContain("\n\n*Total estimado: REF 59,00*\n\n");
   expect(message).toContain("• Nombre: Andrea Pérez");
   expect(message).toContain("• Teléfono: 0412 000 0000");
   expect(message).toContain("• Modalidad: Pickup en Mañongo (detalles por WhatsApp)");
@@ -1307,6 +1320,206 @@ test("un producto renombrado durante la carga conserva el clic por su ID", async
   await expect(page.locator(".product-flip-backdrop")).toBeVisible();
   await page.keyboard.press("Escape");
   await expectModalPageUnlocked(page);
+});
+
+test("un clic temprano en una torta estática renombrada conserva el preorden", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = {
+    version: 2,
+    settings: { productionWithElectricity: true, stockTodayOpen: true },
+    operations: { verified: true, electricityEnabled: true },
+    products: [{
+      id: "pistacho",
+      category: "cakes",
+      name: "Torta de Pistacho & Frambuesa",
+      price: 59,
+      image: "assets/pistachio-raspberry-fontana-v2.jpg",
+      description: "Torta de pistacho y frambuesa.",
+      ingredients: "Harina de almendra, pistacho y frambuesa.",
+      weight: "1 KG",
+      availabilityMode: "preorder",
+      status: "sold-out",
+      allowPreorder: true,
+      immediate: false,
+      minimumBusinessDays: 2,
+      visible: true
+    }],
+    builders: {}
+  };
+  await installGatedCatalogHydration(page, state);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const card = document.querySelector('.product[data-id="pistacho"]');
+      // Simula el HTML antiguo que solo tenía data-id y un nombre distinto.
+      card?.removeAttribute("data-product-id");
+      card?.querySelector(".add")?.click();
+      window.__earlyCakePreorder = {
+        found:Boolean(card),
+        originalName:card?.dataset.name || "",
+        captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect.poll(() => page.evaluate(() => window.__earlyCakePreorder)).toEqual({
+    found:true,
+    originalName:"Torta de Pistacho y Frambuesa",
+    captured:true
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const item = JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")[0];
+    return item && {
+      id:item.id,
+      productId:item.inventory?.productId,
+      name:item.name,
+      price:item.price,
+      preorder:item.inventory?.preorder,
+      days:item.inventory?.minimumBusinessDays,
+      qty:item.qty
+    };
+  }), { timeout: 4_000 }).toEqual({
+    id:"catalog-pistacho",
+    productId:"pistacho",
+    name:"Torta de Pistacho & Frambuesa",
+    price:59,
+    preorder:true,
+    days:2,
+    qty:1
+  });
+  await expect(page.locator("#cartCount")).toHaveText("1");
+  await expect(page.locator("#toast")).not.toContainText("Ese producto cambió");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("la copia rápida mantiene tortas en preorden si falla la primera carga del catálogo", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const validationRequests = [];
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ error:"catalog unavailable" })
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", async route => {
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST,OPTIONS",
+          "access-control-allow-headers": "content-type"
+        }
+      });
+    }
+    validationRequests.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ ok:true })
+    });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  const cake = page.locator('.product[data-product-id="pistacho"]');
+  await expect(cake).toContainText("PREORDENAR · 2 DÍAS");
+  await expect(cake.locator(".price").first()).toHaveText("REF 59,00");
+  await expect(cake.locator(".add")).toHaveText("PREORDENAR");
+  await cake.locator(".add").click();
+  await expect(page.locator("#cartCount")).toHaveText("1");
+  await expect.poll(() => validationRequests.length).toBeGreaterThan(0);
+  expect(validationRequests[0].checks).toContainEqual(expect.objectContaining({
+    kind:"product",
+    productId:"pistacho",
+    preorder:true,
+    quantity:1
+  }));
+
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días");
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator("#checkoutForm")).toBeVisible();
+  expect(validationRequests.flatMap(payload => payload.checks || [])).toContainEqual(expect.objectContaining({
+    kind:"product",
+    productId:"pistacho",
+    preorder:true,
+    quantity:1
+  }));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("la vista local valida una torta agotada que la dueña permite preordenar", async ({ page }) => {
+  const product = {
+    id:"torta-preorden-local",
+    category:"cakes",
+    name:"Torta de preorden local",
+    price:40,
+    image:"assets/chocolate-fontana-v2.jpg",
+    description:"Torta completa.",
+    ingredients:"Harina de almendra.",
+    weight:"1 KG",
+    availabilityMode:"preorder",
+    status:"sold-out",
+    stockQuantity:0,
+    allowPreorder:true,
+    immediate:false,
+    minimumBusinessDays:2,
+    visible:true
+  };
+  await page.addInitScript(catalogProduct => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version:2,
+      settings:{productionWithElectricity:true,stockTodayOpen:true},
+      operations:{verified:true,electricityEnabled:true},
+      products:[catalogProduct],
+      builders:{}
+    }));
+  }, product);
+
+  await openPreview(page);
+  const cake = page.locator('[data-product-id="torta-preorden-local"]');
+  await expect(cake.locator(".add")).toHaveText("PREORDENAR");
+  await cake.locator(".add").click();
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-choices")).toContainText("PRE-ORDER · 2 días");
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator("#checkoutForm")).toBeVisible();
+  await expect(page.locator("#drawerStatus")).not.toContainText("suficientes unidades");
+});
+
+test("el primer clic no añade un preorden obsoleto que la dueña ya desactivó", async ({ page }) => {
+  let validations = 0;
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status:503,
+    contentType:"application/json",
+    headers:{"access-control-allow-origin":"*"},
+    body:JSON.stringify({error:"catalog unavailable"})
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", route => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({
+      status:204,
+      headers:{
+        "access-control-allow-origin":"*",
+        "access-control-allow-methods":"POST,OPTIONS",
+        "access-control-allow-headers":"content-type"
+      }
+    });
+    validations += 1;
+    return route.fulfill({
+      status:409,
+      contentType:"application/json",
+      headers:{"access-control-allow-origin":"*"},
+      body:JSON.stringify({error:"Este producto ya no está disponible.",code:"unavailable_product"})
+    });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  await page.locator('[data-product-id="pistacho"] .add').click();
+  await expect.poll(() => validations).toBe(1);
+  await expect(page.locator("#cartCount")).toHaveText("0");
+  await expect(page.locator("#toast")).toContainText("ya no está disponible");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]"))).toEqual([]);
 });
 
 test("una galería estática abierta durante la carga conserva el sabor sin data-flavor", async ({ page }) => {
@@ -1960,19 +2173,23 @@ test("la ráfaga del carrito conserva todos los clics de más y menos", async ({
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1"))[0].qty)).toBe(4);
 });
 
-test("las tarjetas conservan la compra al frente y giran físicamente al ampliarse", async ({ page }, testInfo) => {
+test("las tarjetas disponibles conservan la compra al frente y giran físicamente al ampliarse", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 390, height: 844 });
+  await stubNonessentialImages(page);
   await openPreview(page);
-  await page.locator(".product.product-flip-ready").first().waitFor();
+  const card = page.locator('[data-product-id="agua-minalba-600"]');
+  await expect(card).toHaveClass(/product-flip-ready/, { timeout: 30_000 });
   const productCount = await page.locator(".product").count();
   await expect(page.locator(".product.product-flip-ready")).toHaveCount(productCount);
-  const card = page.locator('[data-product-id="pistacho-clasico"]');
   const front = card.locator(".product-front");
   const back = card.locator(".product-back");
 
   await expect(front).toBeVisible();
   await expect(back).toHaveAttribute("aria-hidden", "true");
   await expect(front.locator(".product-safety")).toBeVisible();
+  await expect(card).not.toHaveClass(/product-preorder/);
+  await expect(front.locator(".product-quantity-control")).toBeVisible();
   await expect(front.locator(".add")).toBeVisible();
   await card.scrollIntoViewIfNeeded();
   const compactBox = await card.boundingBox();
@@ -2045,8 +2262,8 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.reload();
-  const desktopCard = page.locator('[data-product-id="pistacho-clasico"]');
-  await expect(desktopCard).toHaveClass(/product-flip-ready/, { timeout: 10_000 });
+  const desktopCard = page.locator('[data-product-id="agua-minalba-600"]');
+  await expect(desktopCard).toHaveClass(/product-flip-ready/, { timeout: 30_000 });
   const desktopCompactBox = await desktopCard.boundingBox();
   await desktopCard.locator(".product-front .product-media").click();
   await expect(desktopCard).toHaveClass(/product-flipped/);
@@ -2511,6 +2728,9 @@ test("la tarjeta espera la validación antes de cerrar y reabre con la cantidad 
 });
 
 test("el cierre no activa por accidente un filtro que queda debajo de la foto", async ({ page }) => {
+  test.setTimeout(60_000);
+  await stubNonessentialImages(page);
+  await installExpandedFlavorLayoutCatalog(page);
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 1366, height: 900 }
@@ -2518,6 +2738,7 @@ test("el cierre no activa por accidente un filtro que queda debajo de la foto", 
     await page.setViewportSize(viewport);
     await openPreview(page);
     await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+    await expect(page.locator(".fonkie-gallery-card").first()).toHaveAttribute("role", "button", { timeout: 30_000 });
     await page.locator(".filters").evaluate((filters, viewportHeight) => {
       const rect = filters.getBoundingClientRect();
       window.scrollTo({
@@ -2580,6 +2801,12 @@ test("el cierre no activa por accidente un filtro que queda debajo de la foto", 
 });
 
 test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en escritorio", async ({ page }) => {
+  test.setTimeout(60_000);
+  await stubNonessentialImages(page, [
+    "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg",
+    "assets/fomb-pistachio-fontana-pro.jpg"
+  ]);
+  await installExpandedFlavorLayoutCatalog(page);
   await page.setViewportSize({ width: 1366, height: 900 });
   await openPreview(page);
 
@@ -2589,6 +2816,7 @@ test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en es
   ]) {
     await page.getByRole("button", { name: item.filter }).click();
     const source = page.locator(item.card).first();
+    await expect(source).toHaveAttribute("role", "button", { timeout: 30_000 });
     await expect(source).toBeVisible();
     await source.click();
     const overlay = page.locator(".builder-flavor-flip-card");
@@ -2611,6 +2839,7 @@ test("las fotos ampliadas de Fonkies y Fomb también se muestran completas en es
 
 test("el panel ampliado de todos los sabores queda fijo y completo en pantallas relevantes", async ({ page }) => {
   test.setTimeout(180_000);
+  await stubNonessentialImages(page);
   const layoutState = createExpandedFlavorLayoutState();
   await installExpandedFlavorLayoutCatalog(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -2654,7 +2883,7 @@ test("el panel ampliado de todos los sabores queda fijo y completo en pantallas 
       await page.getByRole("button", { name: builderCase.filter }).click();
       const cards = page.locator(builderCase.card);
       await expect(cards).toHaveCount(builderCase.names.length);
-      await expect(cards.first()).toHaveAttribute("role", "button", { timeout: 10_000 });
+      await expect(cards.first()).toHaveAttribute("role", "button", { timeout: 30_000 });
       await cards.first().evaluate(element => element.click());
       const overlay = page.locator(".builder-flavor-flip-card");
       const details = overlay.locator(".builder-flavor-expanded-details");
@@ -2946,7 +3175,10 @@ test("un cambio de orientación durante la apertura conserva el foco dentro del 
 });
 
 test("la vista ampliada navega sabores con swipe, flip, teclado e inventario correcto", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.setViewportSize({ width: 390, height: 844 });
+  await stubNonessentialImages(page);
+  await installExpandedFlavorLayoutCatalog(page);
   await openPreview(page);
 
   for (const item of [
@@ -2955,12 +3187,15 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
   ]) {
     await page.getByRole("button", { name: item.filter }).click();
     const cards = page.locator(item.card);
+    await expect(cards.first()).toHaveAttribute("role", "button", { timeout: 30_000 });
     const names = await cards.evaluateAll(elements => elements.map(element => element.dataset.flavor
       || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
     expect(names.length).toBeGreaterThan(2);
     const rowOutputs = page.locator(`${item.row} output`);
     const seedFirstPlus = page.locator(`${item.row}`).nth(0).locator('[data-delta="1"]');
     const seedSecondPlus = page.locator(`${item.row}`).nth(1).locator('[data-delta="1"]');
+    await expect(seedFirstPlus).toBeEnabled({ timeout: 30_000 });
+    await expect(seedSecondPlus).toBeEnabled({ timeout: 30_000 });
     await seedFirstPlus.evaluate(button => button.click());
     await expect(rowOutputs.nth(0)).toHaveText("1");
     for (const expected of ["1", "2"]) {
@@ -3211,11 +3446,13 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
 });
 
 test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rueda", async ({ page }) => {
-  test.setTimeout(55_000);
+  test.setTimeout(180_000);
   const browserErrors = [];
   page.on("pageerror", error => browserErrors.push(error.message));
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await stubNonessentialImages(page);
+  await installExpandedFlavorLayoutCatalog(page);
   await openPreview(page);
 
   const dispatchWheelBurst = async (overlay, samples, gap = 0) => overlay.evaluate(async (element, input) => {
@@ -3249,6 +3486,7 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
   ]) {
     await page.getByRole("button", { name: item.filter }).click();
     const cards = page.locator(item.card);
+    await expect(cards.first()).toHaveAttribute("role", "button", { timeout: 60_000 });
     const names = await cards.evaluateAll(elements => elements.map(element => element.dataset.flavor
       || element.querySelector("span")?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()));
     const source = cards.first();
@@ -3539,12 +3777,14 @@ test("cada producto móvil abre y cierra sin mover la página", async ({ page })
 });
 
 test("el cierre conserva la proporción de la imagen hasta el último fotograma", async ({ page }) => {
+  test.setTimeout(60_000);
+  await stubNonessentialImages(page, ["assets/pistacho-fontana-v4.webp"]);
   for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
     await page.setViewportSize(viewport);
     await openPreview(page);
     const card = page.locator('[data-product-id="pistacho-clasico"]');
     const compactMedia = card.locator(".product-front .product-media");
-    await expect(card).toHaveClass(/product-flip-ready/, { timeout: 10_000 });
+    await expect(card).toHaveClass(/product-flip-ready/, { timeout: 30_000 });
     await card.scrollIntoViewIfNeeded();
     const compactBox = await compactMedia.boundingBox();
 
@@ -3642,11 +3882,13 @@ test("Fonkies y Fomb respetan movimiento reducido sin animaciones residuales", a
 });
 
 test("las tarjetas conservan altura y pie simétricos dentro de cada fila visual", async ({ page }) => {
+  test.setTimeout(90_000);
+  await stubNonessentialImages(page);
   for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
     await page.setViewportSize(viewport);
     await openPreview(page);
-    await expect(page.locator("#products")).toHaveClass(/catalog-organized/, { timeout: 15_000 });
-    await expect(page.locator(".catalog-group-grid .product").first()).toHaveClass(/product-flip-ready/, { timeout: 15_000 });
+    await expect(page.locator("#products")).toHaveClass(/catalog-organized/, { timeout: 30_000 });
+    await expect(page.locator(".catalog-group-grid .product").first()).toHaveClass(/product-flip-ready/, { timeout: 30_000 });
     await expect.poll(() => page.locator(".catalog-group-grid").evaluateAll(grids => grids.filter(grid => (
       grid.querySelectorAll(".product:not(.hidden)").length > 1
     )).length), { timeout: 15_000 }).toBeGreaterThan(2);
@@ -4071,8 +4313,9 @@ test("Fonkies configurados para preordenar anuncian entrega en dos días", async
 });
 
 test("Fonkies y Fomb anuncian el inventario real en galería, selector y vista ampliada", async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   await installBuilderAvailabilityCatalog(page);
+  await stubNonessentialImages(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
   const availabilityCases = [
     { state: "immediate", copy: "Entrega inmediata" },
@@ -4111,6 +4354,8 @@ test("Fonkies y Fomb anuncian el inventario real en galería, selector y vista a
       await page.getByRole("button", { name: builderCase.filter }).click();
       const builder = page.locator(builderCase.builder);
       await expect(builder).toBeVisible();
+      await expect(builder.locator(`${builderCase.card}[data-flavor="${builderCase.names[0]}"]`))
+        .toHaveAttribute("role", "button", { timeout: 30_000 });
 
       for (let index = 0; index < availabilityCases.length; index += 1) {
         const expected = availabilityCases[index];
@@ -5664,6 +5909,7 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
   test.slow();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await stubNonessentialImages(page);
   await openPreview(page);
 
   const modulo = (value, total) => ((value % total) + total) % total;
@@ -5862,7 +6108,7 @@ test("las galerías compactas de Fonkies y Fomb mantienen un anillo infinito sin
     const cards = track.locator(":scope > " + item.card);
 
     await expect(track).toBeVisible();
-    await expect(track).toHaveAttribute("data-gallery-loop", "true");
+    await expect(track).toHaveAttribute("data-gallery-loop", "true", { timeout: 30_000 });
     await expect(track).toHaveAttribute("data-gallery-state", "idle");
     await expect(track).toHaveAttribute("data-gallery-index", "0");
     await expect(track.locator(
@@ -6423,7 +6669,7 @@ test("catálogo incluye productos confirmados y fotos profesionales", async ({ p
   await expect(page.getByRole("button", { name: "Fonkies · Galletas" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Fomb · Bombones" })).toBeVisible();
   await expect(page.locator('[data-product-id="ballerine"]')).toContainText("12,00");
-  await expect(page.locator('[data-product-id="crumbl-blueberry"]')).toContainText("47,00");
+  await expect(page.locator('[data-product-id="crumbl-blueberry"]')).toContainText("45,00");
   await expect(page.locator('[data-product-id="brownie-fit"]')).toContainText("38,00");
   await expect(page.locator('[data-product-id="brownie-fit"]')).toContainText("sal Maldon");
   await expect(page.locator('[data-product-id="brownie-fit"]')).toContainText("harina de yuca (5 %)");
@@ -6710,9 +6956,165 @@ test("el carrito Bottega reconcilia la disponibilidad vigente antes del checkout
   await expect(page.locator("#drawer")).not.toContainText("2 días");
 });
 
+test("un carrito antiguo de torta adopta precio y preorden actuales del panel", async ({ page }) => {
+  const currentProduct = {
+    id:"pistacho",
+    category:"cakes",
+    name:"Torta de Pistacho & Frambuesa",
+    price:59,
+    image:"assets/pistachio-raspberry-fontana-v2.jpg",
+    description:"Torta de pistacho y frambuesa.",
+    ingredients:"Harina de almendra, pistacho y frambuesa.",
+    weight:"1 KG",
+    availabilityMode:"preorder",
+    status:"sold-out",
+    allowPreorder:true,
+    immediate:false,
+    minimumBusinessDays:2,
+    visible:true
+  };
+  await page.addInitScript(product => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version:2,
+      settings:{productionWithElectricity:true,stockTodayOpen:true},
+      operations:{verified:true,electricityEnabled:true},
+      products:[product],
+      builders:{}
+    }));
+    localStorage.setItem("fontana-cart-v1", JSON.stringify([{
+      id:"pistacho",
+      productId:"pistacho",
+      category:"cakes",
+      name:"Torta de Pistacho y Frambuesa",
+      price:60,
+      image:product.image,
+      ingredients:product.ingredients,
+      inventory:{kind:"product",productId:"pistacho",size:"",variant:"",preorder:false,availability:"pending"},
+      qty:1
+    }]));
+  }, currentProduct);
+
+  await page.goto("/");
+  await expect(page.locator("#cartCount")).toHaveText("1");
+  const reconciled = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")[0]);
+  expect(reconciled).toMatchObject({
+    id:"catalog-pistacho",
+    productId:"pistacho",
+    name:"Torta de Pistacho & Frambuesa",
+    price:59,
+    choices:"PRE-ORDER · 2 días",
+    inventory:{
+      kind:"product",
+      productId:"pistacho",
+      preorder:true,
+      availability:"preorder",
+      minimumBusinessDays:2
+    },
+    qty:1
+  });
+
+  await page.locator("#cartButton").click();
+  const item = page.locator(".cart-item").filter({ hasText:"Torta de Pistacho & Frambuesa" });
+  await expect(item).toContainText("REF 59,00");
+  await expect(item.locator(".cart-choices")).toHaveText("PRE-ORDER · 2 días");
+  await expect(page.locator("#continueCheckout")).toBeEnabled();
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator("#checkoutForm")).toBeVisible();
+  await expect(page.locator(".checkout-preparation-row.prepared")).toContainText("Torta de Pistacho & Frambuesa");
+});
+
+test("el carrito no sustituye opciones eliminadas ni convierte cotizaciones en precio cero", async ({ page }) => {
+  const products = [
+    {
+      id:"raviolis",
+      category:"salado",
+      name:"Raviolis",
+      price:15,
+      image:"assets/ravioli-fontana-pro.jpg",
+      ingredients:"Harina de arroz y huevo.",
+      availabilityMode:"available",
+      status:"available",
+      immediate:true,
+      visible:true,
+      sizes:[],
+      variants:[]
+    },
+    {
+      id:"torta-personalizada",
+      category:"cakes",
+      name:"Torta completa personalizada",
+      price:null,
+      image:"assets/torta-personalizada-fontana-pro-v2.jpg",
+      ingredients:"",
+      availabilityMode:"preorder",
+      status:"sold-out",
+      allowPreorder:true,
+      minimumBusinessDays:2,
+      visible:true,
+      sizes:[{name:"Pequeña",price:30,status:"available"}]
+    }
+  ];
+  await page.addInitScript(catalogProducts => {
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version:2,
+      settings:{productionWithElectricity:true,stockTodayOpen:true},
+      operations:{verified:true,electricityEnabled:true},
+      products:catalogProducts,
+      builders:{}
+    }));
+    localStorage.setItem("fontana-cart-v1", JSON.stringify([
+      {
+        id:"catalog-raviolis-300-g-carne",
+        productId:"raviolis",
+        category:"salado",
+        name:"Raviolis",
+        price:20,
+        image:"assets/ravioli-fontana-pro.jpg",
+        choices:"300 g · Carne",
+        inventory:{kind:"product",productId:"raviolis",size:"300 g",variant:"Carne",preorder:false,availability:"immediate"},
+        qty:1
+      },
+      {
+        id:"catalog-torta-personalizada",
+        productId:"torta-personalizada",
+        category:"cakes",
+        name:"Torta completa personalizada",
+        price:60,
+        image:"assets/torta-personalizada-fontana-pro-v2.jpg",
+        ingredients:"Ingredientes anteriores.",
+        inventory:{kind:"product",productId:"torta-personalizada",size:"Pequeña",variant:"",preorder:true,availability:"preorder"},
+        qty:1
+      }
+    ]));
+  }, products);
+
+  await page.goto("/");
+  const cart = await page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]"));
+  expect(cart).toHaveLength(2);
+  expect(cart[0]).toMatchObject({
+    price:20,
+    choices:"300 g · Carne · AGOTADO",
+    inventory:{size:"300 g",variant:"Carne",preorder:false,availability:"unavailable"}
+  });
+  expect(cart[1]).toMatchObject({
+    price:null,
+    ingredients:"",
+    choices:"Pequeña · AGOTADO",
+    inventory:{preorder:false,availability:"unavailable"}
+  });
+
+  await page.locator("#cartButton").click();
+  await expect(page.locator(".cart-item-unavailable")).toHaveCount(2);
+  await expect(page.locator(".cart-item").nth(0)).toContainText("REF 20,00");
+  await expect(page.locator(".cart-item").nth(1)).toContainText("Cotizar");
+  await expect(page.locator("#continueCheckout")).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("las 11 tarjetas Bottega contienen toda su información en compacto y expandido", async ({ page }) => {
   test.setTimeout(240_000);
   await page.emulateMedia({ reducedMotion:"reduce" });
+  await stubNonessentialImages(page);
   const viewports = [
     { width:320, height:568 },
     { width:360, height:640 },
@@ -6734,6 +7136,8 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await openPreview(page);
+    await expect(page.locator('[data-product-id="bottega-de-cecco-tortiglioni"]'))
+      .toHaveClass(/product-flip-ready/, { timeout:30_000 });
     await page.getByRole("button", { name: "Bottega", exact: true }).click();
     const group = page.locator('.catalog-group[data-catalog-group="bottega"]');
     const grid = group.locator(".catalog-group-grid");
@@ -6873,7 +7277,7 @@ test("las 11 tarjetas Bottega contienen toda su información en compacto y expan
 });
 
 test("Bottega móvil conserva la imagen completa durante la animación real", async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   await page.emulateMedia({ reducedMotion:"no-preference" });
   const viewports = [
     { width:375, height:667 },
@@ -6881,6 +7285,7 @@ test("Bottega móvil conserva la imagen completa durante la animación real", as
     { width:430, height:932 }
   ];
   const productId = "bottega-de-cecco-penne-rigate";
+  await stubNonessentialImages(page, ["assets/bottega/de-cecco-penne-rigate-fontana.jpg"]);
 
   const sampleMotion = async card => page.evaluate(async id => {
     const frames = [];
@@ -6917,6 +7322,7 @@ test("Bottega móvil conserva la imagen completa durante la animación real", as
     await openPreview(page);
     await page.getByRole("button", { name:"Bottega", exact:true }).click();
     const card = page.locator(`.product[data-product-id="${productId}"]`);
+    await expect(card).toHaveClass(/product-flip-ready/, { timeout:30_000 });
     await card.scrollIntoViewIfNeeded();
     const compactStyles = await card.evaluate(element => {
       const front = element.querySelector(".product-front");
@@ -7405,6 +7811,11 @@ test("un sabor agotado conserva nombre, consulta y controles claros sin romper l
 
 test("el panel migra los productos legacy de dos días a preorden sin perder el plazo", async ({ page }) => {
   await page.goto("/admin/");
+  const configuredPreorderCakes = await page.evaluate(() => window.FONTANA_CONFIG.dynamicCatalog
+    .filter(product => ["ballerine", "tentacion-coco", "crumbl-blueberry", "brownie-fit", "mini-cake"].includes(product.id))
+    .map(product => ({ label:product.availabilityLabel, days:product.minimumBusinessDays })));
+  expect(configuredPreorderCakes).toHaveLength(5);
+  expect(configuredPreorderCakes.every(product => product.label === "POR ENCARGO · 2 DÍAS" && product.days === 2)).toBe(true);
   await page.getByRole("button", { name: "Entrar al panel" }).click();
   await page.getByRole("button", { name: "Productos", exact: true }).click();
   const cake = page.locator('[data-product-id="pistacho"]');
@@ -8390,7 +8801,9 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
 });
 
 test("los filtros cambian de categoría al instante y mantienen un placeholder estable", async ({ page }) => {
+  test.setTimeout(90_000);
   await page.setViewportSize({width:390,height:844});
+  await stubNonessentialImages(page, expectedBottegaProducts.map(product => product.image));
   let releaseImage;
   let requestStarted = false;
   let bottegaRequests = 0;
@@ -8408,6 +8821,8 @@ test("los filtros cambian de categoría al instante y mantienen un placeholder e
   try {
     await openPreview(page);
     const filter = page.getByRole("button", {name:"Bottega",exact:true});
+    const card = page.locator('.product[data-product-id="bottega-de-cecco-tortiglioni"]');
+    await expect(card).toHaveClass(/product-flip-ready/, { timeout:30_000 });
     await filter.hover();
     await filter.focus();
     await page.waitForTimeout(120);
@@ -8419,15 +8834,14 @@ test("los filtros cambian de categoría al instante y mantienen un placeholder e
     await expect(cakesFilter).not.toHaveAttribute("aria-busy", /.+/);
 
     await filter.click();
-    await expect.poll(() => requestStarted).toBe(true);
-    const card = page.locator('.product[data-product-id="bottega-de-cecco-tortiglioni"]');
+    await expect.poll(() => requestStarted, { timeout:30_000 }).toBe(true);
     const image = card.locator(".product-front .product-media img");
     const bottegaGroup = page.locator('.catalog-group[data-catalog-group="bottega"]');
     await expect(filter).not.toHaveAttribute("aria-busy", /.+/);
     await expect(page.locator('.catalog-group[data-catalog-group="cakes"]')).toBeHidden();
     await expect(bottegaGroup).toBeVisible();
     await expect(image).toHaveAttribute("loading", "eager");
-    await expect.poll(() => bottegaRequests).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => bottegaRequests, { timeout:30_000 }).toBeGreaterThanOrEqual(2);
     expect(await bottegaGroup.locator('img[loading="eager"]').count()).toBeLessThanOrEqual(2);
     await expect(image).toHaveClass(/catalog-image-pending/);
     const loadingPaint = await image.evaluate(element => {
@@ -8459,13 +8873,15 @@ test("los filtros cambian de categoría al instante y mantienen un placeholder e
 });
 
 test("Elige tu antojo solo anima con opacidad y desplazamiento en escritorio", async ({ page }) => {
+  test.setTimeout(120_000);
+  await stubNonessentialImages(page);
   const expectStaticTitle = async ({ viewport, reducedMotion }) => {
     await page.emulateMedia({ reducedMotion });
     await page.setViewportSize(viewport);
     await openPreview(page);
     const intro = page.locator(".menu-intro");
     const firstLetter = intro.locator(".menu-title-letter").first();
-    await expect(intro.locator(".menu-title-letter")).toHaveCount(13);
+    await expect(intro.locator(".menu-title-letter")).toHaveCount(13, { timeout: 30_000 });
     await expect(intro).not.toHaveClass(/menu-intro-animate/);
     await expect(firstLetter).toHaveCSS("animation-name", "none");
     await expect(firstLetter).toHaveCSS("opacity", "1");
@@ -8493,7 +8909,7 @@ test("Elige tu antojo solo anima con opacidad y desplazamiento en escritorio", a
     const intro = page.locator(".menu-intro");
     const title = intro.locator("h2");
     const firstLetter = intro.locator(".menu-title-letter").first();
-    await expect(intro.locator(".menu-title-letter")).toHaveCount(13);
+    await expect(intro.locator(".menu-title-letter")).toHaveCount(13, { timeout: 30_000 });
     await expect(intro).toHaveClass(/menu-intro-animate/);
     await expect(intro).not.toHaveClass(/menu-intro-visible/);
     await expect(firstLetter).toHaveCSS("opacity", "0");

@@ -81,12 +81,15 @@ export const staticProducts = [
     id: "pistacho",
     category: "cakes",
     name: "Torta de Pistacho y Frambuesa",
-    price: 60,
+    price: 59,
     image: "assets/pistachio-raspberry-fontana-v2.jpg",
     description: "Torta de harina de almendra con frambuesa, pistacho y glaseado vegano.",
     ingredients: "Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho, frambuesa, semillas de amapola, alulosa y chocolate blanco vegano sin azúcar.",
     weight: "25 CM · 1 KG",
-    status: "available"
+    availabilityMode: "preorder",
+    status: "sold-out",
+    allowPreorder: true,
+    minimumBusinessDays: 2
   },
   {
     id: "naranja",
@@ -97,7 +100,10 @@ export const staticProducts = [
     description: "Torta de naranja con harina de almendra, semillas de amapola y alulosa.",
     ingredients: "Harina de almendra, harina de yuca (10 %), monkfruit, aceite de coco, huevo, naranja, semillas de amapola y alulosa.",
     weight: "APROX. 1 KG",
-    status: "available"
+    availabilityMode: "preorder",
+    status: "sold-out",
+    allowPreorder: true,
+    minimumBusinessDays: 2
   },
   {
     id: "zanahoria",
@@ -108,7 +114,10 @@ export const staticProducts = [
     description: "Torta de zanahoria con canela, jengibre, almendras y glaseado vegano.",
     ingredients: "Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, zanahoria, canela, jengibre, glaseado vegano y almendras.",
     weight: "APROX. 1 KG",
-    status: "available"
+    availabilityMode: "preorder",
+    status: "sold-out",
+    allowPreorder: true,
+    minimumBusinessDays: 2
   },
   {
     id: "pistacho-clasico",
@@ -119,40 +128,52 @@ export const staticProducts = [
     description: "Torta de pistacho con harina de almendra y glaseado vegano.",
     ingredients: "Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho y glaseado vegano.",
     weight: "APROX. 1 KG",
-    status: "available"
+    availabilityMode: "preorder",
+    status: "sold-out",
+    allowPreorder: true,
+    minimumBusinessDays: 2
   },
   {
     id: "chocolate",
     category: "cakes",
     name: "Torta de Triple Chocolate",
-    price: 47,
+    price: 45,
     image: "assets/chocolate-fontana-v2.jpg",
     description: "Torta con chocolate vegano 70 % cacao, harina de almendra y monkfruit.",
     ingredients: "Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, cacao, chocolate vegano endulzado con monkfruit y chispas de chocolate vegano.",
     weight: "25 CM · 1 KG",
-    status: "available"
+    availabilityMode: "preorder",
+    status: "sold-out",
+    allowPreorder: true,
+    minimumBusinessDays: 2
   },
   {
     id: "vainilla",
     category: "cakes",
     name: "Torta de Vainilla con Chispas",
-    price: 47,
+    price: 45,
     image: "assets/vanilla-chips-fontana-v2.jpg",
     description: "Torta de vainilla con harina de almendra y chispas de chocolate vegano.",
     ingredients: "Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa y chispas de chocolate vegano endulzadas con monkfruit.",
     weight: "BAJO ENCARGO",
-    status: "available"
+    availabilityMode: "preorder",
+    status: "sold-out",
+    allowPreorder: true,
+    minimumBusinessDays: 2
   },
   {
     id: "lemon",
     category: "cakes",
     name: "Torta de Limón",
-    price: 47,
+    price: 45,
     image: "assets/lemon-fontana-v2.jpg",
     description: "Torta de limón con harina de almendra, monkfruit y glaseado vegano blanco.",
     ingredients: "Harina de almendra, monkfruit, aceite de coco, huevo, leche sin lactosa, limón y chocolate blanco vegano.",
     weight: "25 CM · 1 KG",
-    status: "available"
+    availabilityMode: "preorder",
+    status: "sold-out",
+    allowPreorder: true,
+    minimumBusinessDays: 2
   }
 ];
 
