@@ -37,14 +37,16 @@
 }
 @media(prefers-reduced-motion:reduce){.toast,.drawer-status{transition:none}}
 @keyframes menu-eyebrow-rise{from{opacity:0;transform:translate3d(-14px,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
-@keyframes menu-letter-rise{from{opacity:0;transform:translate3d(0,.32em,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@keyframes menu-letter-rise{from{opacity:0;transform:translate3d(0,.4em,0)}to{opacity:1;transform:translate3d(0,0,0)}}
 @keyframes menu-line-grow{from{opacity:0;transform:scaleX(0)}to{opacity:1;transform:scaleX(1)}}
+@media(min-width:701px){
+  .menu-intro.menu-intro-animate .eyebrow{opacity:0;transform:translate3d(-14px,0,0)}
+  .menu-intro.menu-intro-animate .menu-title-letter{opacity:0;transform:translate3d(0,.4em,0)}
+  .menu-intro.menu-intro-animate:after{opacity:0;transform:scaleX(0);transform-origin:left}
+  .menu-intro.menu-intro-animate.menu-intro-visible .eyebrow{animation:menu-eyebrow-rise .44s ease-out both}
+  .menu-intro.menu-intro-animate.menu-intro-visible .menu-title-letter{animation:menu-letter-rise .68s cubic-bezier(.2,.76,.24,1) both;animation-delay:calc(.12s + var(--letter-index) * .045s)}
+  .menu-intro.menu-intro-animate.menu-intro-visible:after{animation:menu-line-grow .55s .72s cubic-bezier(.2,.76,.24,1) both}
+}
 @media(min-width:961px){
   .menu-section .menu-intro h2{max-width:none;white-space:nowrap;font-size:clamp(5.4rem,7.4vw,6.6rem)}
-  .menu-intro.menu-intro-animate .eyebrow{opacity:0;transform:translate3d(-14px,0,0)}
-  .menu-intro.menu-intro-animate .menu-title-letter{opacity:0;transform:translate3d(0,.32em,0)}
-  .menu-intro.menu-intro-animate:after{opacity:0;transform:scaleX(0);transform-origin:left}
-  .menu-intro.menu-intro-animate.menu-intro-visible .eyebrow{animation:menu-eyebrow-rise .34s ease-out both}
-  .menu-intro.menu-intro-animate.menu-intro-visible .menu-title-letter{animation:menu-letter-rise .52s cubic-bezier(.2,.76,.24,1) both;animation-delay:calc(.05s + var(--letter-index) * .035s)}
-  .menu-intro.menu-intro-animate.menu-intro-visible:after{animation:menu-line-grow .46s .52s cubic-bezier(.2,.76,.24,1) both}
 }

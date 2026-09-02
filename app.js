@@ -5803,29 +5803,75 @@
       });
       title.classList.add("menu-title-ready");
     }
-    const desktopMotion = window.matchMedia?.("(min-width: 961px) and (prefers-reduced-motion: no-preference)");
-    const syncMotionEligibility = () => {
-      if (intro.classList.contains("menu-intro-visible")) return;
-      intro.classList.toggle("menu-intro-animate", Boolean(desktopMotion?.matches));
-    };
-    syncMotionEligibility();
-    desktopMotion?.addEventListener?.("change", syncMotionEligibility);
+    const desktopMotion = window.matchMedia?.("(min-width: 701px) and (prefers-reduced-motion: no-preference)");
     let observer;
+    let fallbackFrame = 0;
+    const isWithinRevealZone = () => {
+      const rect = intro.getBoundingClientRect();
+      const viewportHeight = innerHeight || document.documentElement.clientHeight;
+      const visibleHeight = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
+      return rect.height > 0 && visibleHeight > 0 && visibleHeight / rect.height >= .05;
+    };
     const reveal = () => {
       if (intro.classList.contains("menu-intro-visible")) return;
       intro.classList.add("menu-intro-visible");
       section?.classList.add("menu-entry-visible");
-      desktopMotion?.removeEventListener?.("change", syncMotionEligibility);
-      observer?.disconnect();
     };
+    const revealOnNextPaintIfVisible = () => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (desktopMotion?.matches && isWithinRevealZone()) reveal();
+      }));
+    };
+    const prepareEntrance = () => {
+      intro.classList.remove("menu-intro-visible");
+      section?.classList.remove("menu-entry-visible");
+      if (isWithinRevealZone()) revealOnNextPaintIfVisible();
+    };
+    const syncMotionEligibility = () => {
+      const eligible = Boolean(desktopMotion?.matches);
+      intro.classList.toggle("menu-intro-animate", eligible);
+      if (!eligible) {
+        intro.classList.add("menu-intro-visible");
+        section?.classList.add("menu-entry-visible");
+        return;
+      }
+      // Crossing from a mobile-sized window to a computer-sized one must not
+      // consume the animation while the menu is still below the viewport.
+      prepareEntrance();
+    };
+    syncMotionEligibility();
+    desktopMotion?.addEventListener?.("change", syncMotionEligibility);
+    // A tall monitor can reveal the menu while the visitor is still looking at
+    // the hero. Replaying the entrance when they explicitly choose Menu makes
+    // the motion visible instead of leaving an already-finished static title.
+    const replay = () => {
+      if (!desktopMotion?.matches) return;
+      prepareEntrance();
+      // When Menu is already on screen, two frames restart the CSS animation.
+      // From the hero or footer, the persistent observer waits until the title
+      // actually enters the viewport so the motion cannot finish off-screen.
+    };
+    $$('a[href="#menu"]').forEach(link => link.addEventListener("click", replay));
     if (typeof window.IntersectionObserver !== "function") {
-      reveal();
+      // Older embedded browsers get the same entry behavior through a small,
+      // passive fallback instead of leaving the heading hidden after replay.
+      const checkFallbackPosition = () => {
+        fallbackFrame = 0;
+        if (desktopMotion?.matches && isWithinRevealZone()) reveal();
+      };
+      const scheduleFallbackCheck = () => {
+        if (fallbackFrame) return;
+        fallbackFrame = requestAnimationFrame(checkFallbackPosition);
+      };
+      addEventListener("scroll", scheduleFallbackCheck, { passive:true });
+      addEventListener("resize", scheduleFallbackCheck, { passive:true });
+      scheduleFallbackCheck();
       return;
     }
     observer = new IntersectionObserver(entries => {
-      if (!entries.some(entry => entry.isIntersecting)) return;
+      if (!desktopMotion?.matches || !entries.some(entry => entry.isIntersecting) || !isWithinRevealZone()) return;
       reveal();
-    }, { rootMargin: "0px 0px -12% 0px", threshold: 0.05 });
+    }, { rootMargin: "0px", threshold: 0.05 });
     observer.observe(intro);
   }
 

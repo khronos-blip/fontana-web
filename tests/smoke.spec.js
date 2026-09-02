@@ -8898,11 +8898,11 @@ test("Elige tu antojo solo anima con opacidad y desplazamiento en escritorio", a
   };
 
   await expectStaticTitle({ viewport: { width: 390, height: 844 }, reducedMotion: "no-preference" });
-  await expectStaticTitle({ viewport: { width: 960, height: 900 }, reducedMotion: "no-preference" });
+  await expectStaticTitle({ viewport: { width: 700, height: 900 }, reducedMotion: "no-preference" });
   await expectStaticTitle({ viewport: { width: 1366, height: 900 }, reducedMotion: "reduce" });
 
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  for (const width of [961, 1024, 1280, 1366, 1440, 1920]) {
+  for (const width of [701, 768, 900, 960, 961, 1024, 1280, 1366, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 });
     await openPreview(page);
     await page.evaluate(() => document.fonts?.ready);
@@ -8923,7 +8923,7 @@ test("Elige tu antojo solo anima con opacidad y desplazamiento en escritorio", a
       const style = getComputedStyle(element);
       return {
         text: element.textContent.replace(/\s+/g, " ").trim(),
-        wordTops: words.map(word => word.top),
+        wordTops: words.map(word => word.top - box.top),
         width: box.width,
         height: box.height,
         lineHeight: parseFloat(style.lineHeight),
@@ -8993,15 +8993,137 @@ test("Elige tu antojo solo anima con opacidad y desplazamiento en escritorio", a
       return {
         width: box.width,
         height: box.height,
-        wordTops: [...element.querySelectorAll(".menu-title-word")].map(word => word.getBoundingClientRect().top),
+        wordTops: [...element.querySelectorAll(".menu-title-word")].map(word => word.getBoundingClientRect().top - box.top),
         documentFits: document.documentElement.scrollWidth <= window.innerWidth
       };
     });
     expect(Math.abs(animatedLayout.width - layout.width), `ancho estable durante la animación a ${width}px`).toBeLessThanOrEqual(1);
     expect(Math.abs(animatedLayout.height - layout.height), `alto estable durante la animación a ${width}px`).toBeLessThanOrEqual(1);
-    expect(Math.max(...animatedLayout.wordTops) - Math.min(...animatedLayout.wordTops), `una línea durante la animación a ${width}px`).toBeLessThanOrEqual(1);
+    animatedLayout.wordTops.forEach((top, index) => {
+      expect(Math.abs(top - layout.wordTops[index]), `línea estable durante la animación a ${width}px`).toBeLessThanOrEqual(1);
+    });
     expect(animatedLayout.documentFits, `sin overflow durante la animación a ${width}px`).toBe(true);
   }
+});
+
+test("Elige tu antojo vuelve a animarse al entrar de nuevo desde Menú", async ({ page }) => {
+  await stubNonessentialImages(page);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await openPreview(page);
+  const intro = page.locator(".menu-intro");
+  const firstLetter = intro.locator(".menu-title-letter").first();
+  const menuLink = page.locator("#nav").getByRole("link", { name:"Menú", exact:true });
+  await menuLink.click();
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await expect(firstLetter).toHaveCSS("opacity", "1", { timeout: 3000 });
+  await page.evaluate(() => window.scrollTo({ top:0, behavior:"instant" }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.addStyleTag({
+    content: ".menu-intro.menu-intro-visible .menu-title-letter{animation-play-state:paused!important}"
+  });
+  await menuLink.evaluate(link => {
+    window.__fontanaBlockMenuNavigation = event => event.preventDefault();
+    link.addEventListener("click", window.__fontanaBlockMenuNavigation);
+  });
+  await menuLink.click();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
+  await expect(intro).not.toHaveClass(/menu-intro-visible/);
+  await menuLink.evaluate(link => {
+    link.removeEventListener("click", window.__fontanaBlockMenuNavigation);
+    delete window.__fontanaBlockMenuNavigation;
+  });
+  await intro.scrollIntoViewIfNeeded();
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await expect(firstLetter).toHaveCSS("animation-name", "menu-letter-rise");
+  await expect(firstLetter).toHaveCSS("animation-play-state", "paused");
+  await expect(firstLetter).toHaveCSS("opacity", "0");
+});
+
+test("Elige tu antojo espera a entrar tras ampliar una ventana a tamaño de ordenador", async ({ page }) => {
+  await stubNonessentialImages(page);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.setViewportSize({ width: 700, height: 900 });
+  await openPreview(page);
+  const intro = page.locator(".menu-intro");
+  const firstLetter = intro.locator(".menu-title-letter").first();
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await expect(intro).not.toHaveClass(/menu-intro-animate/);
+
+  await page.setViewportSize({ width: 701, height: 900 });
+  await expect(intro).toHaveClass(/menu-intro-animate/);
+  await expect(intro).not.toHaveClass(/menu-intro-visible/);
+  await expect(firstLetter).toHaveCSS("opacity", "0");
+  await page.addStyleTag({
+    content: ".menu-intro.menu-intro-visible .menu-title-letter{animation-play-state:paused!important}"
+  });
+  await intro.scrollIntoViewIfNeeded();
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await expect(firstLetter).toHaveCSS("animation-name", "menu-letter-rise");
+  await expect(firstLetter).toHaveCSS("animation-play-state", "paused");
+  await expect(firstLetter).toHaveCSS("opacity", "0");
+});
+
+test("Elige tu antojo conserva el replay sin IntersectionObserver", async ({ page }) => {
+  await stubNonessentialImages(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "IntersectionObserver", { configurable:true, value:undefined });
+  });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await openPreview(page);
+  const intro = page.locator(".menu-intro");
+  const firstLetter = intro.locator(".menu-title-letter").first();
+  const menuLink = page.locator("#nav").getByRole("link", { name:"Menú", exact:true });
+  await expect(intro).toHaveClass(/menu-intro-animate/);
+  await expect(intro).not.toHaveClass(/menu-intro-visible/);
+  await menuLink.click();
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await expect(firstLetter).toHaveCSS("opacity", "1", { timeout:3000 });
+
+  await page.evaluate(() => window.scrollTo({ top:0, behavior:"instant" }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.addStyleTag({
+    content: ".menu-intro.menu-intro-visible .menu-title-letter{animation-play-state:paused!important}"
+  });
+  await menuLink.evaluate(link => {
+    window.__fontanaBlockMenuNavigation = event => event.preventDefault();
+    link.addEventListener("click", window.__fontanaBlockMenuNavigation);
+  });
+  await menuLink.click();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
+  await expect(intro).not.toHaveClass(/menu-intro-visible/);
+  await menuLink.evaluate(link => {
+    link.removeEventListener("click", window.__fontanaBlockMenuNavigation);
+    delete window.__fontanaBlockMenuNavigation;
+  });
+  await intro.scrollIntoViewIfNeeded();
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await expect(firstLetter).toHaveCSS("animation-name", "menu-letter-rise");
+  await expect(firstLetter).toHaveCSS("animation-play-state", "paused");
+  await expect(firstLetter).toHaveCSS("opacity", "0");
+});
+
+test("Elige tu antojo respeta un cambio dinámico a movimiento reducido", async ({ page }) => {
+  await stubNonessentialImages(page);
+  await page.emulateMedia({ reducedMotion:"no-preference" });
+  await page.setViewportSize({ width:1366, height:900 });
+  await openPreview(page);
+  const intro = page.locator(".menu-intro");
+  const firstLetter = intro.locator(".menu-title-letter").first();
+  const menuLink = page.locator("#nav").getByRole("link", { name:"Menú", exact:true });
+  await menuLink.click();
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await page.emulateMedia({ reducedMotion:"reduce" });
+  await expect(intro).not.toHaveClass(/menu-intro-animate/);
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await expect(firstLetter).toHaveCSS("animation-name", "none");
+  await expect(firstLetter).toHaveCSS("opacity", "1");
+  await menuLink.click();
+  await expect(intro).not.toHaveClass(/menu-intro-animate/);
+  await expect(intro).toHaveClass(/menu-intro-visible/);
+  await expect(firstLetter).toHaveCSS("animation-name", "none");
+  await expect(firstLetter).toHaveCSS("opacity", "1");
 });
 
 test("el bloque negro fue eliminado y el footer centra la marca", async ({ page }) => {
