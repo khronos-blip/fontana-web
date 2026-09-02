@@ -5803,7 +5803,7 @@
       });
       title.classList.add("menu-title-ready");
     }
-    const desktopMotion = window.matchMedia?.("(min-width: 701px) and (prefers-reduced-motion: no-preference)");
+    const menuMotion = window.matchMedia?.("(prefers-reduced-motion: no-preference)");
     let observer;
     let fallbackFrame = 0;
     const isWithinRevealZone = () => {
@@ -5819,7 +5819,7 @@
     };
     const revealOnNextPaintIfVisible = () => {
       requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (desktopMotion?.matches && isWithinRevealZone()) reveal();
+        if (menuMotion?.matches && isWithinRevealZone()) reveal();
       }));
     };
     const prepareEntrance = () => {
@@ -5828,24 +5828,24 @@
       if (isWithinRevealZone()) revealOnNextPaintIfVisible();
     };
     const syncMotionEligibility = () => {
-      const eligible = Boolean(desktopMotion?.matches);
+      const eligible = Boolean(menuMotion?.matches);
       intro.classList.toggle("menu-intro-animate", eligible);
       if (!eligible) {
         intro.classList.add("menu-intro-visible");
         section?.classList.add("menu-entry-visible");
         return;
       }
-      // Crossing from a mobile-sized window to a computer-sized one must not
-      // consume the animation while the menu is still below the viewport.
+      // A resize must not consume the animation while the menu is still below
+      // the viewport on either mobile or desktop.
       prepareEntrance();
     };
     syncMotionEligibility();
-    desktopMotion?.addEventListener?.("change", syncMotionEligibility);
+    menuMotion?.addEventListener?.("change", syncMotionEligibility);
     // A tall monitor can reveal the menu while the visitor is still looking at
     // the hero. Replaying the entrance when they explicitly choose Menu makes
     // the motion visible instead of leaving an already-finished static title.
     const replay = () => {
-      if (!desktopMotion?.matches) return;
+      if (!menuMotion?.matches) return;
       prepareEntrance();
       // When Menu is already on screen, two frames restart the CSS animation.
       // From the hero or footer, the persistent observer waits until the title
@@ -5857,7 +5857,7 @@
       // passive fallback instead of leaving the heading hidden after replay.
       const checkFallbackPosition = () => {
         fallbackFrame = 0;
-        if (desktopMotion?.matches && isWithinRevealZone()) reveal();
+        if (menuMotion?.matches && isWithinRevealZone()) reveal();
       };
       const scheduleFallbackCheck = () => {
         if (fallbackFrame) return;
@@ -5869,7 +5869,7 @@
       return;
     }
     observer = new IntersectionObserver(entries => {
-      if (!desktopMotion?.matches || !entries.some(entry => entry.isIntersecting) || !isWithinRevealZone()) return;
+      if (!menuMotion?.matches || !entries.some(entry => entry.isIntersecting) || !isWithinRevealZone()) return;
       reveal();
     }, { rootMargin: "0px", threshold: 0.05 });
     observer.observe(intro);

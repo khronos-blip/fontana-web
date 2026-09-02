@@ -39,7 +39,7 @@
 @keyframes menu-eyebrow-rise{from{opacity:0;transform:translate3d(-14px,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
 @keyframes menu-letter-rise{from{opacity:0;transform:translate3d(0,.4em,0)}to{opacity:1;transform:translate3d(0,0,0)}}
 @keyframes menu-line-grow{from{opacity:0;transform:scaleX(0)}to{opacity:1;transform:scaleX(1)}}
-@media(min-width:701px){
+@media(prefers-reduced-motion:no-preference){
   .menu-intro.menu-intro-animate .eyebrow{opacity:0;transform:translate3d(-14px,0,0)}
   .menu-intro.menu-intro-animate .menu-title-letter{opacity:0;transform:translate3d(0,.4em,0)}
   .menu-intro.menu-intro-animate:after{opacity:0;transform:scaleX(0);transform-origin:left}
