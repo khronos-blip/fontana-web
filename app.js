@@ -2402,6 +2402,23 @@
       render();
       syncCurrentCard(0);
       track._fontanaGalleryLoop = {
+        setCurrent(index, { focus = false } = {}) {
+          const normalized = modulo(Math.round(index));
+          const pointerId = pointer?.id;
+          pointer = null;
+          resetWheelGesture();
+          cancelAnimationFrame(motionFrame);
+          motion = null;
+          motionFrame = 0;
+          suppressClickUntil = 0;
+          pendingFocusIndex = focus ? normalized : null;
+          if (pointerId !== undefined) {
+            try {
+              if (track.hasPointerCapture?.(pointerId)) track.releasePointerCapture(pointerId);
+            } catch (_error) {}
+          }
+          finishAt(normalized);
+        },
         destroy() {
           controller.abort();
           window.clearTimeout(wheelTimer);
@@ -2438,6 +2455,25 @@
     const flavorName = card => card.dataset.flavor
       || $("span", card)?.textContent?.replace(/\s·\sPre-Order\s*$/i, "").trim()
       || "Sabor Fontana";
+
+    const cloneFlavorCard = source => {
+      const clone = source.cloneNode(true);
+      clone.removeAttribute("tabindex");
+      clone.removeAttribute("role");
+      clone.removeAttribute("aria-expanded");
+      clone.removeAttribute("aria-current");
+      clone.removeAttribute("aria-hidden");
+      clone.style.removeProperty("transform");
+      clone.style.removeProperty("pointer-events");
+      clone.style.removeProperty("visibility");
+      clone.style.width = "100%";
+      clone.style.height = "100%";
+      clone.style.flex = "0 0 auto";
+      $$('[data-catalog-image-stability="true"]', clone).forEach(image => {
+        image.removeAttribute("data-catalog-image-stability");
+      });
+      return clone;
+    };
 
     const flavorMeta = (kind, name) => {
       const flavors = adminState?.builders?.[kind]?.flavors;
@@ -2614,6 +2650,44 @@
       state.flavorWheelGesture = null;
     };
 
+    const syncCompactGalleryToExpandedFlavor = state => {
+      const nextSource = state.currentSource;
+      if (!nextSource?.isConnected) return;
+      state.track?._fontanaGalleryLoop?.setCurrent?.(state.currentIndex);
+      if (nextSource === state.source) return;
+
+      const compactImage = $("img", nextSource);
+      const displayedSource = state.backImage.currentSrc || state.backImage.getAttribute("src") || "";
+      if (compactImage && displayedSource && state.backImage.complete && state.backImage.naturalWidth > 0) {
+        useDecodedImageSource(compactImage, displayedSource, fullImageSource(compactImage));
+        compactImage.classList.remove("catalog-image-pending");
+        nextSource.classList.remove("catalog-image-loading");
+      } else if (compactImage) {
+        warmCatalogImage(compactImage);
+      }
+      const nextFrontCard = cloneFlavorCard(nextSource);
+      state.source.style.removeProperty("visibility");
+      state.source.setAttribute("aria-expanded", "false");
+      nextSource.style.visibility = "hidden";
+      nextSource.setAttribute("aria-expanded", "true");
+      state.source = nextSource;
+      state.frontCard = nextFrontCard;
+      state.front.replaceChildren(state.frontCard);
+      const closingImage = $("img", state.frontCard);
+      if (closingImage) {
+        closingImage.loading = "eager";
+        if (displayedSource) {
+          useDecodedImageSource(closingImage, displayedSource, fullImageSource(compactImage));
+        }
+        // Cloned nodes do not inherit the load/decode listeners installed on
+        // catalogue images. Give the closing face its own stability lifecycle
+        // so a cold flavor reveals as soon as it arrives instead of preserving
+        // an inherited opacity:0 state for the entire reverse flip.
+        stabilizeCatalogImage(closingImage);
+        warmCatalogImage(closingImage);
+      }
+    };
+
     const cleanup = state => {
       const closingBackdropMotion = state.backdropMotion;
       state.backdropMotion = null;
@@ -2647,6 +2721,11 @@
         state.pendingClose = immediate ? "immediate" : "animated";
         return;
       }
+      // The expanded dialog can move through several flavors while the compact
+      // ring remains parked on the card that originally opened it. Before the
+      // reverse flip starts, move that ring to the currently displayed flavor
+      // and use the same card as the closing face and focus target.
+      syncCompactGalleryToExpandedFlavor(state);
       state.closing = true;
       syncFlavorCue(state);
       state.overlay.classList.add("builder-flavor-flip-closing");
@@ -3081,17 +3160,7 @@
       inner.className = "builder-flavor-flip-inner";
       const front = document.createElement("div");
       front.className = "builder-flavor-flip-face builder-flavor-flip-front";
-      const frontCard = source.cloneNode(true);
-      frontCard.removeAttribute("tabindex");
-      frontCard.removeAttribute("role");
-      frontCard.removeAttribute("aria-expanded");
-      frontCard.removeAttribute("aria-current");
-      frontCard.removeAttribute("aria-hidden");
-      frontCard.style.removeProperty("transform");
-      frontCard.style.removeProperty("pointer-events");
-      frontCard.style.width = "100%";
-      frontCard.style.height = "100%";
-      frontCard.style.flex = "0 0 auto";
+      const frontCard = cloneFlavorCard(source);
       front.append(frontCard);
 
       const back = document.createElement("div");
@@ -3232,6 +3301,7 @@
       const layoutController = new AbortController();
       const state = {
         source,
+        track,
         currentSource: source,
         currentName: name,
         currentIndex: 0,
@@ -3239,6 +3309,7 @@
         kind,
         overlay,
         front,
+        frontCard,
         back,
         media,
         backImage,

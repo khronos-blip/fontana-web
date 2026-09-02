@@ -1919,6 +1919,145 @@ test("el panel abierto se recompone al rotar entre retrato y paisaje", async ({ 
   }
 });
 
+test("la galería compacta conserva la Fonkie navegada después de rotar y cerrar", async ({ page }) => {
+  await installExpandedFlavorLayoutCatalog(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+  await page.evaluate(() => document.fonts?.ready);
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+
+  const track = page.locator(".fonkie-gallery-track");
+  const cards = track.locator(":scope > .fonkie-gallery-card");
+  const names = await cards.evaluateAll(elements => elements.map(element => element.dataset.flavor));
+  const targetIndex = 2;
+  const targetName = names[targetIndex];
+  expect(targetName).toBeTruthy();
+  await expect(track).toHaveAttribute("data-gallery-index", "0");
+
+  await cards.first().evaluate(element => element.click());
+  const overlay = page.locator(".builder-flavor-flip-card");
+  const swipeCue = overlay.locator(".builder-flavor-swipe-cue");
+  await expect(overlay).toBeVisible();
+
+  for (let index = 1; index <= targetIndex; index += 1) {
+    await swipeCue.press("ArrowRight");
+    await expect(overlay).toHaveAttribute("data-flavor", names[index]);
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/);
+  }
+
+  for (const viewportCase of [
+    { width: 844, height: 390, layout: "lateral" },
+    { width: 390, height: 844, layout: "stacked" },
+    { width: 844, height: 390, layout: "lateral" },
+    { width: 390, height: 844, layout: "stacked" }
+  ]) {
+    const { layout, ...viewport } = viewportCase;
+    await page.setViewportSize(viewport);
+    await waitForExpandedFlavorLayout(overlay, layout);
+    await expect(overlay).toHaveAttribute("data-flavor", targetName);
+  }
+
+  await overlay.locator(".builder-flavor-done").click();
+  await expect(overlay).toHaveCount(0);
+  await expect(track).toHaveAttribute("data-gallery-state", "idle");
+  await expect(track).toHaveAttribute("data-gallery-index", String(targetIndex));
+  await expect(cards.nth(targetIndex)).toHaveAttribute("aria-current", "true");
+  await expect(track.locator(':scope > .fonkie-gallery-card[aria-current="true"]')).toHaveCount(1);
+
+  const compactState = await track.evaluate((element, expectedIndex) => {
+    const compactCards = [...element.querySelectorAll(":scope > .fonkie-gallery-card")];
+    const current = compactCards[expectedIndex];
+    const trackBox = element.getBoundingClientRect();
+    const cardBox = current?.getBoundingClientRect();
+    return {
+      currentIndex: compactCards.findIndex(card => card.getAttribute("aria-current") === "true"),
+      centerDistance: cardBox
+        ? Math.abs((cardBox.left + (cardBox.width / 2)) - (trackBox.left + (trackBox.width / 2)))
+        : Number.POSITIVE_INFINITY
+    };
+  }, targetIndex);
+  expect(compactState.currentIndex).toBe(targetIndex);
+  expect(compactState.centerDistance).toBeLessThanOrEqual(1);
+});
+
+test("el cierre de una Fonkie fría revela la imagen clonada antes de terminar el giro", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  let releaseTarget;
+  let targetRequestedAt = 0;
+  const targetGate = new Promise(resolve => { releaseTarget = resolve; });
+  const targetImageRoute = "**/assets/fonkie-nutella-fit-fontana-pro.jpg";
+  await page.route(targetImageRoute, async route => {
+    targetRequestedAt ||= Date.now();
+    await targetGate;
+    await route.continue();
+  });
+
+  try {
+    await openPreview(page);
+    await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+    const track = page.locator(".fonkie-gallery-track");
+    const cards = track.locator(":scope > .fonkie-gallery-card");
+    await cards.first().evaluate(element => element.click());
+
+    const overlay = page.locator(".builder-flavor-flip-card");
+    const cue = overlay.locator(".builder-flavor-swipe-cue");
+    await expect(cue).toBeVisible({ timeout: 1800 });
+    for (const name of [
+      "Chispa de Chocolate Blanco",
+      "Pistacho con Chocolate Blanco",
+      "Triple Chocolate Fudge"
+    ]) {
+      await cue.press("ArrowRight");
+      await expect(overlay).toHaveAttribute("data-flavor", name);
+      await expect(overlay).not.toHaveClass(/builder-flavor-switching/);
+    }
+    await expect.poll(() => targetRequestedAt).toBeGreaterThan(0);
+
+    await cue.press("ArrowRight");
+    await expect(overlay).toHaveAttribute("data-flavor", "Nutella Fit");
+    await expect(overlay).not.toHaveClass(/builder-flavor-switching/);
+    const expandedImage = overlay.locator(".builder-flavor-expanded-media img");
+    await expect(expandedImage).toHaveClass(/catalog-image-pending/);
+    expect(Date.now() - targetRequestedAt).toBeGreaterThan(180);
+
+    await overlay.locator(".builder-flavor-done").click();
+    await expect(overlay).toHaveClass(/builder-flavor-flip-closing/);
+    const closingFront = overlay.locator(".builder-flavor-flip-front");
+    const closingImage = closingFront.locator("img");
+    await expect(closingFront.locator('[data-flavor="Nutella Fit"]')).toHaveCount(1);
+    await expect(closingImage).toHaveClass(/catalog-image-pending/);
+    await page.waitForTimeout(120);
+    releaseTarget();
+
+    await expect.poll(() => closingFront.evaluate(face => {
+      const image = face.querySelector("img");
+      return {
+        visible: getComputedStyle(face).visibility,
+        ready: Boolean(image?.complete && image.naturalWidth > 0 && image.currentSrc),
+        pending: Boolean(image?.classList.contains("catalog-image-pending")),
+        opacity: image ? getComputedStyle(image).opacity : "0"
+      };
+    }), { timeout: 700, intervals: [25] }).toEqual({
+      visible: "visible",
+      ready: true,
+      pending: false,
+      opacity: "1"
+    });
+
+    await expect(overlay).toHaveCount(0, { timeout: 1400 });
+    await expect(track).toHaveAttribute("data-gallery-index", "4");
+    await expect(cards.nth(4)).toHaveAttribute("aria-current", "true");
+    await expect(cards.nth(4)).toBeFocused();
+    await expect(cards.nth(4).locator("img")).not.toHaveClass(/catalog-image-pending/);
+    await expect(cards.nth(4).locator("img")).toHaveCSS("opacity", "1");
+  } finally {
+    releaseTarget?.();
+    await page.unroute(targetImageRoute);
+  }
+});
+
 test("un cambio de orientación durante la apertura conserva el foco dentro del diálogo", async ({ page }) => {
   await installExpandedFlavorLayoutCatalog(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1943,8 +2082,8 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
   await openPreview(page);
 
   for (const item of [
-    { filter: "Fonkies · Galletas", card: ".fonkie-gallery-card", row: ".fonkie-flavor" },
-    { filter: "Fomb · Bombones", card: ".builder-gallery-card", row: ".fomb-flavor" }
+    { filter: "Fonkies · Galletas", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card", row: ".fonkie-flavor" },
+    { filter: "Fomb · Bombones", track: ".builder-gallery-track", card: ".builder-gallery-card", row: ".fomb-flavor" }
   ]) {
     await page.getByRole("button", { name: item.filter }).click();
     const cards = page.locator(item.card);
@@ -2094,14 +2233,48 @@ test("la vista ampliada navega sabores con swipe, flip, teclado e inventario cor
     await expect(expandedQuantity).toHaveText(String(lastBefore + 1));
     await expect(firstOutput).toHaveText(firstBefore);
     await expect(lastOutput).toHaveText(String(lastBefore + 1));
+    const targetIndex = names.length - 1;
     await overlay.locator(".builder-flavor-done").click();
+    await expect(overlay).toHaveClass(/builder-flavor-flip-closing/);
+    await expect(overlay.locator(".builder-flavor-flip-front > [data-flavor]")).toHaveAttribute(
+      "data-flavor",
+      names[targetIndex]
+    );
+    const closingFrontVisual = await overlay.locator(".builder-flavor-flip-front > [data-flavor]").evaluate(element => {
+      const image = element.querySelector("img");
+      return {
+        inlineVisibility: element.style.visibility,
+        imageComplete: image?.complete,
+        imageWidth: image?.naturalWidth,
+        imageSource: image?.currentSrc,
+        imagePending: image?.classList.contains("catalog-image-pending"),
+        imageOpacity: image ? getComputedStyle(image).opacity : "0"
+      };
+    });
+    expect(closingFrontVisual.inlineVisibility).toBe("");
+    expect(closingFrontVisual.imageComplete).toBe(true);
+    expect(closingFrontVisual.imageWidth).toBeGreaterThan(0);
+    expect(closingFrontVisual.imageSource).toBeTruthy();
+    expect(closingFrontVisual.imagePending).toBe(false);
+    expect(closingFrontVisual.imageOpacity).toBe("1");
     await expect(overlay).toHaveCount(0, { timeout: 1300 });
+    const compactTrack = page.locator(item.track);
+    await expect(compactTrack).toHaveAttribute("data-gallery-index", String(targetIndex));
+    await expect(cards.nth(targetIndex)).toHaveAttribute("aria-current", "true");
+    await expect(cards.nth(targetIndex)).toBeFocused();
+    await expect(cards.nth(targetIndex).locator("img")).not.toHaveClass(/catalog-image-pending/);
+    await expect(cards.nth(targetIndex).locator("img")).toHaveCSS("opacity", "1");
+    await expect.poll(() => cards.nth(targetIndex).locator("img").evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
+    await expect(page.locator(`${item.card}[aria-expanded="true"]`)).toHaveCount(0);
     const restored = await page.evaluate(() => ({ y: scrollY }));
     expect(Math.abs(restored.y - baseline.y)).toBeLessThanOrEqual(1);
   }
 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const desktopTrack = page.locator(".fonkie-gallery-track");
+  await desktopTrack.evaluate(element => element._fontanaGalleryLoop?.setCurrent(0));
+  await expect(desktopTrack).toHaveAttribute("data-gallery-index", "0");
   const desktopSource = page.locator(".fonkie-gallery-card").first();
   await desktopSource.click();
   const desktopOverlay = page.locator(".builder-flavor-flip-card");
@@ -2313,10 +2486,13 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
 
   await page.emulateMedia({ reducedMotion: "no-preference" });
   for (const item of [
-    { filter: "Fonkies · Galletas", card: ".fonkie-gallery-card" },
-    { filter: "Fomb · Bombones", card: ".builder-gallery-card" }
+    { filter: "Fonkies · Galletas", track: ".fonkie-gallery-track", card: ".fonkie-gallery-card" },
+    { filter: "Fomb · Bombones", track: ".builder-gallery-track", card: ".builder-gallery-card" }
   ]) {
     await page.getByRole("button", { name: item.filter }).click();
+    const animatedTrack = page.locator(item.track);
+    await animatedTrack.evaluate(element => element._fontanaGalleryLoop?.setCurrent(0));
+    await expect(animatedTrack).toHaveAttribute("data-gallery-index", "0");
     const cards = page.locator(item.card);
     const animatedSource = cards.first();
     const animatedNames = await cards.evaluateAll(elements => elements.map(element => element.dataset.flavor
@@ -2340,19 +2516,42 @@ test("las Fonkies y Fomb ampliadas aceptan trackpad horizontal y Shift más rued
     await page.waitForTimeout(260);
     await expect(animatedHeading).toHaveText(animatedNames[rapidIndex]);
 
-    await dispatchWheelBurst(animatedOverlay, rapidWheelSamples.map(sample => ({
-      ...sample,
-      deltaX: -sample.deltaX
-    })));
-    await expect(animatedOverlay).toHaveClass(/builder-flavor-switching/);
-    await animatedOverlay.evaluate(element => {
+    // Start one fresh gesture and close immediately while its flavor flip is
+    // active. A longer synthetic burst can outlive the 360 ms animation and
+    // would no longer exercise the pending-close path deterministically.
+    const closeTargetIndex = (rapidIndex - 1 + animatedNames.length) % animatedNames.length;
+    const closeDuringSwitch = await animatedOverlay.evaluate(element => {
+      const wheel = new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaX: -72,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL
+      });
+      const dispatched = element.dispatchEvent(wheel);
+      const switchingBeforeClose = element.classList.contains("builder-flavor-switching");
       element.querySelector(".builder-flavor-expanded-media")?.click();
+      return {
+        defaultPrevented: wheel.defaultPrevented,
+        dispatched,
+        switchingBeforeClose,
+        switchingAfterClose: element.classList.contains("builder-flavor-switching"),
+        closingAfterClose: element.classList.contains("builder-flavor-flip-closing")
+      };
+    });
+    expect(closeDuringSwitch).toEqual({
+      defaultPrevented: true,
+      dispatched: false,
+      switchingBeforeClose: true,
+      switchingAfterClose: true,
+      closingAfterClose: false
     });
     await expect(animatedOverlay).toHaveCount(0, { timeout: 2200 });
     await page.waitForTimeout(420);
     await expect(page.locator(".builder-flavor-flip-card")).toHaveCount(0);
     await expect(animatedSource).toHaveAttribute("aria-expanded", "false");
-    await expect(animatedSource).toBeFocused();
+    await expect(animatedTrack).toHaveAttribute("data-gallery-index", String(closeTargetIndex));
+    await expect(cards.nth(closeTargetIndex)).toHaveAttribute("aria-current", "true");
+    await expect(cards.nth(closeTargetIndex)).toBeFocused();
     await expectModalPageUnlocked(page);
     expect(Math.abs((await page.evaluate(() => scrollY)) - baselineY)).toBeLessThanOrEqual(1);
   }
