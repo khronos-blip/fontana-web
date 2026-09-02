@@ -5826,7 +5826,9 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
   test.setTimeout(60_000);
   await page.setViewportSize({ width:390, height:844 });
   await openPreview(page);
-  await page.getByRole("button", { name:"Bottega", exact:true }).click();
+  const bottegaFilter = page.getByRole("button", { name:"Bottega", exact:true });
+  await bottegaFilter.click();
+  await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
   const card = page.locator('.catalog-group[data-catalog-group="bottega"] .product[data-product-id="bottega-de-cecco-aceite-oliva-classico"]');
   await card.scrollIntoViewIfNeeded();
   const source = card.locator(".product-front .product-media");
@@ -7052,13 +7054,14 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   expect(browserErrors).toEqual([]);
 });
 
-test("los filtros no precargan categorías completas y conservan un fondo lila al cargar", async ({ page }) => {
+test("los filtros calientan solo la primera fila antes de sustituir la categoría visible", async ({ page }) => {
   await page.setViewportSize({width:390,height:844});
   let releaseImage;
   let requestStarted = false;
   let bottegaRequests = 0;
   const gate = new Promise(resolve => { releaseImage = resolve; });
-  await page.route("**/assets/bottega/**", async route => {
+  const bottegaImageRoute = "**/assets/bottega/**";
+  await page.route(bottegaImageRoute, async route => {
     bottegaRequests += 1;
     if (route.request().url().endsWith("de-cecco-tortiglioni-fontana.jpg")) {
       requestStarted = true;
@@ -7076,12 +7079,21 @@ test("los filtros no precargan categorías completas y conservan un fondo lila a
     expect(bottegaRequests).toBe(0);
     await expect(page.getByRole("button", {name:"Ver todo"})).toHaveClass(/active/);
 
+    const cakesFilter = page.getByRole("button", {name:"Foncake · Tortas completas", exact:true});
+    await cakesFilter.click();
+    await expect(cakesFilter).not.toHaveAttribute("aria-busy", /.+/);
+
     await filter.click();
     await expect.poll(() => requestStarted).toBe(true);
     const card = page.locator('.product[data-product-id="bottega-de-cecco-tortiglioni"]');
     const image = card.locator(".product-front .product-media img");
-    await expect(image).toHaveAttribute("loading", "lazy");
-    await expect(page.locator('.catalog-group[data-catalog-group="bottega"] img[loading="eager"]')).toHaveCount(0);
+    const bottegaGroup = page.locator('.catalog-group[data-catalog-group="bottega"]');
+    await expect(filter).toHaveAttribute("aria-busy", "true");
+    await expect(page.locator('.catalog-group[data-catalog-group="cakes"]')).toBeVisible();
+    await expect(bottegaGroup).toBeHidden();
+    await expect(image).toHaveAttribute("loading", "eager");
+    await expect(bottegaGroup.locator('img[loading="eager"]')).toHaveCount(2);
+    expect(bottegaRequests).toBe(2);
     await expect(image).toHaveClass(/catalog-image-pending/);
     const loadingPaint = await image.evaluate(element => {
       const media = element.closest(".product-media");
@@ -7097,14 +7109,17 @@ test("los filtros no precargan categorías completas y conservan un fondo lila a
     expect(loadingPaint.cardTransformStyle).toBe("flat");
     expect(loadingPaint.galleryWillChange).toBe("auto");
     releaseImage();
+    await expect(filter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(bottegaGroup).toBeVisible();
+    await expect(image).toHaveAttribute("loading", "lazy");
+    await expect(bottegaGroup.locator('img[loading="eager"]')).toHaveCount(0);
     await expect.poll(() => image.evaluate(element => ({
       pending:element.classList.contains("catalog-image-pending"),
-      complete:element.complete,
-      naturalWidth:element.naturalWidth
-    }))).toEqual({pending:false,complete:true,naturalWidth:1200});
+      ready:element.complete && element.naturalWidth > 0
+    }))).toEqual({pending:false,ready:true});
   } finally {
     releaseImage?.();
-    await page.unroute("**/assets/bottega/**");
+    await page.unroute(bottegaImageRoute);
   }
 });
 

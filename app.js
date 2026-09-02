@@ -5182,7 +5182,7 @@
     $$(catalogImageSelector).forEach(stabilizeCatalogImage);
   }
 
-  function waitForCatalogImage(image, timeout = 1600) {
+  function waitForCatalogImage(image, timeout = 10000) {
     if (image.complete) return Promise.resolve();
     return new Promise(resolve => {
       let settled = false;
@@ -5197,6 +5197,9 @@
       };
       image.addEventListener("load", finish, { once:true });
       image.addEventListener("error", finish, { once:true });
+      // A stalled response must not trap the catalogue in a permanently busy
+      // state. Ten seconds still covers genuinely slow mobile loads without
+      // bringing back the former 1.6-second placeholder flash.
       timer = setTimeout(finish, timeout);
     });
   }
@@ -5299,8 +5302,14 @@
       const warming = warmCatalogFilter(button.dataset.filter);
       $$(".filter").forEach(item => item.classList.remove("active"));
       button.classList.add("active");
-      filterProducts(button.dataset.filter);
       await warming;
+      if (epoch !== catalogFilterEpoch) return;
+      // Keep the current cards painted while the first row of the requested
+      // category is fetched and decoded. Revealing lazy images first and
+      // finishing their textures afterwards produced a visible flash in the
+      // lower Salado, Bebidas and Bottega sections on cold visits.
+      filterProducts(button.dataset.filter);
+      await waitForCatalogPaint();
       if (epoch !== catalogFilterEpoch) return;
       button.removeAttribute("aria-busy");
     });

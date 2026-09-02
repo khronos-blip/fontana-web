@@ -44,12 +44,12 @@ function catalogState() {
   };
 }
 
-async function openBuiltCatalog(page) {
+async function openBuiltCatalog(page, state = catalogState()) {
   await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
     status:200,
     contentType:"application/json",
     headers:{"access-control-allow-origin":"*"},
-    body:JSON.stringify({state:catalogState()})
+    body:JSON.stringify({state})
   }));
   await page.route("https://api.fontanasingluten.com/v1/images/imagen-remota", route => route.abort());
   await page.goto(builtStorefront);
@@ -164,6 +164,7 @@ test("la primera carga fría mantiene un fondo lila hasta que la imagen esté pi
       const staticMedia = staticCard.locator(".product-media");
       const staticImage = staticMedia.locator("img");
       await expect.poll(() => imageRequests).toBeGreaterThan(0);
+      await expect(staticImage).toHaveAttribute("data-catalog-image-stability", "true");
       await expect.poll(() => staticImage.evaluate(image => ({
         pending:image.classList.contains("catalog-image-pending"),
         loading:image.closest(".product-media").classList.contains("catalog-image-loading"),
@@ -220,7 +221,7 @@ test("la primera carga fría mantiene un fondo lila hasta que la imagen esté pi
   }
 });
 
-test("el filtro cambia al instante y conserva un fondo estable hasta pintar el WebP de Bottega", async ({ page }) => {
+test("Bottega conserva la sección anterior hasta que su primera imagen esté pintada", async ({ page }) => {
   let releaseResponsive;
   const responsiveGate = new Promise(resolve => { releaseResponsive = resolve; });
   let responsiveRequests = 0;
@@ -248,11 +249,11 @@ test("el filtro cambia al instante y conserva un fondo estable hasta pintar el W
 
     await bottegaFilter.click();
     await expect(bottegaFilter).toHaveAttribute("aria-busy", "true");
-    await expect.poll(() => responsiveRequests).toBeGreaterThan(0);
+    await expect.poll(() => responsiveRequests, {timeout:10000}).toBeGreaterThan(0);
 
     await expect(bottegaFilter).toHaveClass(/active/);
-    await expect(cake).toBeHidden();
-    await expect(bottega).toBeVisible();
+    await expect(cake).toBeVisible();
+    await expect(bottega).toBeHidden();
     await expect(bottegaImage).toHaveClass(/catalog-image-pending/);
     const loadingPaint = await bottegaImage.evaluate(image => ({
       opacity:getComputedStyle(image).opacity,
@@ -265,12 +266,11 @@ test("el filtro cambia al instante y conserva un fondo estable hasta pintar el W
       background:expect.stringContaining("linear-gradient")
     });
 
-    // A rapid round trip must share the same warm-up instead of leaving the
-    // responsive image permanently eager or cancelling the active busy state.
-    await cakesFilter.click();
-    await bottegaFilter.click();
-    await bottegaFilter.click();
+    // A slow but valid response must not reintroduce the placeholder reveal.
+    await page.waitForTimeout(1800);
     await expect(bottegaFilter).toHaveAttribute("aria-busy", "true");
+    await expect(cake).toBeVisible();
+    await expect(bottega).toBeHidden();
 
     releaseResponsive();
     await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
@@ -284,6 +284,223 @@ test("el filtro cambia al instante y conserva un fondo estable hasta pintar el W
     }))).toEqual({complete:true,opacity:"1",pending:false});
     await expect(bottegaMedia).not.toHaveClass(/catalog-image-loading/);
     await expect(bottegaImage).toHaveAttribute("loading", "lazy");
+  } finally {
+    releaseResponsive?.();
+    await page.unroute(responsiveRoute);
+  }
+});
+
+test("Salados y Bebidas esperan su primera imagen antes de sustituir la sección visible", async ({ browser }) => {
+  const scenarios = [
+    {
+      filterName:"Salado",
+      filterValue:"salado",
+      productId:"cachito-fit",
+      image:"assets/cachito-fit-fontana-pro.jpg",
+      responsiveRoute:/\/assets\/responsive\/cachito-fit-fontana-pro-[a-f0-9]+-(?:360|640|960)\.webp(?:\?.*)?$/
+    },
+    {
+      filterName:"Bebida",
+      filterValue:"beverages",
+      productId:"agua-minalba-600",
+      image:"assets/beverage-minalba-600-fontana-pro.jpg",
+      responsiveRoute:/\/assets\/responsive\/beverage-minalba-600-fontana-pro-[a-f0-9]+-(?:360|640|960)\.webp(?:\?.*)?$/
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    const context = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:2 });
+    const page = await context.newPage();
+    let releaseResponsive;
+    const responsiveGate = new Promise(resolve => { releaseResponsive = resolve; });
+    let responsiveRequests = 0;
+    await page.route(scenario.responsiveRoute, async route => {
+      responsiveRequests += 1;
+      await responsiveGate;
+      await route.continue();
+    });
+
+    try {
+      const state = catalogState();
+      state.products.push({
+        id:scenario.productId,
+        category:scenario.filterValue,
+        name:scenario.filterName,
+        price:10,
+        image:scenario.image,
+        description:"Producto de prueba.",
+        ingredients:"Ingredientes de prueba.",
+        visible:true,
+        status:"available"
+      });
+      await openBuiltCatalog(page, state);
+      const cakesFilter = page.getByRole("button", {name:"Foncake · Tortas completas", exact:true});
+      const targetFilter = page.getByRole("button", {name:scenario.filterName, exact:true});
+      const cake = page.locator('[data-product-id="ballerine"]');
+      const cakeImage = cake.locator(".product-front .product-media img");
+      const target = page.locator(`[data-product-id="${scenario.productId}"]`);
+      const targetImage = target.locator(".product-front .product-media img");
+
+      await cakesFilter.click();
+      await expect(cakesFilter).not.toHaveAttribute("aria-busy", /.+/);
+      await expect(cake).toBeVisible();
+      await expect.poll(() => cakeImage.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
+      await expect(target).toBeHidden();
+
+      await targetFilter.click();
+      await expect(targetFilter).toHaveAttribute("aria-busy", "true");
+      await expect.poll(() => responsiveRequests, {timeout:10000}).toBeGreaterThan(0);
+      await expect(targetFilter).toHaveClass(/active/);
+      await expect(cake).toBeVisible();
+      await expect(target).toBeHidden();
+
+      releaseResponsive();
+      await expect(targetFilter).not.toHaveAttribute("aria-busy", /.+/);
+      await expect(cake).toBeHidden();
+      await expect(target).toBeVisible();
+      await expect.poll(() => targetImage.evaluate(image => ({
+        ready:image.complete && image.naturalWidth > 0,
+        pending:image.classList.contains("catalog-image-pending"),
+        opacity:getComputedStyle(image).opacity
+      }))).toEqual({ready:true,pending:false,opacity:"1"});
+    } finally {
+      releaseResponsive?.();
+      await context.close();
+    }
+  }
+});
+
+test("los clics rápidos conservan solo el último filtro solicitado", async ({ page }) => {
+  const state = catalogState();
+  state.products.push(
+    {
+      id:"cachito-fit",
+      category:"salado",
+      name:"Cachito fit",
+      price:10,
+      image:"assets/cachito-fit-fontana-pro.jpg",
+      visible:true,
+      status:"available"
+    },
+    {
+      id:"agua-minalba-600",
+      category:"beverages",
+      name:"Agua Minalba 600 ml",
+      price:10,
+      image:"assets/beverage-minalba-600-fontana-pro.jpg",
+      visible:true,
+      status:"available"
+    }
+  );
+  const gates = [
+    {
+      key:"bottega",
+      route:/\/assets\/responsive\/de-cecco-tortiglioni-fontana-[a-f0-9]+-(?:360|640|960)\.webp(?:\?.*)?$/
+    },
+    {
+      key:"salado",
+      route:/\/assets\/responsive\/cachito-fit-fontana-pro-[a-f0-9]+-(?:360|640|960)\.webp(?:\?.*)?$/
+    },
+    {
+      key:"beverages",
+      route:/\/assets\/responsive\/beverage-minalba-600-fontana-pro-[a-f0-9]+-(?:360|640|960)\.webp(?:\?.*)?$/
+    }
+  ];
+  const releases = {};
+  const requests = {bottega:0,salado:0,beverages:0};
+  for (const gate of gates) {
+    const pending = new Promise(resolve => { releases[gate.key] = resolve; });
+    await page.route(gate.route, async route => {
+      requests[gate.key] += 1;
+      await pending;
+      await route.continue();
+    });
+  }
+
+  try {
+    await openBuiltCatalog(page, state);
+    const cake = page.locator('[data-product-id="ballerine"]');
+    const bottega = page.locator('[data-product-id="bottega-de-cecco-tortiglioni"]');
+    const salado = page.locator('[data-product-id="cachito-fit"]');
+    const beverage = page.locator('[data-product-id="agua-minalba-600"]');
+    const bottegaFilter = page.getByRole("button", {name:"Bottega", exact:true});
+    const saladoFilter = page.getByRole("button", {name:"Salado", exact:true});
+    const beverageFilter = page.getByRole("button", {name:"Bebida", exact:true});
+    const cakesFilter = page.getByRole("button", {name:"Foncake · Tortas completas", exact:true});
+
+    await cakesFilter.click();
+    await expect(cakesFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await bottegaFilter.click();
+    await expect.poll(() => requests.bottega, {timeout:10000}).toBeGreaterThan(0);
+    await saladoFilter.click();
+    await expect.poll(() => requests.salado, {timeout:10000}).toBeGreaterThan(0);
+    await beverageFilter.click();
+    await expect.poll(() => requests.beverages, {timeout:10000}).toBeGreaterThan(0);
+    await beverageFilter.click();
+
+    await expect(beverageFilter).toHaveClass(/active/);
+    await expect(beverageFilter).toHaveAttribute("aria-busy", "true");
+    await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(saladoFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(cake).toBeVisible();
+    await expect(bottega).toBeHidden();
+    await expect(salado).toBeHidden();
+    await expect(beverage).toBeHidden();
+
+    releases.bottega();
+    releases.salado();
+    await page.waitForTimeout(250);
+    await expect(beverageFilter).toHaveAttribute("aria-busy", "true");
+    await expect(cake).toBeVisible();
+    await expect(bottega).toBeHidden();
+    await expect(salado).toBeHidden();
+
+    releases.beverages();
+    await expect(beverageFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(cake).toBeHidden();
+    await expect(bottega).toBeHidden();
+    await expect(salado).toBeHidden();
+    await expect(beverage).toBeVisible();
+  } finally {
+    Object.values(releases).forEach(release => release?.());
+    for (const gate of gates) await page.unroute(gate.route);
+  }
+});
+
+test("una imagen atascada libera el filtro sin recuperar el corte de 1,6 segundos", async ({ page }) => {
+  let releaseResponsive;
+  const responsiveGate = new Promise(resolve => { releaseResponsive = resolve; });
+  let responsiveRequests = 0;
+  const responsiveRoute = /\/assets\/responsive\/de-cecco-tortiglioni-fontana-[a-f0-9]+-(?:360|640|960)\.webp(?:\?.*)?$/;
+  await page.route(responsiveRoute, async route => {
+    responsiveRequests += 1;
+    await responsiveGate;
+    await route.abort();
+  });
+
+  try {
+    await openBuiltCatalog(page);
+    const cake = page.locator('[data-product-id="ballerine"]');
+    const bottega = page.locator('[data-product-id="bottega-de-cecco-tortiglioni"]');
+    const image = bottega.locator(".product-front .product-media img");
+    const filter = page.getByRole("button", {name:"Bottega", exact:true});
+    const cakesFilter = page.getByRole("button", {name:"Foncake · Tortas completas", exact:true});
+
+    await cakesFilter.click();
+    await expect(cakesFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await filter.click();
+    await expect.poll(() => responsiveRequests, {timeout:10000}).toBeGreaterThan(0);
+    await page.waitForTimeout(1800);
+    await expect(filter).toHaveAttribute("aria-busy", "true");
+    await expect(cake).toBeVisible();
+    await expect(bottega).toBeHidden();
+
+    await expect(filter).not.toHaveAttribute("aria-busy", /.+/, {timeout:12000});
+    await expect(cake).toBeHidden();
+    await expect(bottega).toBeVisible();
+    await expect(image).toHaveAttribute("loading", "lazy");
+    await expect(image).toHaveClass(/catalog-image-pending/);
+    await expect(image).toHaveCSS("opacity", "0");
   } finally {
     releaseResponsive?.();
     await page.unroute(responsiveRoute);
