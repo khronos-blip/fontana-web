@@ -6472,7 +6472,10 @@ test("un sabor agotado conserva nombre, consulta y controles claros sin romper l
         labelTreatmentMatchesAvailable: style.backgroundColor === availableStyle.backgroundColor
           && style.backgroundImage === availableStyle.backgroundImage,
         imageTreatmentDiffers: imageStyle.filter !== availableImageStyle.filter
-          || imageStyle.opacity !== availableImageStyle.opacity
+          || imageStyle.opacity !== availableImageStyle.opacity,
+        soldOutImageFilter: imageStyle.filter,
+        soldOutImageOpacity: imageStyle.opacity,
+        soldOutMediaBackground: getComputedStyle(element).backgroundColor
       };
     });
     expect(galleryLayout.cardFits).toBe(true);
@@ -6482,7 +6485,8 @@ test("un sabor agotado conserva nombre, consulta y controles claros sin romper l
     expect(galleryLayout.labelTreatmentMatchesAvailable).toBe(true);
     expect(galleryLayout.imageTreatmentDiffers).toBe(true);
     await soldOutCard.click();
-    const expanded = page.locator('.builder-flavor-flip-card[data-flavor="Chips de Chocolate Oscuro"]');
+    const expanded = page.locator(".builder-flavor-flip-card");
+    await expect(expanded).toHaveAttribute("data-flavor", "Chips de Chocolate Oscuro");
     await expect(expanded.locator(".builder-flavor-expanded-availability")).toHaveText("Agotado");
     await expect(expanded).toHaveClass(/builder-flavor-expanded-sold-out/);
     await expect(expanded.locator(".builder-flavor-expanded-media img")).not.toHaveCSS("filter", "none");
@@ -6492,6 +6496,39 @@ test("un sabor agotado conserva nombre, consulta y controles claros sin romper l
     await expect(expanded.locator('.builder-flavor-quantity-button').last()).toBeDisabled();
     await waitForExpandedFlavorLayout(expanded, viewport.layout);
     await expectExpandedFlavorLayoutFits(expanded, { fixed: true, layout: viewport.layout });
+    const expandedSoldOutTreatment = await expanded.evaluate(element => {
+      const media = element.querySelector(".builder-flavor-expanded-media");
+      const image = media.querySelector("img");
+      const imageStyle = getComputedStyle(image);
+      return {
+        filter: imageStyle.filter,
+        opacity: imageStyle.opacity,
+        background: getComputedStyle(media).backgroundColor
+      };
+    });
+    expect(expandedSoldOutTreatment).toEqual({
+      filter: galleryLayout.soldOutImageFilter,
+      opacity: galleryLayout.soldOutImageOpacity,
+      background: galleryLayout.soldOutMediaBackground
+    });
+
+    await page.keyboard.press("ArrowRight");
+    await expect(expanded.locator(".builder-flavor-expanded-details h3")).toHaveText("Chispa de Chocolate Blanco");
+    await expect(expanded).not.toHaveClass(/builder-flavor-expanded-sold-out/);
+    await expect(expanded.locator(".builder-flavor-expanded-media img")).toHaveCSS("filter", "none");
+    await expect(expanded.locator(".builder-flavor-expanded-media img")).toHaveCSS("opacity", "1");
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(expanded.locator(".builder-flavor-expanded-details h3")).toHaveText("Chips de Chocolate Oscuro");
+    await expect(expanded).toHaveClass(/builder-flavor-expanded-sold-out/);
+    await expect(expanded.locator(".builder-flavor-expanded-media img")).toHaveCSS(
+      "filter",
+      galleryLayout.soldOutImageFilter
+    );
+    await expect(expanded.locator(".builder-flavor-expanded-media img")).toHaveCSS(
+      "opacity",
+      galleryLayout.soldOutImageOpacity
+    );
     await expanded.locator(".builder-flavor-expanded-media").click();
     await expect(expanded).toHaveCount(0);
   }

@@ -6,7 +6,11 @@
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
   const catalogImageSelector = ".product-media img, .fonkie-gallery-card img, .builder-gallery-card img";
   const soldOutStyle = document.createElement("style");
-  soldOutStyle.textContent = ".builder-flavor-expanded-sold-out img,.product-expanded.product-sold-out:not(.product-temporarily-unavailable) .product-media img{filter:brightness(.5) saturate(.62)}";
+  soldOutStyle.textContent = [
+    ".builder-flavor-expanded-sold-out .builder-flavor-expanded-media{background:#e8d6e8}",
+    ".builder-flavor-expanded-sold-out .builder-flavor-expanded-media img{filter:grayscale(.45) brightness(.78);opacity:.7}",
+    ".product-expanded.product-sold-out:not(.product-temporarily-unavailable) .product-media img{filter:brightness(.5) saturate(.62)}"
+  ].join("");
   document.head.append(soldOutStyle);
   const adminStorageKey = "fontana-admin-catalog-v1";
   const localMode = ["localhost", "127.0.0.1"].includes(location.hostname);
