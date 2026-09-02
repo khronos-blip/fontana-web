@@ -6235,7 +6235,13 @@ test("el panel permite elegir la disponibilidad de cada sabor", async ({ page })
   await expect(page.locator('.fonkie-gallery-card[data-flavor="Chispa de Chocolate Blanco"]')).not.toContainText("Preordenar");
 });
 
-test("un sabor agotado bloquea la cantidad y permite preguntar su disponibilidad", async ({ page }) => {
+test("un sabor agotado conserva nombre, consulta y controles claros sin romper la cuadrícula", async ({ page }) => {
+  test.setTimeout(60_000);
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(`pageerror: ${error.message}`));
+  page.on("console", message => {
+    if (message.type() === "error") runtimeErrors.push(`console: ${message.text()}`);
+  });
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
   await page.getByRole("button", { name: "Fonkies", exact: true }).click();
@@ -6245,26 +6251,182 @@ test("un sabor agotado bloquea la cantidad y permite preguntar su disponibilidad
   await page.getByRole("button", { name: "Guardar Fonkies" }).click();
 
   await page.emulateMedia({reducedMotion:"reduce"});
-  await page.goto("/");
-  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
-  const row = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
-  await expect(row.locator(".builder-flavor-availability")).toHaveText("Agotado");
-  await expect(row).toHaveAttribute("data-sold-out", "true");
-  await expect(row.locator('[data-delta="1"]')).toBeDisabled();
-  const consult = row.locator(".builder-flavor-consult");
-  await expect(consult).toHaveText("Preguntar disponibilidad");
-  await expect(consult).toHaveAttribute("href", /wa\.me\/.*Chips%20de%20Chocolate%20Oscuro/);
+  for (const viewport of [
+    { width: 390, height: 844, columns: 2, layout: "stacked" },
+    { width: 1366, height: 900, columns: 3, layout: "stacked" }
+  ]) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+    await openFlavorChoice(page, ".fonkie-builder");
 
-  const soldOutCard = page.locator('.fonkie-gallery-card[data-flavor="Chips de Chocolate Oscuro"]');
-  await expect(soldOutCard).toHaveClass(/builder-flavor-sold-out/);
-  await expect(soldOutCard).toHaveCSS("opacity", "0.58");
-  await soldOutCard.click();
-  const expanded = page.locator('.builder-flavor-flip-card[data-flavor="Chips de Chocolate Oscuro"]');
-  await expect(expanded.locator(".builder-flavor-expanded-availability")).toHaveText("Agotado");
-  await expect(expanded).toHaveClass(/builder-flavor-expanded-sold-out/);
-  await expect(expanded.locator(".builder-flavor-expanded-media img")).not.toHaveCSS("filter", "none");
-  await expect(expanded.locator(".builder-flavor-expanded-consult")).toBeVisible();
-  await expect(expanded.locator('.builder-flavor-quantity-button').last()).toBeDisabled();
+    const row = page.locator('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
+    const available = page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"]');
+    const badge = row.locator(".builder-flavor-availability");
+    const consult = row.locator(".builder-flavor-consult");
+    const stepper = row.locator(".fonkie-stepper");
+    const quantityButtons = stepper.locator("button");
+    const output = stepper.locator("output");
+
+    await expect(row).toHaveAttribute("data-sold-out", "true");
+    await expect(row).toHaveAttribute("data-stock-state", "unavailable");
+    await expect(row).toContainText("Chips de Chocolate Oscuro");
+    await expect(badge).toHaveText("Agotado");
+    await expect(consult).toHaveText("Preguntar disponibilidad");
+    await expect(consult).toHaveAttribute("href", /wa\.me\/.*Chips%20de%20Chocolate%20Oscuro/);
+    await expect(stepper).toHaveAttribute("aria-disabled", "true");
+    await expect(quantityButtons).toHaveCount(2);
+    await expect(quantityButtons.first()).toBeDisabled();
+    await expect(quantityButtons.last()).toBeDisabled();
+    await expect(output).toHaveText("0");
+    await quantityButtons.evaluateAll(buttons => buttons.forEach(button => button.click()));
+    await expect(output).toHaveText("0");
+    await expect(page.locator("#fonkieChoiceCount")).toHaveText("0 elegidos");
+
+    await expect(available).not.toHaveClass(/builder-flavor-sold-out/);
+    await expect(available.locator('[data-delta="1"]')).toBeEnabled();
+    await available.locator('[data-delta="1"]').click();
+    await expect(available.locator("output")).toHaveText("1");
+    await available.locator('[data-delta="-1"]').click();
+    await expect(available.locator("output")).toHaveText("0");
+
+    const compactLayout = await row.evaluate((element, expectedColumns) => {
+      const gridElement = element.parentElement;
+      const availableRow = [...gridElement.children].find(candidate => candidate.dataset.soldOut !== "true");
+      const nameHost = element.querySelector(".fonkie-flavor-name");
+      const badgeElement = element.querySelector(".builder-flavor-availability");
+      const consultElement = element.querySelector(".builder-flavor-consult");
+      const stepperElement = element.querySelector(".fonkie-stepper");
+      const nameNode = [...nameHost.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+      const nameRange = document.createRange();
+      nameRange.selectNodeContents(nameNode);
+      const nameLineBoxes = [...nameRange.getClientRects()];
+      const boxes = {
+        row: element.getBoundingClientRect(),
+        available: availableRow.getBoundingClientRect(),
+        nameHost: nameHost.getBoundingClientRect(),
+        name: nameRange.getBoundingClientRect(),
+        badge: badgeElement.getBoundingClientRect(),
+        consult: consultElement.getBoundingClientRect(),
+        stepper: stepperElement.getBoundingClientRect()
+      };
+      const inside = (child, parent) => child.left >= parent.left - 1
+        && child.right <= parent.right + 1
+        && child.top >= parent.top - 1
+        && child.bottom <= parent.bottom + 1;
+      const overlapArea = (left, right) => Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left))
+        * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+      const rowStyle = getComputedStyle(element);
+      const availableStyle = getComputedStyle(availableRow);
+      const nameStyle = getComputedStyle(nameHost);
+      const badgeStyle = getComputedStyle(badgeElement);
+      const nameBackgroundValues = nameStyle.backgroundColor.match(/[\d.]+/g)?.map(Number) || [];
+      return {
+        columns: getComputedStyle(gridElement).gridTemplateColumns.split(" ").filter(Boolean).length,
+        expectedColumns,
+        sameVisualRow: Math.abs(boxes.row.top - boxes.available.top) <= 1,
+        equalWidths: Math.abs(boxes.row.width - boxes.available.width) <= 1,
+        ordered: boxes.row.right <= boxes.available.left + 1,
+        rowFits: element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1,
+        childrenInside: [boxes.nameHost, boxes.badge, boxes.consult, boxes.stepper].every(box => inside(box, boxes.row)),
+        nameBeforeStepper: boxes.nameHost.right <= boxes.stepper.left + 1,
+        nameVisible: nameLineBoxes.length > 0 && nameLineBoxes.every(box => box.width > 1 && box.height > 1)
+          && nameStyle.visibility === "visible" && nameStyle.opacity === "1",
+        noTextOverlap: nameLineBoxes.every(box => overlapArea(box, boxes.badge) <= 1
+          && overlapArea(box, boxes.consult) <= 1)
+          && overlapArea(boxes.badge, boxes.consult) <= 1,
+        nameBackgroundAlpha: nameStyle.backgroundColor.startsWith("rgba")
+          ? (nameBackgroundValues[3] ?? 1)
+          : 1,
+        rowReadable: Number.parseFloat(rowStyle.opacity) >= .85,
+        rowVisualDiffers: rowStyle.backgroundImage !== availableStyle.backgroundImage
+          || rowStyle.backgroundColor !== availableStyle.backgroundColor
+          || rowStyle.borderColor !== availableStyle.borderColor
+          || rowStyle.boxShadow !== availableStyle.boxShadow,
+        badgeDisplay: badgeStyle.display,
+        badgeCompact: boxes.badge.width < boxes.nameHost.width * .8,
+        pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth
+      };
+    }, viewport.columns);
+    expect(compactLayout.columns).toBe(compactLayout.expectedColumns);
+    expect(compactLayout.sameVisualRow).toBe(true);
+    expect(compactLayout.equalWidths).toBe(true);
+    expect(compactLayout.ordered).toBe(true);
+    expect(compactLayout.rowFits).toBe(true);
+    expect(compactLayout.childrenInside).toBe(true);
+    expect(compactLayout.nameBeforeStepper).toBe(true);
+    expect(compactLayout.nameVisible).toBe(true);
+    expect(compactLayout.noTextOverlap).toBe(true);
+    expect(compactLayout.nameBackgroundAlpha).toBeLessThan(.2);
+    expect(compactLayout.rowReadable).toBe(true);
+    expect(compactLayout.rowVisualDiffers).toBe(true);
+    expect(compactLayout.badgeDisplay).toBe("inline-flex");
+    expect(compactLayout.badgeCompact).toBe(true);
+    expect(compactLayout.pageFits).toBe(true);
+
+    const soldOutCard = page.locator('.fonkie-gallery-card[data-flavor="Chips de Chocolate Oscuro"]');
+    await expect(soldOutCard).toHaveClass(/builder-flavor-sold-out/);
+    await expect(soldOutCard.locator("img")).not.toHaveCSS("filter", "none");
+    const galleryLayout = await soldOutCard.evaluate(element => {
+      const availableCard = [...element.parentElement.children]
+        .find(candidate => candidate.dataset.soldOut !== "true");
+      const label = element.querySelector(":scope > span");
+      const availableLabel = availableCard.querySelector(":scope > span");
+      const badgeElement = label.querySelector(".builder-flavor-availability");
+      const nameNode = [...label.childNodes]
+        .find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+      const nameRange = document.createRange();
+      nameRange.selectNodeContents(nameNode);
+      const nameLineBoxes = [...nameRange.getClientRects()];
+      const boxes = {
+        card: element.getBoundingClientRect(),
+        label: label.getBoundingClientRect(),
+        badge: badgeElement.getBoundingClientRect()
+      };
+      const inside = (child, parent) => child.left >= parent.left - 1
+        && child.right <= parent.right + 1
+        && child.top >= parent.top - 1
+        && child.bottom <= parent.bottom + 1;
+      const overlapArea = (left, right) => Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left))
+        * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+      const style = getComputedStyle(label);
+      const availableStyle = getComputedStyle(availableLabel);
+      const imageStyle = getComputedStyle(element.querySelector("img"));
+      const availableImageStyle = getComputedStyle(availableCard.querySelector("img"));
+      return {
+        cardFits: element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1,
+        contentInside: inside(boxes.label, boxes.card) && inside(boxes.badge, boxes.label),
+        nameVisible: nameLineBoxes.length > 0
+          && nameLineBoxes.every(box => box.width > 1 && box.height > 1 && inside(box, boxes.label))
+          && style.visibility === "visible" && Number.parseFloat(style.opacity) >= .85,
+        noOverlap: nameLineBoxes.every(box => overlapArea(box, boxes.badge) <= 1),
+        labelTreatmentMatchesAvailable: style.backgroundColor === availableStyle.backgroundColor
+          && style.backgroundImage === availableStyle.backgroundImage,
+        imageTreatmentDiffers: imageStyle.filter !== availableImageStyle.filter
+          || imageStyle.opacity !== availableImageStyle.opacity
+      };
+    });
+    expect(galleryLayout.cardFits).toBe(true);
+    expect(galleryLayout.contentInside).toBe(true);
+    expect(galleryLayout.nameVisible).toBe(true);
+    expect(galleryLayout.noOverlap).toBe(true);
+    expect(galleryLayout.labelTreatmentMatchesAvailable).toBe(true);
+    expect(galleryLayout.imageTreatmentDiffers).toBe(true);
+    await soldOutCard.click();
+    const expanded = page.locator('.builder-flavor-flip-card[data-flavor="Chips de Chocolate Oscuro"]');
+    await expect(expanded.locator(".builder-flavor-expanded-availability")).toHaveText("Agotado");
+    await expect(expanded).toHaveClass(/builder-flavor-expanded-sold-out/);
+    await expect(expanded.locator(".builder-flavor-expanded-media img")).not.toHaveCSS("filter", "none");
+    await expect(expanded.locator(".builder-flavor-expanded-consult")).toBeVisible();
+    await expect(expanded.locator(".builder-flavor-quantity-output")).toHaveText("0");
+    await expect(expanded.locator('.builder-flavor-quantity-button').first()).toBeDisabled();
+    await expect(expanded.locator('.builder-flavor-quantity-button').last()).toBeDisabled();
+    await waitForExpandedFlavorLayout(expanded, viewport.layout);
+    await expectExpandedFlavorLayoutFits(expanded, { fixed: true, layout: viewport.layout });
+    await expanded.locator(".builder-flavor-expanded-media").click();
+    await expect(expanded).toHaveCount(0);
+  }
+  expect(runtimeErrors).toEqual([]);
 });
 
 test("el panel migra los productos legacy de dos días a preorden sin perder el plazo", async ({ page }) => {

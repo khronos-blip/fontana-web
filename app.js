@@ -1173,7 +1173,8 @@
         const stock = builderFlavorStockDetails(flavor, stockContext);
         const showsSoldOut = builderFlavorShowsSoldOut(stock);
         const consult = builderFlavorConsultMarkup(stock, `${flavor.name} de Fonkies`);
-        return `<div class="fonkie-flavor${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${stock.state === "unavailable" ? "disabled" : ""}>+</button></div></div>`;
+        const disabled = stock.state === "unavailable" ? " disabled" : "";
+        return `<div class="fonkie-flavor${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper" aria-disabled="${stock.state === "unavailable"}"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}"${disabled}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}"${disabled}>+</button></div></div>`;
       }).join("");
       const availableIngredients = flavors.map(flavor => `${flavor.name}: ${flavor.ingredients || "Ingredientes pendientes de confirmar con Fontana"}`).join(". ");
       fonkieBuilder.dataset.ingredients = availableIngredients;
@@ -1218,7 +1219,8 @@
         const stock = builderFlavorStockDetails(flavor, stockContext);
         const showsSoldOut = builderFlavorShowsSoldOut(stock);
         const consult = builderFlavorConsultMarkup(stock, `${flavor.name} de Fomb`);
-        return `<div class="fomb-flavor${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}">−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}" ${stock.state === "unavailable" ? "disabled" : ""}>+</button></div></div>`;
+        const disabled = stock.state === "unavailable" ? " disabled" : "";
+        return `<div class="fomb-flavor${showsSoldOut ? " builder-flavor-sold-out" : ""}" data-flavor="${escapeHtml(flavor.name)}" data-inventory-key="${escapeHtml(builderFlavorInventoryKey(flavor))}" data-sold-out="${showsSoldOut}" data-stock-state="${stock.state}"><span class="fonkie-flavor-name">${escapeHtml(flavor.name)}${builderFlavorAvailabilityMarkup(stock)}${consult}</span><div class="fonkie-stepper" aria-disabled="${stock.state === "unavailable"}"><button type="button" data-delta="-1" aria-label="Restar ${escapeHtml(flavor.name)}"${disabled}>−</button><output>0</output><button type="button" data-delta="1" aria-label="Sumar ${escapeHtml(flavor.name)}"${disabled}>+</button></div></div>`;
       }).join("");
       const sizes = Array.isArray(fomb.sizes) && fomb.sizes.length ? fomb.sizes : [{ quantity: 4, price: 15 }, { quantity: 12, price: 30 }];
       const sizeOptions = $(".fomb-size-options", fombBuilder);
@@ -2593,7 +2595,7 @@
         "aria-label",
         `${quantity} ${state.currentName} ${quantity === 1 ? "seleccionado" : "seleccionados"} para tu caja`
       );
-      state.quantityDecrease.disabled = !controls?.decrease || quantity <= 0;
+      state.quantityDecrease.disabled = state.flavorUnavailable || !controls?.decrease || quantity <= 0;
       state.quantityIncrease.disabled = state.flavorUnavailable
         || !controls?.increase
         || controls.increase.disabled;
@@ -4155,7 +4157,9 @@
     const state = {
       committed: new Map(rows.map(row => [
         row,
-        Math.max(0, Number($("output", row)?.value || $("output", row)?.textContent || 0))
+        row.dataset.stockState === "unavailable"
+          ? 0
+          : Math.max(0, Number($("output", row)?.value || $("output", row)?.textContent || 0))
       ])),
       pending: [],
       inFlight: [],
@@ -4167,7 +4171,7 @@
     const isPreorder = row => row.dataset.stockState === "preorder";
     const isUnavailable = row => row.dataset.stockState === "unavailable";
     const activeOperations = operations => operations.filter(operation => !operation.cancelled);
-    const quantityFor = row => Math.max(0,
+    const quantityFor = row => isUnavailable(row) ? 0 : Math.max(0,
       Number(state.committed.get(row) || 0)
       + activeOperations(state.inFlight).filter(operation => operation.row === row).length
       + activeOperations(state.pending).filter(operation => operation.row === row).length
@@ -4184,6 +4188,10 @@
       rows.forEach(row => {
         const output = $("output", row);
         const quantity = quantityFor(row);
+        const unavailable = isUnavailable(row);
+        const stepper = $(".fonkie-stepper", row);
+        if (stepper) stepper.setAttribute("aria-disabled", String(unavailable));
+        $$("button", stepper).forEach(button => { button.disabled = unavailable; });
         if (output) {
           output.value = String(quantity);
           output.textContent = String(quantity);
