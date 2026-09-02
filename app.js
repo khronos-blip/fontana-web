@@ -4,6 +4,23 @@
   const config = window.FONTANA_CONFIG || {};
   const $ = (selector, context = document) => context.querySelector(selector);
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
+  // The navigation seal is requested before the application script. A brief
+  // connection reset could otherwise leave that always-visible brand image in
+  // the browser's completed-but-broken state for the entire visit.
+  function recoverCriticalImage(image) {
+    if (!image) return;
+    let retries = 0;
+    const retry = () => {
+      if (retries >= 2 || image.naturalWidth > 0) return;
+      retries += 1;
+      const source = new URL(image.getAttribute("src") || image.src, location.href);
+      source.searchParams.set("fontana-retry", String(retries));
+      image.src = source.href;
+    };
+    image.addEventListener("error", retry);
+    if (image.complete && image.naturalWidth <= 0) retry();
+  }
+  recoverCriticalImage($(".nav .brand-seal"));
   const catalogImageSelector = ".product-media img, .fonkie-gallery-card img, .builder-gallery-card img";
   const soldOutStyle = document.createElement("style");
   soldOutStyle.textContent = [
@@ -15,16 +32,132 @@
   const adminStorageKey = "fontana-admin-catalog-v1";
   const localMode = ["localhost", "127.0.0.1"].includes(location.hostname);
   let storefrontReady = false;
-  const pendingProductOpens = new Map();
+  let dispatchingPendingAction = false;
+  const pendingStorefrontActions = [];
+
+  function pendingProductIdentity(product) {
+    return {
+      productId:product?.dataset.productId || "",
+      legacyId:product?.dataset.id || "",
+      name:product?.dataset.name || "",
+      category:product?.dataset.category || ""
+    };
+  }
+
+  function pendingFlavorIdentity(card) {
+    const caption = card?.querySelector(":scope > span");
+    const captionText = caption
+      ? [...caption.childNodes]
+          .filter(node => node.nodeType === Node.TEXT_NODE)
+          .map(node => node.textContent || "")
+          .join(" ")
+          .trim()
+      : "";
+    const imageName = String(card?.querySelector("img")?.alt || "")
+      .replace(/^Fonkie\s+/i, "")
+      .replace(/^Fomb\s+/i, "")
+      .trim();
+    return {
+      inventoryKey:card?.dataset.inventoryKey || "",
+      flavor:card?.dataset.flavor || captionText || imageName
+    };
+  }
+
+  function pendingProductOpenAction(product) {
+    return {
+      type:"product-open",
+      identity:pendingProductIdentity(product),
+      hadSizeSelector:Boolean(product?.querySelector(".product-size")),
+      hadVariantSelector:Boolean(product?.querySelector(".product-variant")),
+      size:product?.querySelector(".product-size")?.value || "",
+      variant:product?.querySelector(".product-variant")?.value || ""
+    };
+  }
+
   document.addEventListener("click", event => {
-    if (storefrontReady) return;
+    if (storefrontReady || dispatchingPendingAction) return;
     const media = event.target.closest?.(".product-media");
     const product = media?.closest?.(".product");
-    if (!product) return;
+    const flavorCard = event.target.closest?.(".fonkie-gallery-card, .builder-gallery-card");
+    let queued = false;
+    if (product) {
+      pendingStorefrontActions.push(pendingProductOpenAction(product));
+      queued = true;
+    } else if (flavorCard) {
+      const identity = pendingFlavorIdentity(flavorCard);
+      pendingStorefrontActions.push({
+        type:"flavor-open",
+        kind:flavorCard.matches(".fonkie-gallery-card") ? "fonkies" : "fomb",
+        inventoryKey:identity.inventoryKey,
+        flavor:identity.flavor
+      });
+      queued = true;
+    } else {
+      const filter = event.target.closest?.(".filter[data-filter]");
+      const productAdd = event.target.closest?.(".product .add");
+      const builderStep = event.target.closest?.(".fonkie-flavor button[data-delta], .fomb-flavor button[data-delta]");
+      const cartTrigger = event.target.closest?.("#cartButton");
+      if (filter) {
+        pendingStorefrontActions.push({ type:"filter", filter:filter.dataset.filter });
+        queued = true;
+      } else if (productAdd) {
+        const card = productAdd.closest(".product");
+        pendingStorefrontActions.push({
+          type:"product-add",
+          identity:pendingProductIdentity(card),
+          hadSizeSelector:Boolean(card?.querySelector(".product-size")),
+          hadVariantSelector:Boolean(card?.querySelector(".product-variant")),
+          size:card?.querySelector(".product-size")?.value || "",
+          variant:card?.querySelector(".product-variant")?.value || ""
+        });
+        queued = true;
+      } else if (builderStep) {
+        const row = builderStep.closest(".fonkie-flavor, .fomb-flavor");
+        const isFomb = row?.classList.contains("fomb-flavor");
+        pendingStorefrontActions.push({
+          type:isFomb ? "fomb-quantity" : "fonkie-quantity",
+          inventoryKey:row?.dataset.inventoryKey || "",
+          flavor:row?.dataset.flavor || "",
+          delta:Number(builderStep.dataset.delta || 0),
+          boxSize:isFomb
+            ? row.closest(".fomb-builder")?.querySelector('input[name="fombSize"]:checked')?.value || ""
+            : ""
+        });
+        queued = true;
+      } else if (cartTrigger) {
+        pendingStorefrontActions.push({ type:"cart" });
+        queued = true;
+      } else {
+        const card = event.target.closest?.(".product");
+        const selectionSummary = event.target.closest?.(".product-selection-summary");
+        const interactive = event.target.closest?.("button, a, input, select, textarea, label, summary, details");
+        if (card && (selectionSummary || !interactive)) {
+          pendingStorefrontActions.push(pendingProductOpenAction(card));
+          queued = true;
+        }
+      }
+    }
+    if (!queued) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    const id = product.dataset.productId || product.dataset.id;
-    if (id) pendingProductOpens.set(id, Boolean(product.dataset.productId));
+    say("Preparando el menú… tu selección se aplicará enseguida.");
+  }, true);
+  document.addEventListener("change", event => {
+    if (storefrontReady || dispatchingPendingAction) return;
+    if (event.target.matches?.('input[name="fombSize"]')) {
+      pendingStorefrontActions.push({ type:"fomb-size", boxSize:event.target.value || "" });
+      return;
+    }
+    if (!event.target.matches?.(".product .product-size, .product .product-variant")) return;
+    const card = event.target.closest(".product");
+    pendingStorefrontActions.push({
+      type:"product-choice",
+      identity:pendingProductIdentity(card),
+      hadSizeSelector:Boolean(card?.querySelector(".product-size")),
+      hadVariantSelector:Boolean(card?.querySelector(".product-variant")),
+      size:card?.querySelector(".product-size")?.value || "",
+      variant:card?.querySelector(".product-variant")?.value || ""
+    });
   }, true);
   let adminStateVerified = false;
   // The catalogue request can be slow or offline; the visible menu heading
@@ -38,9 +171,13 @@
   // Start the request immediately, but do not leave the browser with the much
   // shorter hand-written fallback catalogue while it is in flight. The full
   // local snapshot is laid out below before we await this promise.
-  const adminStatePromise = readAdminState();
+  const adminStatePromise = readAdminState(Number(config.initialCatalogApiTimeoutMs || 2000));
   let adminState = null;
-  let productionWithElectricity = localMode;
+  // A missing catalogue response means that production state is unknown, not
+  // that electricity was explicitly disabled. Every quantity mutation is
+  // still checked by the authoritative API, so keeping the fallback menu
+  // usable cannot create an unchecked reservation.
+  let productionWithElectricity = true;
   let stockTodayOpen = true;
   const drawer = $("#drawer");
   const backdrop = $("#backdrop");
@@ -388,7 +525,7 @@
     restoreInlineValue(document.body, anchor.overflowAnchor.body);
   }
 
-  async function readAdminState() {
+  async function readAdminState(timeoutMs = Number(config.catalogApiTimeoutMs || 5000)) {
     try {
       const stored = JSON.parse(localStorage.getItem(adminStorageKey) || "null");
       if (localMode) { adminStateVerified = true; return stored && Array.isArray(stored.products) ? stored : null; }
@@ -396,7 +533,7 @@
     const apiBase = String(config.adminApiBase || "").replace(/\/$/, "");
     if (!apiBase) return null;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Number(config.catalogApiTimeoutMs || 5000));
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(`${apiBase}/v1/catalog`, {signal:controller.signal,cache:"no-store"});
       if (!response.ok) return null;
@@ -636,6 +773,52 @@
     return [...checks, ...extraChecks].filter(check => Number(check.quantity) > 0);
   }
 
+  function stockCheckIdentity(check) {
+    if (check.kind === "product") {
+      return `product:${check.productId}:${check.size || ""}:${check.variant || ""}`;
+    }
+    const stableKey = String(check.inventoryKey || "").trim();
+    return `${check.kind}:${stableKey ? `key:${stableKey}` : `name:${check.flavor || ""}`}`;
+  }
+
+  function normalizedStockFlavor(check) {
+    return String(check.flavor || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function stockChecksMatch(left, right) {
+    if (left.kind !== right.kind) return false;
+    if (left.kind === "product") return stockCheckIdentity(left) === stockCheckIdentity(right);
+    const leftKey = String(left.inventoryKey || "").trim();
+    const rightKey = String(right.inventoryKey || "").trim();
+    if (leftKey && rightKey) return leftKey === rightKey;
+    const leftFlavor = normalizedStockFlavor(left);
+    return Boolean(leftFlavor) && leftFlavor === normalizedStockFlavor(right);
+  }
+
+  function mutationStockChecks(extraChecks = [], items = cart) {
+    const requested = [];
+    for (const check of extraChecks.filter(item => Number(item.quantity) > 0)) {
+      const target = requested.find(item => stockChecksMatch(item, check));
+      if (!target) {
+        requested.push({...check, quantity:Number(check.quantity)});
+        continue;
+      }
+      target.quantity += Number(check.quantity);
+      if (!target.inventoryKey && check.inventoryKey) target.inventoryKey = check.inventoryKey;
+    }
+    for (const check of stockChecks(items)) {
+      const target = requested.find(item => stockChecksMatch(item, check));
+      if (!target) continue;
+      target.quantity += Number(check.quantity);
+      if (!target.inventoryKey && check.inventoryKey) target.inventoryKey = check.inventoryKey;
+    }
+    return requested;
+  }
+
   function locallyAvailable(checks) {
     if (!adminState) return true;
     const demands = new Map();
@@ -665,8 +848,7 @@
     return true;
   }
 
-  async function validateStock(extraChecks = [], items = cart) {
-    const checks = stockChecks(items, extraChecks);
+  async function validateStockChecks(checks) {
     if (!checks.length) return {ok:true};
     if (localMode) return locallyAvailable(checks)
       ? {ok:true}
@@ -684,12 +866,26 @@
         method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({checks}),signal:controller.signal
       });
       const payload = await response.json().catch(() => ({}));
-      return response.ok ? {ok:true} : {ok:false,error:payload.error || "No hay suficientes unidades disponibles para esa cantidad."};
+      return response.ok
+        ? {ok:true}
+        : {
+            ok:false,
+            error:payload.error || "No hay suficientes unidades disponibles para esa cantidad.",
+            code:payload.code || ""
+          };
     } catch {
       return {ok:false,error:"No pudimos comprobar el inventario. Inténtalo otra vez."};
     } finally {
       window.clearTimeout(timeout);
     }
+  }
+
+  async function validateStock(extraChecks = [], items = cart) {
+    return validateStockChecks(stockChecks(items, extraChecks));
+  }
+
+  async function validateStockMutation(extraChecks = [], items = cart) {
+    return validateStockChecks(mutationStockChecks(extraChecks, items));
   }
 
   function reservationItems() {
@@ -3899,23 +4095,19 @@
     else cart.push({...item, qty:quantity});
   }
 
-  function proposedCart(item, quantity) {
-    const proposal = cart.map(entry => ({...entry, inventory:{...entry.inventory}}));
-    const found = proposal.find(entry => entry.id === item.id);
-    if (found) found.qty += quantity;
-    else proposal.push({...item, inventory:{...item.inventory}, qty:quantity});
-    return proposal;
+  function productMutationChecks(item, quantity) {
+    return stockChecks([{...item, inventory:{...item.inventory}, qty:quantity}]);
   }
 
   async function maximumValidAddition(item, requested) {
-    const fullValidation = await validateStock([], proposedCart(item, requested));
+    const fullValidation = await validateStockMutation(productMutationChecks(item, requested));
     if (fullValidation.ok) return {quantity:requested};
     if (/No pudimos|momento|Inténtalo/i.test(fullValidation.error || "")) return {quantity:0,error:fullValidation.error};
     let low = 0;
     let high = requested - 1;
     while (low < high) {
       const middle = Math.ceil((low + high) / 2);
-      const validation = await validateStock([], proposedCart(item, middle));
+      const validation = await validateStockMutation(productMutationChecks(item, middle));
       if (validation.ok) low = middle;
       else high = middle - 1;
     }
@@ -4239,7 +4431,7 @@
     const maximumValidOperations = async operations => {
       const candidates = activeOperations(operations);
       if (!candidates.length) return { quantity: 0 };
-      const fullValidation = await validateStock(validationChecks(candidates));
+      const fullValidation = await validateStockMutation(validationChecks(candidates));
       const remainingAfterFullValidation = activeOperations(candidates);
       if (fullValidation.ok) return { quantity: remainingAfterFullValidation.length };
       if (remainingAfterFullValidation.length !== candidates.length) {
@@ -4253,7 +4445,7 @@
       let high = Math.max(0, remaining.length - 1);
       while (low < high) {
         const middle = Math.ceil((low + high) / 2);
-        const validation = await validateStock(validationChecks(remaining.slice(0, middle)));
+        const validation = await validateStockMutation(validationChecks(remaining.slice(0, middle)));
         const stillActive = activeOperations(remaining);
         if (stillActive.length !== remaining.length) return maximumValidOperations(stillActive);
         if (validation.ok) low = middle;
@@ -4453,7 +4645,7 @@
         const id = builderCartId("fonkies", inventory.flavors);
         await serializeStockQuantityMutation(async () => {
           if (stocked.length) {
-            const validation = await validateStock(stocked.map(item => ({kind:"fonkies",flavor:item.name,inventoryKey:item.inventoryKey,quantity:item.qty})));
+            const validation = await validateStockMutation(stocked.map(item => ({kind:"fonkies",flavor:item.name,inventoryKey:item.inventoryKey,quantity:item.qty})));
             if (!validation.ok) {
               say(stockLimitNotice(validation.error, "la caja de Fonkies"));
               return;
@@ -4584,7 +4776,7 @@
         });
         await serializeStockQuantityMutation(async () => {
           if (stocked.length) {
-            const validation = await validateStock(stocked.map(item => ({kind:"fomb",flavor:item.name,inventoryKey:item.inventoryKey,quantity:item.qty})));
+            const validation = await validateStockMutation(stocked.map(item => ({kind:"fomb",flavor:item.name,inventoryKey:item.inventoryKey,quantity:item.qty})));
             if (!validation.ok) {
               say(stockLimitNotice(validation.error, "la caja Fomb"));
               return;
@@ -4708,7 +4900,7 @@
         adminStateVerified = localMode || latestState.operations?.verified === true;
         productionWithElectricity = localMode
           ? latestState.settings?.productionWithElectricity !== false
-          : adminStateVerified && latestState.operations?.electricityEnabled !== false;
+          : !adminStateVerified || latestState.operations?.electricityEnabled !== false;
         stockTodayOpen = latestState.settings?.stockTodayOpen !== false;
 
         const reconciled = reconcileCartEntries(cart);
@@ -5366,9 +5558,24 @@
   adminState = await adminStatePromise;
   const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
   const catalogHydrationHeight = catalogHydrationScrollAnchor ? holdCatalogHydrationHeight() : null;
-  productionWithElectricity = localMode
-    ? adminState?.settings?.productionWithElectricity !== false
-    : adminStateVerified && adminState?.operations?.electricityEnabled !== false;
+  let hydrationInputController = null;
+  let hydrationInterruptedByCustomer = false;
+  if (catalogHydrationScrollAnchor) {
+    hydrationInputController = new AbortController();
+    const markHydrationInterrupted = () => { hydrationInterruptedByCustomer = true; };
+    ["wheel", "touchmove", "pointerdown", "keydown"].forEach(type => {
+      document.addEventListener(type, markHydrationInterrupted, {
+        capture: true,
+        passive: true,
+        signal: hydrationInputController.signal
+      });
+    });
+  }
+  productionWithElectricity = adminState
+    ? (localMode
+        ? adminState.settings?.productionWithElectricity !== false
+        : !adminStateVerified || adminState.operations?.electricityEnabled !== false)
+    : true;
   stockTodayOpen = adminState?.settings?.stockTodayOpen !== false;
   cart = readCart();
 
@@ -5382,29 +5589,27 @@
   filterProducts($(".filter.active")?.dataset.filter || "all");
   setupProductQuantityControls();
   let catalogFilterEpoch = 0;
+  const activateCatalogFilter = async button => {
+    centerCatalogFilter(button);
+    if (button.classList.contains("active")) return;
+    const epoch = ++catalogFilterEpoch;
+    $$(".filter").forEach(item => item.removeAttribute("aria-busy"));
+    button.setAttribute("aria-busy", "true");
+    // Begin fetching the first row, but never make navigation wait for an
+    // image response. Pending images already paint the stable lilac frame and
+    // reveal only after decode, so the selected category can change at once
+    // without the old black flash or an apparently ignored click.
+    warmCatalogFilter(button.dataset.filter).catch(() => {});
+    $$(".filter").forEach(item => item.classList.remove("active"));
+    button.classList.add("active");
+    filterProducts(button.dataset.filter);
+    await waitForCatalogPaint();
+    if (epoch !== catalogFilterEpoch) return;
+    button.removeAttribute("aria-busy");
+  };
   $$(".filter").forEach(button => {
-    button.addEventListener("click", async () => {
-      centerCatalogFilter(button);
-      if (button.classList.contains("active")) {
-        return;
-      }
-      const epoch = ++catalogFilterEpoch;
-      $$(".filter").forEach(item => item.removeAttribute("aria-busy"));
-      button.setAttribute("aria-busy", "true");
-      const warming = warmCatalogFilter(button.dataset.filter);
-      $$(".filter").forEach(item => item.classList.remove("active"));
-      button.classList.add("active");
-      await warming;
-      if (epoch !== catalogFilterEpoch) return;
-      // Keep the current cards painted while the first row of the requested
-      // category is fetched and decoded. Revealing lazy images first and
-      // finishing their textures afterwards produced a visible flash in the
-      // lower Salado, Bebidas and Bottega sections on cold visits.
-      filterProducts(button.dataset.filter);
-      await waitForCatalogPaint();
-      if (epoch !== catalogFilterEpoch) return;
-      button.removeAttribute("aria-busy");
-    });
+    button._fontanaActivateFilter = () => activateCatalogFilter(button);
+    button.addEventListener("click", button._fontanaActivateFilter);
   });
 
   function setupMenuIntro() {
@@ -5432,11 +5637,19 @@
       });
       title.classList.add("menu-title-ready");
     }
+    const desktopMotion = window.matchMedia?.("(min-width: 961px) and (prefers-reduced-motion: no-preference)");
+    const syncMotionEligibility = () => {
+      if (intro.classList.contains("menu-intro-visible")) return;
+      intro.classList.toggle("menu-intro-animate", Boolean(desktopMotion?.matches));
+    };
+    syncMotionEligibility();
+    desktopMotion?.addEventListener?.("change", syncMotionEligibility);
     let observer;
     const reveal = () => {
       if (intro.classList.contains("menu-intro-visible")) return;
       intro.classList.add("menu-intro-visible");
       section?.classList.add("menu-entry-visible");
+      desktopMotion?.removeEventListener?.("change", syncMotionEligibility);
       observer?.disconnect();
     };
     if (typeof window.IntersectionObserver !== "function") {
@@ -5574,6 +5787,250 @@
     $$('[name^="allergyNote:"]').forEach(field => { field.required = false; });
   }
 
+  function resolvePendingProduct(identity = {}) {
+    const products = $$(".product");
+    // Product names and categories are editable in the owner panel. A click
+    // made while the catalogue is loading must follow the immutable product
+    // ID even when either display field changes during hydration.
+    if (identity.productId) {
+      const stableMatches = products.filter(product => product.dataset.productId === identity.productId);
+      if (stableMatches.length === 1) return stableMatches[0];
+      if (stableMatches.length > 1) return null;
+    }
+    const expectedName = normalizedStockFlavor({ flavor:identity.name });
+    const corroboratesIdentity = product => (
+      (!expectedName || normalizedStockFlavor({ flavor:product.dataset.name }) === expectedName)
+      && (!identity.category || product.dataset.category === identity.category)
+    );
+    const corroboratedProducts = products.filter(corroboratesIdentity);
+    if (expectedName && corroboratedProducts.length !== 1) return null;
+    if (identity.legacyId) {
+      const legacyMatches = corroboratedProducts.filter(product => (
+        product.dataset.id === identity.legacyId || product.dataset.productId === identity.legacyId
+      ));
+      if (legacyMatches.length === 1) return legacyMatches[0];
+    }
+    if (!expectedName) return null;
+    return corroboratedProducts[0] || null;
+  }
+
+  function pendingTargetIsVisible(target) {
+    return Boolean(target
+      && !target.hidden
+      && !target.classList.contains("hidden")
+      && !target.closest("[hidden], .hidden"));
+  }
+
+  function resolvePendingFlavor(action) {
+    const builder = $(action.type === "fonkie-quantity" || action.kind === "fonkies"
+      ? ".fonkie-builder"
+      : ".fomb-builder");
+    if (!builder) return null;
+    const selector = action.type === "fonkie-quantity" || action.kind === "fonkies"
+      ? action.type === "flavor-open" ? ".fonkie-gallery-card" : ".fonkie-flavor"
+      : action.type === "flavor-open" ? ".builder-gallery-card" : ".fomb-flavor";
+    const candidates = $$(selector, builder);
+    const stableKey = String(action.inventoryKey || "").trim();
+    if (stableKey) {
+      const keyed = candidates.filter(item => item.dataset.inventoryKey === stableKey);
+      return keyed.length === 1 ? keyed[0] : null;
+    }
+    const flavor = normalizedStockFlavor({ flavor:action.flavor });
+    if (!flavor) return null;
+    const named = candidates.filter(item => (
+      normalizedStockFlavor({ flavor:item.dataset.flavor }) === flavor
+    ));
+    return named.length === 1 ? named[0] : null;
+  }
+
+  function restorePendingChoice(card, selector, value) {
+    if (!value) return true;
+    const select = $(selector, card);
+    const option = select && [...select.options].find(item => item.value === value && !item.disabled);
+    if (!option) return false;
+    if (select.value !== value) {
+      select.value = value;
+      dispatchPendingChange(select);
+    }
+    return true;
+  }
+
+  function restorePendingProductChoices(card, action) {
+    return Boolean(card.querySelector(".product-size")) === Boolean(action.hadSizeSelector)
+      && Boolean(card.querySelector(".product-variant")) === Boolean(action.hadVariantSelector)
+      && restorePendingChoice(card, ".product-size", action.size)
+      && restorePendingChoice(card, ".product-variant", action.variant);
+  }
+
+  function dispatchPendingClick(target) {
+    dispatchingPendingAction = true;
+    try {
+      target?.click();
+    } finally {
+      dispatchingPendingAction = false;
+    }
+  }
+
+  function dispatchPendingChange(target) {
+    dispatchingPendingAction = true;
+    try {
+      target?.dispatchEvent(new Event("change", { bubbles:true }));
+    } finally {
+      dispatchingPendingAction = false;
+    }
+  }
+
+  async function replayPendingStorefrontAction(action) {
+    if (action.type === "filter") {
+      const button = $(`.filter[data-filter="${CSS.escape(action.filter || "")}"]`);
+      if (!pendingTargetIsVisible(button) || button.disabled || button.getAttribute("aria-disabled") === "true") {
+        if (action.filter === "immediate") say("Stock de hoy no está activo en este momento.");
+        return;
+      }
+      if (typeof button._fontanaActivateFilter === "function") {
+        await button._fontanaActivateFilter();
+      } else {
+        dispatchPendingClick(button);
+      }
+      const matches = $$("#products .product, #products .fonkie-builder, #products .builder-panel")
+        .filter(item => pendingTargetIsVisible(item) && catalogItemMatchesFilter(item, action.filter));
+      const hasVisibleMatch = matches.some(item => {
+        const rect = item.getBoundingClientRect();
+        return rect.bottom > 0 && rect.top < innerHeight;
+      });
+      if (!hasVisibleMatch && matches.length) {
+        const nearestMatch = matches
+          .map(item => {
+            const rect = item.getBoundingClientRect();
+            const distance = rect.bottom <= 0 ? -rect.bottom : Math.max(0, rect.top - innerHeight);
+            return { item, distance };
+          })
+          .sort((left, right) => left.distance - right.distance)[0].item;
+        const targetTop = nearestMatch.getBoundingClientRect().top;
+        window.scrollTo({
+          left:window.scrollX,
+          top:window.scrollY + targetTop - Math.min(innerHeight * 0.12, 96),
+          behavior:"instant"
+        });
+      }
+      return;
+    }
+    if (action.type === "product-add") {
+      const card = resolvePendingProduct(action.identity);
+      const add = card?.querySelector(".add");
+      if (!card || card.hidden || !add || add.disabled) {
+        say("Ese producto cambió mientras cargaba el menú. Revisa su disponibilidad.");
+        return;
+      }
+      if (!restorePendingProductChoices(card, action)) {
+        say("Esa presentación cambió mientras cargaba el menú. Elígela de nuevo.");
+        return;
+      }
+      dispatchPendingClick(add);
+      return;
+    }
+    if (action.type === "product-choice") {
+      const card = resolvePendingProduct(action.identity);
+      if (!card || !restorePendingProductChoices(card, action)) {
+        say("Esa presentación cambió mientras cargaba el menú. Elígela de nuevo.");
+      }
+      return;
+    }
+    if (action.type === "cart") {
+      dispatchPendingClick($("#cartButton"));
+      return;
+    }
+    if (action.type === "product-open") {
+      const card = resolvePendingProduct(action.identity);
+      if (!pendingTargetIsVisible(card)) {
+        say("Ese producto cambió mientras cargaba el menú. Ábrelo de nuevo.");
+        return;
+      }
+      if (!restorePendingProductChoices(card, action)) {
+        say("Esa presentación cambió mientras cargaba el menú. Elígela de nuevo.");
+        return;
+      }
+      dispatchPendingClick(card.querySelector(".product-media"));
+      return;
+    }
+    if (action.type === "flavor-open") {
+      const flavorCard = resolvePendingFlavor(action);
+      if (pendingTargetIsVisible(flavorCard)) dispatchPendingClick(flavorCard);
+      else say("Ese sabor cambió mientras cargaba el menú. Ábrelo de nuevo.");
+      return;
+    }
+    if (action.type === "fomb-size") {
+      const builder = $(".fomb-builder");
+      const size = builder && $$('input[name="fombSize"]', builder)
+        .find(input => input.value === String(action.boxSize) && !input.disabled);
+      if (!size) {
+        say("Ese tamaño de caja cambió mientras cargaba el menú. Elígelo de nuevo.");
+        return;
+      }
+      if (!size.checked) {
+        size.checked = true;
+        dispatchPendingChange(size);
+      }
+      return;
+    }
+    if (action.type !== "fonkie-quantity" && action.type !== "fomb-quantity") return;
+    const row = resolvePendingFlavor(action);
+    if (!row) {
+      say("Ese sabor cambió mientras cargaba el menú. Selecciónalo de nuevo.");
+      return;
+    }
+    if (action.type === "fomb-quantity" && action.boxSize) {
+      const builder = row.closest(".fomb-builder");
+      const size = $$('input[name="fombSize"]', builder)
+        .find(input => input.value === String(action.boxSize) && !input.disabled);
+      if (!size) {
+        say("Ese tamaño de caja cambió mientras cargaba el menú. Elígelo de nuevo.");
+        return;
+      }
+      if (!size.checked) {
+        size.checked = true;
+        dispatchPendingChange(size);
+      }
+    }
+    const step = row.querySelector(`button[data-delta="${Number(action.delta)}"]`);
+    if (!step || step.disabled) {
+      say("Ese sabor no está disponible en este momento.");
+      return;
+    }
+    dispatchPendingClick(step);
+  }
+
+  async function replayPendingStorefrontActions() {
+    const navigationTypes = new Set(["filter", "product-open", "flavor-open", "cart"]);
+    let deferredOverlay = null;
+    while (pendingStorefrontActions.length) {
+      const actions = pendingStorefrontActions.splice(0);
+      let finalNavigationIndex = -1;
+      let finalFilterIndex = -1;
+      actions.forEach((action, index) => {
+        if (navigationTypes.has(action.type)) finalNavigationIndex = index;
+        if (action.type === "filter") finalFilterIndex = index;
+      });
+      if (finalNavigationIndex >= 0) {
+        const finalNavigation = actions[finalNavigationIndex];
+        deferredOverlay = finalNavigation.type === "filter" ? null : finalNavigation;
+      }
+      for (const [index, action] of actions.entries()) {
+        if (action.type === "product-open" || action.type === "flavor-open" || action.type === "cart") continue;
+        if (action.type === "filter" && index !== finalFilterIndex) continue;
+        if (action.type === "filter") {
+          // Image warming runs in the background. Await only the two-paint
+          // layout update so a following overlay opens from the final scroll
+          // position of the selected category.
+          await replayPendingStorefrontAction(action);
+          continue;
+        }
+        await replayPendingStorefrontAction(action);
+      }
+    }
+    if (deferredOverlay) await replayPendingStorefrontAction(deferredOverlay);
+  }
+
   $("#cartButton").addEventListener("click", openCart);
   $("#closeCart").addEventListener("click", closeCart);
   $("#continueCheckout").addEventListener("click", showCheckoutStep);
@@ -5610,12 +6067,6 @@
   setupWhatsappChatLink();
   enhanceProductSafety();
   setupProductCardFlips();
-  storefrontReady = true;
-  pendingProductOpens.forEach((usesProductId, id) => {
-    const attribute = usesProductId ? "data-product-id" : "data-id";
-    document.querySelector(`[${attribute}="${CSS.escape(id)}"] .product-media`)?.click();
-  });
-  pendingProductOpens.clear();
   setupFonkieBuilder();
   setupFombBuilder();
   setupInfiniteFlavorGalleries();
@@ -5627,45 +6078,30 @@
   toggleAddress();
   renderCart();
   if (catalogHydrationScrollAnchor) {
-    const hydrationInputController = new AbortController();
-    let hydrationInterruptedByCustomer = false;
-    const markHydrationInterrupted = () => { hydrationInterruptedByCustomer = true; };
-    ["wheel", "touchmove", "pointerdown", "keydown"].forEach(type => {
-      document.addEventListener(type, markHydrationInterrupted, {
-        capture: true,
-        passive: true,
-        signal: hydrationInputController.signal
-      });
-    });
+    // Restore and release the hydration anchor before replaying queued
+    // navigation. A filter can hide the anchor node, while an expanded card
+    // snapshots the current scroll position for its close animation. Replaying
+    // either first leaves the customer at a stale catalogue offset.
     syncProductCardHeights();
     restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
-    Promise.resolve(document.fonts?.ready).catch(() => {}).then(() => {
-      requestAnimationFrame(() => {
-        try {
-          // Font metrics can change several product rows after the API swap.
-          // A synchronous height measurement can also make Chrome clamp the
-          // scroll offset for one frame. Correct both cases unless real input
-          // shows that the customer deliberately moved in the meantime.
-          if (!hydrationInterruptedByCustomer) {
-            syncProductCardHeights();
-            restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
-          }
-        } finally {
-          // Keep native anchoring disabled across at least one painted frame.
-          // Restoring it in the mutation task makes the browser apply a second,
-          // delayed correction on top of the explicit one above.
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              releaseCatalogHydrationHeight(catalogHydrationHeight);
-              if (!hydrationInterruptedByCustomer) {
-                restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
-              }
-              hydrationInputController.abort();
-              releaseCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
-            });
-          });
-        }
-      });
-    });
+    const fontsSettled = Promise.resolve(document.fonts?.ready).catch(() => {});
+    const fontWaitLimit = new Promise(resolve => setTimeout(resolve, 180));
+    await Promise.race([fontsSettled, fontWaitLimit]);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (!hydrationInterruptedByCustomer) {
+      syncProductCardHeights();
+      restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
+    }
+    releaseCatalogHydrationHeight(catalogHydrationHeight);
+    if (!hydrationInterruptedByCustomer) {
+      restoreCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
+    }
+    hydrationInputController.abort();
+    releaseCatalogHydrationScrollAnchor(catalogHydrationScrollAnchor);
+  }
+  try {
+    await replayPendingStorefrontActions();
+  } finally {
+    storefrontReady = true;
   }
 })();

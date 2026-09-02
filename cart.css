@@ -1,3 +1,7 @@
+@font-face{font-family:'Bebas Neue';font-style:normal;font-weight:400;font-display:optional;src:url('assets/fonts/bebas-neue-latin.woff2') format('woff2')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:400 700;font-display:optional;src:url('assets/fonts/dm-sans-latin.woff2') format('woff2')}
+@font-face{font-family:'Playfair Display';font-style:normal;font-weight:600 700;font-display:optional;src:url('assets/fonts/playfair-display-latin.woff2') format('woff2')}
+@font-face{font-family:'Playfair Display';font-style:italic;font-weight:600;font-display:optional;src:url('assets/fonts/playfair-display-italic-latin.woff2') format('woff2')}
 .toast{position:fixed;z-index:80;left:50%;bottom:25px;width:max-content;max-width:min(360px,calc(100vw - 32px));transform:translate(-50%,24px);border:1px solid rgba(197,218,78,.36);border-radius:16px;background:#211321;color:#fff;padding:12px 16px;font-size:.8rem;line-height:1.4;text-align:left;opacity:0;pointer-events:none;transition:.3s ease;box-shadow:0 12px 35px rgba(0,0,0,.22)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .drawer-status{flex:0 0 auto;max-height:0;overflow:hidden;margin:0 20px;padding:0 14px;border:0 solid rgba(197,218,78,.5);border-left-width:3px;border-radius:14px;background:rgba(197,218,78,.13);color:#fff;font-size:.76rem;font-weight:700;line-height:1.42;opacity:0;transition:max-height .25s ease,opacity .2s ease,margin .25s ease,padding .25s ease}
@@ -32,3 +36,15 @@
   .drawer-status{margin-left:16px;margin-right:16px}
 }
 @media(prefers-reduced-motion:reduce){.toast,.drawer-status{transition:none}}
+@keyframes menu-eyebrow-rise{from{opacity:0;transform:translate3d(-14px,0,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@keyframes menu-letter-rise{from{opacity:0;transform:translate3d(0,.32em,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@keyframes menu-line-grow{from{opacity:0;transform:scaleX(0)}to{opacity:1;transform:scaleX(1)}}
+@media(min-width:961px){
+  .menu-section .menu-intro h2{max-width:none;white-space:nowrap;font-size:clamp(5.4rem,7.4vw,6.6rem)}
+  .menu-intro.menu-intro-animate .eyebrow{opacity:0;transform:translate3d(-14px,0,0)}
+  .menu-intro.menu-intro-animate .menu-title-letter{opacity:0;transform:translate3d(0,.32em,0)}
+  .menu-intro.menu-intro-animate:after{opacity:0;transform:scaleX(0);transform-origin:left}
+  .menu-intro.menu-intro-animate.menu-intro-visible .eyebrow{animation:menu-eyebrow-rise .34s ease-out both}
+  .menu-intro.menu-intro-animate.menu-intro-visible .menu-title-letter{animation:menu-letter-rise .52s cubic-bezier(.2,.76,.24,1) both;animation-delay:calc(.05s + var(--letter-index) * .035s)}
+  .menu-intro.menu-intro-animate.menu-intro-visible:after{animation:menu-line-grow .46s .52s cubic-bezier(.2,.76,.24,1) both}
+}

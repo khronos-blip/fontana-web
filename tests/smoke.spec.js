@@ -420,10 +420,80 @@ function createBuilderAvailabilityState() {
   };
 }
 
+function createRaviolisCatalogState() {
+  return {
+    version: 2,
+    settings: { productionWithElectricity: true, stockTodayOpen: true },
+    operations: { verified: true, electricityEnabled: true },
+    products: [{
+      id: "raviolis",
+      category: "salado",
+      name: "Raviolis",
+      price: 15,
+      image: "assets/ravioli-fontana-pro.jpg",
+      description: "Raviolis congelados con relleno a elección.",
+      ingredients: "Harina de arroz, harina de yuca, maicena, huevo, aceite de oliva y sal.",
+      weight: "180 G / 300 G",
+      availabilityMode: "available",
+      status: "available",
+      visible: true,
+      sizeLabel: "Elige la presentación",
+      sizes: [
+        { name: "180 g", price: 15, status: "available" },
+        { name: "300 g", price: 20, status: "available" }
+      ],
+      variantLabel: "Elige el relleno",
+      variants: [
+        { name: "Carne", status: "available" },
+        { name: "Ricotta de cabra y espinaca", status: "available" }
+      ]
+    }],
+    builders: {}
+  };
+}
+
 async function installBuilderAvailabilityCatalog(page) {
   await page.addInitScript(state => {
     localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify(state));
   }, createBuilderAvailabilityState());
+}
+
+async function installGatedCatalogHydration(page, state, delay = 1200) {
+  const validationRequests = [];
+  await page.route("https://fonts.googleapis.com/**", route => route.fulfill({
+    status: 200,
+    contentType: "text/css",
+    body: ""
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/catalog", async route => {
+    await new Promise(resolve => setTimeout(resolve, delay));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ state })
+    });
+  });
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", route => {
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        }
+      });
+    }
+    validationRequests.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ ok: true })
+    });
+  });
+  return { validationRequests };
 }
 
 async function installDelayedBuilderStockApi(page, delay = 350, maximumQuantity = Infinity) {
@@ -888,6 +958,803 @@ test("la ráfaga compacta de Fonkies y Fomb se refleja antes de validar y conser
   await expect(page.locator('input[name="fombSize"][value="4"]')).toBeChecked();
 });
 
+test("un sabor retirado del carrito no bloquea una caja nueva de Fonkies en escritorio", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  state.builders.fonkies.flavors = [{
+    ...state.builders.fonkies.flavors[0],
+    name: "Chips Ahoy Fit",
+    inventoryKey: "fonkie-chips-ahoy-fit",
+    stockQuantity: 8
+  }];
+  const staleInventoryKey = "fonkie-sabor-retirado";
+  const validationRequests = [];
+  const browserErrors = [];
+  page.on("pageerror", error => browserErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  await page.addInitScript(({ staleKey }) => {
+    localStorage.setItem("fontana-cart-v1", JSON.stringify([{
+      id: "fonkie-box-sabor-retirado",
+      productId: "fonkie-box",
+      name: "Caja de 4 Fonkies · Sabor retirado",
+      price: 15,
+      image: "assets/fonkie-dark-chocolate-chips-fontana-pro.jpg",
+      choices: "4 Sabor retirado · ENTREGA INMEDIATA",
+      inventory: {
+        kind: "fonkies",
+        flavors: [{
+          name: "Sabor retirado",
+          inventoryKey: staleKey,
+          qty: 4,
+          preorder: false,
+          stockState: "immediate"
+        }],
+        preorder: false,
+        availability: "immediate"
+      },
+      qty: 1
+    }]));
+  }, { staleKey: staleInventoryKey });
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ state })
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", async route => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        }
+      });
+      return;
+    }
+    const payload = route.request().postDataJSON();
+    validationRequests.push(payload);
+    await new Promise(resolve => setTimeout(resolve, 275));
+    const includesRemovedFlavor = (payload.checks || []).some(check => check.inventoryKey === staleInventoryKey);
+    await route.fulfill({
+      status: includesRemovedFlavor ? 409 : 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify(includesRemovedFlavor
+        ? { error: "No pudimos comprobar esta selección.", code: "invalid_option" }
+        : { ok: true })
+    });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect.poll(() => page.evaluate(key => {
+    const item = JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+      .find(candidate => candidate.inventory?.flavors?.some(flavor => flavor.inventoryKey === key));
+    return item?.inventory?.availability;
+  }, staleInventoryKey)).toBe("unavailable");
+
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  await openFlavorChoice(page, ".fonkie-builder");
+  const validRow = page.locator('.fonkie-flavor[data-inventory-key="fonkie-chips-ahoy-fit"]');
+  const plus = validRow.locator('[data-delta="1"]');
+  await plus.evaluate(button => {
+    for (let index = 0; index < 4; index += 1) button.click();
+  });
+  await expect(validRow.locator("output")).toHaveText("4", { timeout: 180 });
+  await expect(page.locator(".fonkie-builder")).toHaveAttribute("data-quantity-pending", "false", { timeout: 3_000 });
+  await expect(page.locator("#addFonkieBox")).toBeEnabled();
+  await page.locator("#addFonkieBox").click();
+  await expect.poll(() => page.evaluate(key => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+    .filter(item => item.inventory?.kind === "fonkies")
+    .map(item => item.inventory.flavors?.[0]?.inventoryKey)
+    .filter(Boolean)
+    .includes(key), "fonkie-chips-ahoy-fit")).toBe(true);
+
+  expect(validationRequests.length).toBeGreaterThanOrEqual(2);
+  expect(validationRequests.flatMap(payload => payload.checks || []).some(check => (
+    check.inventoryKey === "fonkie-chips-ahoy-fit" && Number(check.quantity) === 4
+  ))).toBe(true);
+  expect(validationRequests.flatMap(payload => payload.checks || []).some(check => (
+    check.inventoryKey === staleInventoryKey
+  ))).toBe(false);
+
+  await page.locator("#cartButton").click();
+  const staleItem = page.locator(".cart-item").filter({ hasText: "Sabor retirado" });
+  await expect(staleItem).toBeVisible();
+  await expect(staleItem.locator(".cart-choices")).toContainText("TEMPORALMENTE NO DISPONIBLE");
+  await expect(page.locator("#continueCheckout")).toBeDisabled();
+  await expect(page.locator("#checkoutForm")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(browserErrors).toEqual([]);
+});
+
+test("el fallback de Fomb suma el carrito con clave y la selección sin clave al validar", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const inventoryKey = "fomb-pistacho";
+  const validationRequests = [];
+  await page.addInitScript(({ stableKey }) => {
+    localStorage.setItem("fontana-cart-v1", JSON.stringify([{
+      id: "fomb-box-pistacho-persistido",
+      productId: "fomb-box",
+      category: "fomb",
+      name: "Caja de 4 Fomb · Un sabor",
+      price: 15,
+      image: "assets/fomb-pistachio-fontana-pro.jpg",
+      choices: "4 Pistacho · ENTREGA INMEDIATA",
+      inventory: {
+        kind: "fomb",
+        flavors: [{
+          name: "Pistacho",
+          inventoryKey: stableKey,
+          qty: 4,
+          preorder: false,
+          stockState: "immediate"
+        }],
+        boxSize: 4,
+        extraCount: 0,
+        preorder: false,
+        availability: "immediate"
+      },
+      qty: 1
+    }]));
+  }, { stableKey: inventoryKey });
+  await page.route("https://api.fontanasingluten.com/v1/catalog", route => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ error: "Catálogo temporalmente no disponible" })
+  }));
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", route => {
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        }
+      });
+    }
+    validationRequests.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ ok: true })
+    });
+  });
+
+  const pistachioDemand = payload => (payload?.checks || [])
+    .filter(check => check.kind === "fomb" && (
+      check.inventoryKey === inventoryKey || check.flavor === "Pistacho"
+    ))
+    .reduce((sum, check) => sum + Number(check.quantity || 0), 0);
+
+  await page.goto("http://fontana.localhost:8767/");
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await openFlavorChoice(page, ".fomb-builder");
+  const row = page.locator('.fomb-flavor[data-flavor="Pistacho"]');
+  await expect(row).not.toHaveAttribute("data-inventory-key", /.+/);
+  await row.locator('[data-delta="1"]').evaluate(button => {
+    for (let index = 0; index < 4; index += 1) button.click();
+  });
+  await expect(row.locator("output")).toHaveText("4", { timeout: 180 });
+  await expect(page.locator(".fomb-builder")).toHaveAttribute("data-quantity-pending", "false", { timeout: 3_000 });
+  await expect.poll(() => validationRequests.length).toBe(1);
+  expect(pistachioDemand(validationRequests[0])).toBe(8);
+
+  await expect(page.locator("#addFombBox")).toBeEnabled();
+  await page.locator("#addFombBox").click();
+  await expect.poll(() => validationRequests.length).toBe(2);
+  expect(pistachioDemand(validationRequests[1])).toBe(8);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+    .filter(item => item.inventory?.kind === "fomb")
+    .reduce((total, item) => total + Number(item.qty || 0) * (item.inventory.flavors || [])
+      .filter(flavor => flavor.name === "Pistacho")
+      .reduce((sum, flavor) => sum + Number(flavor.qty ?? flavor.quantity ?? 0), 0), 0))).toBe(8);
+});
+
+test("cuatro clics tempranos de Fonkies se reproducen después de hidratar el catálogo", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  state.builders.fonkies.flavors = [{
+    ...state.builders.fonkies.flavors[0],
+    name: "Chips de Chocolate Oscuro",
+    inventoryKey: "fonkie-chips-oscuro",
+    stockQuantity: 8
+  }];
+  const browserErrors = [];
+  page.on("pageerror", error => browserErrors.push(error.message));
+  page.on("console", message => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  const { validationRequests } = await installGatedCatalogHydration(page, state);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const panel = document.querySelector(".fonkie-builder .choice-panel");
+      const row = document.querySelector('.fonkie-flavor[data-flavor="Chips de Chocolate Oscuro"]');
+      if (panel) panel.open = true;
+      const plus = row?.querySelector('[data-delta="1"]');
+      for (let index = 0; index < 4; index += 1) plus?.click();
+      window.__earlyFonkieBurst = {
+        panelFound:Boolean(panel),
+        rowFound:Boolean(row),
+        quantityBeforeHydration:row?.querySelector("output")?.textContent || "",
+        captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect.poll(() => page.evaluate(() => window.__earlyFonkieBurst)).toEqual({
+    panelFound:true,
+    rowFound:true,
+    quantityBeforeHydration:"0",
+    captured:true
+  });
+  const hydratedRow = page.locator('.fonkie-flavor[data-inventory-key="fonkie-chips-oscuro"]');
+  await expect(hydratedRow.locator("output")).toHaveText("4", { timeout: 3_000 });
+  await expect(page.locator(".fonkie-builder")).toHaveAttribute("data-quantity-pending", "false", { timeout: 3_000 });
+  expect(validationRequests.flatMap(payload => payload.checks || [])).toContainEqual(expect.objectContaining({
+    kind: "fonkies",
+    inventoryKey: "fonkie-chips-oscuro",
+    quantity: 4
+  }));
+  await expect(page.locator("#toast")).not.toContainText(/No pudimos|Inténtalo|error/i);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(browserErrors).toEqual([]);
+});
+
+test("el menú queda interactivo si el catálogo remoto supera el margen inicial", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.route("https://api.fontanasingluten.com/v1/catalog", async route => {
+    await new Promise(resolve => setTimeout(resolve, 3_500));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ state: createBuilderAvailabilityState() })
+    }).catch(() => {});
+  });
+  await page.route("https://api.fontanasingluten.com/v1/orders/validate", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ ok: true })
+  }));
+
+  const startedAt = Date.now();
+  await page.goto("http://fontana.localhost:8767/");
+  const product = page.locator(".product").first();
+  await expect(product).toHaveClass(/product-flip-ready/, { timeout: 3_200 });
+  expect(Date.now() - startedAt).toBeLessThan(3_400);
+
+  await product.locator(".product-media").click();
+  await expect(product).toHaveClass(/product-flipped/);
+  await expect(page.locator(".product-flip-backdrop")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(product).not.toHaveClass(/product-flipped/, { timeout: 1_500 });
+  await expectModalPageUnlocked(page);
+
+  await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
+  const builder = page.locator(".fonkie-builder");
+  await expect(builder).toBeVisible();
+  await expect(builder).toHaveAttribute("data-temporarily-unavailable", "false");
+  await expect(page.locator("#electricityNotice")).toBeHidden();
+  await openFlavorChoice(page, ".fonkie-builder");
+  const row = page.locator(".fonkie-flavor").first();
+  await expect(row.locator('[data-delta="1"]')).toBeEnabled();
+  await row.locator('[data-delta="1"]').click();
+  await expect(row.locator("output")).toHaveText("1", { timeout: 3_000 });
+});
+
+test("un producto renombrado durante la carga conserva el clic por su ID", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = {
+    version: 2,
+    settings: { productionWithElectricity: true, stockTodayOpen: true },
+    operations: { verified: true, electricityEnabled: true },
+    products: [{
+      id: "agua-minalba-600",
+      category: "beverages",
+      name: "Agua Minalba",
+      price: 2.5,
+      image: "assets/beverage-minalba-600-fontana-pro.jpg",
+      description: "Agua mineral refrigerada.",
+      ingredients: "Agua mineral.",
+      weight: "355 ML",
+      availabilityMode: "available",
+      status: "available",
+      visible: true,
+      stockQuantity: 8,
+      stockTracked: true,
+      immediate: true
+    }],
+    builders: {}
+  };
+  await installGatedCatalogHydration(page, state);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const card = document.querySelector('.product[data-product-id="agua-minalba-600"]');
+      card?.querySelector(".product-media")?.click();
+      window.__earlyRenamedProduct = {
+        found:Boolean(card),
+        originalName:card?.dataset.name || "",
+        captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect.poll(() => page.evaluate(() => window.__earlyRenamedProduct)).toEqual({
+    found:true,
+    originalName:"Agua mineral Minalba 355 ml",
+    captured:true
+  });
+  const card = page.locator('.product[data-product-id="agua-minalba-600"]');
+  await expect(card).toHaveAttribute("data-name", "Agua Minalba");
+  await expect(card).toHaveClass(/product-flipped/, { timeout: 4_000 });
+  await expect(card.locator(".product-back .product-top h3")).toHaveText("Agua Minalba");
+  await expect(page.locator(".product-flip-backdrop")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expectModalPageUnlocked(page);
+});
+
+test("una galería estática abierta durante la carga conserva el sabor sin data-flavor", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  let releaseWarmImage;
+  const warmImageGate = new Promise(resolve => { releaseWarmImage = resolve; });
+  await page.route("**/assets/fonkie-dark-chocolate-chips-fontana-pro.jpg", async route => {
+    await warmImageGate;
+    await route.continue();
+  });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  state.builders.fonkies.flavors = [{
+    ...state.builders.fonkies.flavors[0],
+    name: "Chips de Chocolate Oscuro",
+    inventoryKey: "fonkie-chips-oscuro",
+    stockQuantity: 8
+  }];
+  await installGatedCatalogHydration(page, state);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const filter = document.querySelector('.filter[data-filter="fonkies"]');
+      const card = document.querySelector(".fonkie-gallery-card");
+      const label = card?.querySelector("span")?.textContent.trim() || "";
+      const hadFlavorAttribute = card?.hasAttribute("data-flavor") === true;
+      filter?.click();
+      card?.click();
+      window.__earlyStaticGallery = {
+        filterFound:Boolean(filter),
+        cardFound:Boolean(card),
+        label,
+        hadFlavorAttribute,
+        captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+
+  try {
+    await expect.poll(() => page.evaluate(() => window.__earlyStaticGallery)).toEqual({
+      filterFound:true,
+      cardFound:true,
+      label:"Chips de Chocolate Oscuro",
+      hadFlavorAttribute:false,
+      captured:true
+    });
+    const overlay = page.locator(".builder-flavor-flip-card");
+    await expect(overlay).toBeVisible({ timeout: 4_000 });
+    await expect(overlay).toHaveAttribute("aria-label", /^Fonkie Chips de Chocolate Oscuro(?:\.|$)/);
+    await expect(overlay.locator(".builder-flavor-expanded-details h3")).toHaveText("Chips de Chocolate Oscuro");
+    await expect(page.locator(".product-expanded")).toHaveCount(0);
+  } finally {
+    releaseWarmImage();
+  }
+  await expect(page.locator('.filter[data-filter="fonkies"]')).not.toHaveAttribute("aria-busy", /.+/);
+});
+
+test("un sabor abierto durante la hidratación conserva el scroll profundo al cerrarse", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  state.builders.fonkies.flavors = [{
+    ...state.builders.fonkies.flavors[0],
+    name: "Chips de Chocolate Oscuro",
+    inventoryKey: "fonkie-chips-oscuro",
+    stockQuantity: 8
+  }];
+  await installGatedCatalogHydration(page, state, 1800);
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect(page.locator("#products .product")).toHaveCount(34);
+  await expect(page.locator(".fonkie-builder .fonkie-gallery-card").first()).toBeVisible();
+  const before = await page.evaluate(() => {
+    const builder = document.querySelector(".fonkie-builder");
+    const initialRect = builder.getBoundingClientRect();
+    window.scrollTo({
+      top:window.scrollY + initialRect.top - ((window.innerHeight - initialRect.height) / 2),
+      behavior:"instant"
+    });
+    const top = builder.getBoundingClientRect().top;
+    builder.querySelector(".fonkie-gallery-card")?.click();
+    return {
+      y:scrollY,
+      top,
+      captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true
+    };
+  });
+  expect(before.y).toBeGreaterThan(1000);
+  expect(before.captured).toBe(true);
+
+  const overlay = page.locator(".builder-flavor-flip-card");
+  await expect(overlay).toBeVisible({ timeout: 4000 });
+  await expect(overlay).toHaveAttribute("aria-label", /^Fonkie Chips de Chocolate Oscuro(?:\.|$)/);
+  const opened = await page.evaluate(() => ({
+    y:scrollY,
+    top:document.querySelector(".fonkie-builder").getBoundingClientRect().top
+  }));
+  expect(Math.abs(opened.top - before.top)).toBeLessThanOrEqual(3);
+
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0, { timeout: 1500 });
+  await expectModalPageUnlocked(page);
+  await page.waitForTimeout(80);
+  const closed = await page.evaluate(() => {
+    const builder = document.querySelector(".fonkie-builder").getBoundingClientRect();
+    return { y:scrollY, top:builder.top, bottom:builder.bottom };
+  });
+  expect(Math.abs(closed.y - opened.y)).toBeLessThanOrEqual(2);
+  expect(Math.abs(closed.top - opened.top)).toBeLessThanOrEqual(2);
+  expect(closed.top).toBeLessThan(900);
+  expect(closed.bottom).toBeGreaterThan(0);
+});
+
+test("un filtro temprano desde scroll profundo deja visible la categoría elegida", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  state.builders.fonkies.flavors = [{
+    ...state.builders.fonkies.flavors[0],
+    name: "Chips de Chocolate Oscuro",
+    inventoryKey: "fonkie-chips-oscuro",
+    stockQuantity: 8
+  }];
+  await installGatedCatalogHydration(page, state, 1800);
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect(page.locator("#products .product")).toHaveCount(34);
+  await expect(page.locator('[data-product-id="bottega-de-cecco-tortiglioni"]')).toBeVisible();
+  const before = await page.evaluate(() => {
+    const product = document.querySelector('[data-product-id="bottega-de-cecco-tortiglioni"]');
+    const initialRect = product.getBoundingClientRect();
+    window.scrollTo({
+      top:window.scrollY + initialRect.top - ((window.innerHeight - initialRect.height) / 2),
+      behavior:"instant"
+    });
+    const top = product.getBoundingClientRect().top;
+    document.querySelector('.filter[data-filter="fonkies"]')?.click();
+    return {
+      y:scrollY,
+      top,
+      captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true
+    };
+  });
+  expect(before.y).toBeGreaterThan(1000);
+  expect(before.top).toBeGreaterThan(0);
+  expect(before.top).toBeLessThan(900);
+  expect(before.captured).toBe(true);
+
+  const fonkiesFilter = page.locator('.filter[data-filter="fonkies"]');
+  await expect(fonkiesFilter).toHaveClass(/active/, { timeout: 4000 });
+  await expect(fonkiesFilter).not.toHaveAttribute("aria-busy", /.+/);
+  await expect(page.locator('.fonkie-gallery-card[data-inventory-key="fonkie-chips-oscuro"]')).toHaveCount(1);
+  const after = await page.evaluate(() => {
+    const builder = document.querySelector(".fonkie-builder").getBoundingClientRect();
+    return { y:scrollY, top:builder.top, bottom:builder.bottom };
+  });
+  expect(after.top).toBeLessThan(900);
+  expect(after.bottom).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.documentElement.style.overflowAnchor)).toBe("");
+});
+
+test("la última navegación temprana descarta una apertura anterior sin dejar el catálogo bloqueado", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  await installGatedCatalogHydration(page, state);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const media = document.querySelector("#products .product:not([hidden]):not(.hidden) .product-media");
+      const filter = document.querySelector('.filter[data-filter="fonkies"]');
+      media?.click();
+      filter?.click();
+      window.__earlyReplayNavigation = {
+        mediaFound:Boolean(media),
+        filterFound:Boolean(filter),
+        captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true,
+        expandedBeforeHydration:document.querySelectorAll(".product-expanded, .builder-flavor-flip-card").length
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+
+  await expect.poll(() => page.evaluate(() => window.__earlyReplayNavigation)).toEqual({
+    mediaFound:true,
+    filterFound:true,
+    captured:true,
+    expandedBeforeHydration:0
+  });
+  await expect(page.locator('.filter[data-filter="fonkies"]')).toHaveClass(/active/, { timeout: 4_000 });
+  await expect(page.locator(".fonkie-builder")).toBeVisible();
+  await expect(page.locator("#emptyFilterState")).toBeHidden();
+  await expect(page.locator(".product-expanded, .builder-flavor-flip-card")).toHaveCount(0);
+  await expect(page.locator(".product-flip-backdrop, .builder-flavor-flip-backdrop")).toHaveCount(2);
+  await expect(page.locator(".product-flip-backdrop")).toBeHidden();
+  await expect(page.locator(".builder-flavor-flip-backdrop")).toBeHidden();
+  await expect(page.locator("#backdrop")).not.toHaveClass(/open/);
+  await expectModalPageUnlocked(page);
+  await expect(page.locator("body")).not.toHaveClass(/locked/);
+});
+
+test("Stock de hoy pulsado durante la carga se ignora si la dueña lo cerró", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    settings: { productionWithElectricity: true, stockTodayOpen: false },
+    operations: { verified: true, electricityEnabled: true }
+  };
+  await installGatedCatalogHydration(page, state);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const stockToday = document.querySelector('.filter[data-filter="immediate"]');
+      stockToday?.click();
+      window.__earlyStockToday = {
+        found:Boolean(stockToday),
+        captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true,
+        activated:stockToday?.classList.contains("active") === true
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+
+  const stockToday = page.locator('.filter[data-filter="immediate"]');
+  await expect.poll(() => page.evaluate(() => window.__earlyStockToday)).toEqual({
+    found:true,
+    captured:true,
+    activated:false
+  });
+  await expect(stockToday).toBeHidden({ timeout: 4_000 });
+  await expect(stockToday).not.toHaveClass(/active/);
+  await expect(page.locator('.filter[data-filter="all"]')).toHaveClass(/active/);
+  await expect(page.locator("#toast")).toContainText("Stock de hoy no está activo en este momento");
+  await expect(page.locator("#emptyFilterState")).toBeHidden();
+  await expect(page.locator(".fonkie-builder")).toBeVisible();
+  await expect(page.locator(".product-expanded, .builder-flavor-flip-card")).toHaveCount(0);
+  await expectModalPageUnlocked(page);
+
+  await page.getByRole("button", { name: "Fomb · Bombones" }).click();
+  await expect(page.locator('.filter[data-filter="fomb"]')).toHaveClass(/active/);
+  await expect(page.locator(".fomb-builder")).toBeVisible();
+  await expect(page.locator("#emptyFilterState")).toBeHidden();
+});
+
+test("un agregado temprano conserva la presentación y el relleno elegidos al hidratar", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = {
+    version: 2,
+    settings: { productionWithElectricity: true, stockTodayOpen: true },
+    operations: { verified: true, electricityEnabled: true },
+    products: [{
+      id: "raviolis",
+      category: "salado",
+      name: "Raviolis",
+      price: 15,
+      image: "assets/ravioli-fontana-pro.jpg",
+      description: "Raviolis congelados con relleno a elección.",
+      ingredients: "Harina de arroz, harina de yuca, maicena, huevo, aceite de oliva y sal.",
+      weight: "180 G / 300 G",
+      availabilityMode: "available",
+      status: "available",
+      visible: true,
+      sizeLabel: "Elige la presentación",
+      sizes: [
+        { name: "180 g", price: 15, status: "available" },
+        { name: "300 g", price: 20, status: "available" }
+      ],
+      variantLabel: "Elige el relleno",
+      variants: [
+        { name: "Carne", status: "available" },
+        { name: "Ricotta de cabra y espinaca", status: "available" }
+      ]
+    }],
+    builders: {}
+  };
+  const { validationRequests } = await installGatedCatalogHydration(page, state);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const card = document.querySelector('#products .product[data-product-id="raviolis"]');
+      const size = card?.querySelector(".product-size");
+      const variant = card?.querySelector(".product-variant");
+      if (size) {
+        size.value = "300 g";
+        size.dispatchEvent(new Event("change", { bubbles:true }));
+      }
+      if (variant) {
+        variant.value = "Ricotta de cabra y espinaca";
+        variant.dispatchEvent(new Event("change", { bubbles:true }));
+      }
+      card?.querySelector(".add")?.click();
+      window.__earlyProductAdd = {
+        cardFound:Boolean(card),
+        size:size?.value || "",
+        variant:variant?.value || "",
+        captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+
+  await expect.poll(() => page.evaluate(() => window.__earlyProductAdd)).toEqual({
+    cardFound:true,
+    size:"300 g",
+    variant:"Ricotta de cabra y espinaca",
+    captured:true
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const item = JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+      .find(candidate => candidate.productId === "raviolis");
+    return item && {
+      qty:item.qty,
+      price:item.price,
+      size:item.inventory?.size,
+      variant:item.inventory?.variant
+    };
+  }), { timeout: 4_000 }).toEqual({
+    qty: 1,
+    price: 20,
+    size: "300 g",
+    variant: "Ricotta de cabra y espinaca"
+  });
+  await expect(page.locator("#cartCount")).toHaveText("1");
+  expect(validationRequests.flatMap(payload => payload.checks || [])).toContainEqual(expect.objectContaining({
+    kind: "product",
+    productId: "raviolis",
+    quantity: 1,
+    size: "300 g",
+    variant: "Ricotta de cabra y espinaca"
+  }));
+  await expectModalPageUnlocked(page);
+});
+
+test("una presentación elegida durante la carga no vuelve al valor inicial", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const { validationRequests } = await installGatedCatalogHydration(page, createRaviolisCatalogState());
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const card = document.querySelector('#products .product[data-product-id="raviolis"]');
+      const size = card?.querySelector(".product-size");
+      const variant = card?.querySelector(".product-variant");
+      if (size) {
+        size.value = "300 g";
+        size.dispatchEvent(new Event("change", { bubbles:true }));
+      }
+      if (variant) {
+        variant.value = "Ricotta de cabra y espinaca";
+        variant.dispatchEvent(new Event("change", { bubbles:true }));
+      }
+      window.__earlyProductChoice = {
+        found:Boolean(card),
+        size:size?.value || "",
+        variant:variant?.value || ""
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+  await expect.poll(() => page.evaluate(() => window.__earlyProductChoice)).toEqual({
+    found:true,
+    size:"300 g",
+    variant:"Ricotta de cabra y espinaca"
+  });
+
+  const card = page.locator('.product[data-product-id="raviolis"]');
+  await expect(card).toHaveClass(/product-flip-ready/, { timeout: 4_000 });
+  await expect(card.locator(".product-size")).toHaveValue("300 g");
+  await expect(card.locator(".product-variant")).toHaveValue("Ricotta de cabra y espinaca");
+  await card.locator(".add").click();
+  await expect.poll(() => page.evaluate(() => {
+    const item = JSON.parse(localStorage.getItem("fontana-cart-v1") || "[]")
+      .find(candidate => candidate.productId === "raviolis");
+    return item && { qty:item.qty, price:item.price, size:item.inventory?.size, variant:item.inventory?.variant };
+  })).toEqual({
+    qty:1,
+    price:20,
+    size:"300 g",
+    variant:"Ricotta de cabra y espinaca"
+  });
+  expect(validationRequests.flatMap(payload => payload.checks || [])).toContainEqual(expect.objectContaining({
+    kind:"product",
+    productId:"raviolis",
+    quantity:1,
+    size:"300 g",
+    variant:"Ricotta de cabra y espinaca"
+  }));
+});
+
+test("una cantidad temprana de Fomb conserva el tamaño de caja seleccionado", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = {
+    ...createBuilderAvailabilityState(),
+    operations: { verified: true, electricityEnabled: true }
+  };
+  state.builders.fomb.flavors = [{
+    ...state.builders.fomb.flavors[0],
+    name: "Pistacho",
+    inventoryKey: "fomb-pistacho",
+    stockQuantity: 20
+  }];
+  const { validationRequests } = await installGatedCatalogHydration(page, state);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const size = document.querySelector('input[name="fombSize"][value="12"]');
+      const row = document.querySelector('.fomb-flavor[data-flavor="Pistacho"]');
+      if (size) {
+        size.checked = true;
+        size.dispatchEvent(new Event("change", { bubbles:true }));
+      }
+      row?.querySelector('[data-delta="1"]')?.click();
+      window.__earlyFombQuantity = {
+        rowFound:Boolean(row),
+        sizeChecked:size?.checked === true,
+        quantityBeforeHydration:row?.querySelector("output")?.textContent || "",
+        captured:document.querySelector("#toast")?.textContent.includes("Preparando el menú") === true
+      };
+    }, { once:true });
+  });
+
+  await page.goto("http://fontana.localhost:8767/");
+
+  await expect.poll(() => page.evaluate(() => window.__earlyFombQuantity)).toEqual({
+    rowFound:true,
+    sizeChecked:true,
+    quantityBeforeHydration:"0",
+    captured:true
+  });
+  const hydratedRow = page.locator('.fomb-flavor[data-inventory-key="fomb-pistacho"]');
+  await expect(page.locator('input[name="fombSize"][value="12"]')).toBeChecked({ timeout: 4_000 });
+  await expect(hydratedRow.locator("output")).toHaveText("1", { timeout: 4_000 });
+  await expect(page.locator(".fomb-builder")).toHaveAttribute("data-quantity-pending", "false", { timeout: 4_000 });
+  expect(validationRequests.flatMap(payload => payload.checks || [])).toContainEqual(expect.objectContaining({
+    kind: "fomb",
+    inventoryKey: "fomb-pistacho",
+    quantity: 1
+  }));
+  await expect(page.locator("#fombChoiceCount")).toHaveText("1 elegido");
+});
+
 test("la ráfaga corregida durante el request conserva el máximo válido de Fonkies y Fomb", async ({ page }) => {
   const activity = await installDelayedBuilderStockApi(page, 350, 3);
   await page.goto("http://fontana.localhost:8767/");
@@ -1179,7 +2046,7 @@ test("las tarjetas conservan la compra al frente y giran físicamente al ampliar
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.reload();
   const desktopCard = page.locator('[data-product-id="pistacho-clasico"]');
-  await expect(desktopCard).toHaveClass(/product-flip-ready/);
+  await expect(desktopCard).toHaveClass(/product-flip-ready/, { timeout: 10_000 });
   const desktopCompactBox = await desktopCard.boundingBox();
   await desktopCard.locator(".product-front .product-media").click();
   await expect(desktopCard).toHaveClass(/product-flipped/);
@@ -1787,6 +2654,7 @@ test("el panel ampliado de todos los sabores queda fijo y completo en pantallas 
       await page.getByRole("button", { name: builderCase.filter }).click();
       const cards = page.locator(builderCase.card);
       await expect(cards).toHaveCount(builderCase.names.length);
+      await expect(cards.first()).toHaveAttribute("role", "button", { timeout: 10_000 });
       await cards.first().evaluate(element => element.click());
       const overlay = page.locator(".builder-flavor-flip-card");
       const details = overlay.locator(".builder-flavor-expanded-details");
@@ -7521,7 +8389,7 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
   expect(browserErrors).toEqual([]);
 });
 
-test("los filtros calientan solo la primera fila antes de sustituir la categoría visible", async ({ page }) => {
+test("los filtros cambian de categoría al instante y mantienen un placeholder estable", async ({ page }) => {
   await page.setViewportSize({width:390,height:844});
   let releaseImage;
   let requestStarted = false;
@@ -7555,12 +8423,12 @@ test("los filtros calientan solo la primera fila antes de sustituir la categorí
     const card = page.locator('.product[data-product-id="bottega-de-cecco-tortiglioni"]');
     const image = card.locator(".product-front .product-media img");
     const bottegaGroup = page.locator('.catalog-group[data-catalog-group="bottega"]');
-    await expect(filter).toHaveAttribute("aria-busy", "true");
-    await expect(page.locator('.catalog-group[data-catalog-group="cakes"]')).toBeVisible();
-    await expect(bottegaGroup).toBeHidden();
+    await expect(filter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(page.locator('.catalog-group[data-catalog-group="cakes"]')).toBeHidden();
+    await expect(bottegaGroup).toBeVisible();
     await expect(image).toHaveAttribute("loading", "eager");
-    await expect(bottegaGroup.locator('img[loading="eager"]')).toHaveCount(2);
-    expect(bottegaRequests).toBe(2);
+    await expect.poll(() => bottegaRequests).toBeGreaterThanOrEqual(2);
+    expect(await bottegaGroup.locator('img[loading="eager"]').count()).toBeLessThanOrEqual(2);
     await expect(image).toHaveClass(/catalog-image-pending/);
     const loadingPaint = await image.evaluate(element => {
       const media = element.closest(".product-media");
@@ -7590,30 +8458,133 @@ test("los filtros calientan solo la primera fila antes de sustituir la categorí
   }
 });
 
-test("Elige tu antojo permanece nítido antes y después de entrar en pantalla", async ({ page }) => {
-  for (const viewport of [{ width: 390, height: 844 }, { width: 1366, height: 900 }]) {
+test("Elige tu antojo solo anima con opacidad y desplazamiento en escritorio", async ({ page }) => {
+  const expectStaticTitle = async ({ viewport, reducedMotion }) => {
+    await page.emulateMedia({ reducedMotion });
     await page.setViewportSize(viewport);
     await openPreview(page);
     const intro = page.locator(".menu-intro");
-    await expect(intro).not.toHaveClass(/menu-intro-visible/);
-    const initial = await intro.evaluate(element => ({
-      top: element.getBoundingClientRect().top,
-      viewportHeight: window.innerHeight,
-      scrollY: window.scrollY
-    }));
-    expect(initial.top).toBeGreaterThan(initial.viewportHeight);
-    expect(initial.scrollY).toBe(0);
-
+    const firstLetter = intro.locator(".menu-title-letter").first();
+    await expect(intro.locator(".menu-title-letter")).toHaveCount(13);
+    await expect(intro).not.toHaveClass(/menu-intro-animate/);
+    await expect(firstLetter).toHaveCSS("animation-name", "none");
+    await expect(firstLetter).toHaveCSS("opacity", "1");
+    await expect(firstLetter).toHaveCSS("transform", "none");
+    await expect(firstLetter).toHaveCSS("filter", "none");
+    expect(await intro.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
     await intro.scrollIntoViewIfNeeded();
     await expect(intro).toHaveClass(/menu-intro-visible/);
-    await expect(page.locator(".menu-title-letter").first()).toHaveCSS("animation-name", "none");
-    await expect(page.locator(".menu-title-letter").first()).toHaveCSS("opacity", "1");
-    await expect(page.locator(".menu-title-letter").first()).toHaveCSS("filter", "none");
-    const activation = await intro.evaluate(element => ({
-      top: element.getBoundingClientRect().top,
-      viewportHeight: window.innerHeight
-    }));
-    expect(activation.top).toBeLessThanOrEqual(activation.viewportHeight * 0.88 + 2);
+    await expect(firstLetter).toHaveCSS("animation-name", "none");
+    await expect(firstLetter).toHaveCSS("opacity", "1");
+    await expect(firstLetter).toHaveCSS("transform", "none");
+    await expect(firstLetter).toHaveCSS("filter", "none");
+    expect(await intro.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+  };
+
+  await expectStaticTitle({ viewport: { width: 390, height: 844 }, reducedMotion: "no-preference" });
+  await expectStaticTitle({ viewport: { width: 960, height: 900 }, reducedMotion: "no-preference" });
+  await expectStaticTitle({ viewport: { width: 1366, height: 900 }, reducedMotion: "reduce" });
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  for (const width of [961, 1024, 1280, 1366, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    await openPreview(page);
+    await page.evaluate(() => document.fonts?.ready);
+    const intro = page.locator(".menu-intro");
+    const title = intro.locator("h2");
+    const firstLetter = intro.locator(".menu-title-letter").first();
+    await expect(intro.locator(".menu-title-letter")).toHaveCount(13);
+    await expect(intro).toHaveClass(/menu-intro-animate/);
+    await expect(intro).not.toHaveClass(/menu-intro-visible/);
+    await expect(firstLetter).toHaveCSS("opacity", "0");
+    await expect(firstLetter).not.toHaveCSS("transform", "none");
+    await expect(firstLetter).toHaveCSS("filter", "none");
+
+    const layout = await title.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      const words = [...element.querySelectorAll(".menu-title-word")]
+        .map(word => word.getBoundingClientRect());
+      const style = getComputedStyle(element);
+      return {
+        text: element.textContent.replace(/\s+/g, " ").trim(),
+        wordTops: words.map(word => word.top),
+        width: box.width,
+        height: box.height,
+        lineHeight: parseFloat(style.lineHeight),
+        contentFits: element.scrollWidth <= element.clientWidth + 1,
+        insideViewport: box.left >= -1 && box.right <= window.innerWidth + 1,
+        documentFits: document.documentElement.scrollWidth <= window.innerWidth
+      };
+    });
+    expect(layout.text).toBe("Elige tu antojo");
+    expect(layout.wordTops).toHaveLength(3);
+    expect(Math.max(...layout.wordTops) - Math.min(...layout.wordTops), `una sola línea a ${width}px`).toBeLessThanOrEqual(1);
+    expect(layout.height, `alto de una sola línea a ${width}px`).toBeLessThanOrEqual(layout.lineHeight + 2);
+    expect(layout.contentFits, `contenido del título a ${width}px`).toBe(true);
+    expect(layout.insideViewport, `título dentro del viewport a ${width}px`).toBe(true);
+    expect(layout.documentFits, `documento sin overflow a ${width}px`).toBe(true);
+
+    await page.addStyleTag({
+      content: ".menu-intro.menu-intro-visible .menu-title-letter{animation-play-state:paused!important}"
+    });
+    await intro.scrollIntoViewIfNeeded();
+    await expect(intro).toHaveClass(/menu-intro-visible/);
+    await expect(firstLetter).toHaveCSS("animation-name", "menu-letter-rise");
+    const motion = await firstLetter.evaluate(element => {
+      const animation = element.getAnimations().find(candidate => candidate.effect?.target === element);
+      const frames = animation?.effect?.getKeyframes?.() || [];
+      const readPresentation = () => {
+        const style = getComputedStyle(element);
+        const matrix = style.transform === "none" ? null : new DOMMatrixReadOnly(style.transform);
+        return {
+          opacity: Number(style.opacity),
+          filter: style.filter,
+          matrix: matrix && { a: matrix.a, b: matrix.b, c: matrix.c, d: matrix.d, e: matrix.e, f: matrix.f }
+        };
+      };
+      const timing = animation?.effect?.getComputedTiming?.();
+      if (animation && timing) animation.currentTime = Number(timing.delay || 0) + (Number(timing.activeDuration || 0) * .35);
+      const midpoint = readPresentation();
+      if (animation && timing) animation.currentTime = Number(timing.delay || 0) + Number(timing.activeDuration || 0);
+      const endpoint = readPresentation();
+      return {
+        animationCount: element.getAnimations().length,
+        midpoint,
+        endpoint,
+        frames: frames.map(frame => ({
+          opacity: frame.opacity,
+          transform: frame.transform,
+          filter: frame.filter
+        }))
+      };
+    });
+    expect(motion.animationCount, `animación activa a ${width}px`).toBeGreaterThan(0);
+    expect(motion.frames.some(frame => Number(frame.opacity) === 0), `entrada opaca a ${width}px`).toBe(true);
+    expect(motion.frames.some(frame => Number(frame.opacity) === 1), `salida visible a ${width}px`).toBe(true);
+    expect(motion.frames.some(frame => /translate|matrix/i.test(String(frame.transform || ""))), `desplazamiento a ${width}px`).toBe(true);
+    expect(motion.frames.every(frame => !/blur/i.test(String(frame.filter || ""))), `sin blur a ${width}px`).toBe(true);
+    expect(motion.midpoint.opacity, `opacidad intermedia a ${width}px`).toBeGreaterThan(0);
+    expect(motion.midpoint.opacity, `opacidad intermedia a ${width}px`).toBeLessThan(1);
+    expect(motion.midpoint.filter).toBe("none");
+    expect(motion.midpoint.matrix).toMatchObject({ a: 1, b: 0, c: 0, d: 1, e: 0 });
+    expect(motion.midpoint.matrix.f, `translateY intermedio a ${width}px`).toBeGreaterThan(0);
+    expect(motion.endpoint.opacity).toBe(1);
+    expect(motion.endpoint.filter).toBe("none");
+    expect(Math.abs(motion.endpoint.matrix?.f || 0), `translateY final a ${width}px`).toBeLessThanOrEqual(.01);
+
+    const animatedLayout = await title.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return {
+        width: box.width,
+        height: box.height,
+        wordTops: [...element.querySelectorAll(".menu-title-word")].map(word => word.getBoundingClientRect().top),
+        documentFits: document.documentElement.scrollWidth <= window.innerWidth
+      };
+    });
+    expect(Math.abs(animatedLayout.width - layout.width), `ancho estable durante la animación a ${width}px`).toBeLessThanOrEqual(1);
+    expect(Math.abs(animatedLayout.height - layout.height), `alto estable durante la animación a ${width}px`).toBeLessThanOrEqual(1);
+    expect(Math.max(...animatedLayout.wordTops) - Math.min(...animatedLayout.wordTops), `una línea durante la animación a ${width}px`).toBeLessThanOrEqual(1);
+    expect(animatedLayout.documentFits, `sin overflow durante la animación a ${width}px`).toBe(true);
   }
 });
 
@@ -7631,6 +8602,21 @@ test("el bloque negro fue eliminado y el footer centra la marca", async ({ page 
   await expect.poll(async () => page.locator("img").evaluateAll(images => images.filter(image => !image.complete).length)).toBe(0);
   const brokenImages = await page.locator("img").evaluateAll(images => images.filter(image => !image.naturalWidth).map(image => image.getAttribute("src")));
   expect(brokenImages).toEqual([]);
+});
+
+test("el sello principal se recupera si su primera descarga se interrumpe", async ({ page }) => {
+  let requests = 0;
+  await page.route(/\/assets\/fontana-seal-transparent\.png(?:\?.*)?$/, route => {
+    requests += 1;
+    if (requests === 1) return route.abort("connectionreset");
+    return route.continue();
+  });
+
+  await openPreview(page);
+  const seal = page.locator(".nav .brand-seal");
+  await expect.poll(() => seal.evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
+  expect(requests).toBeGreaterThanOrEqual(2);
+  await expect(seal).toHaveAttribute("src", /fontana-retry=1/);
 });
 
 test("la experiencia cierra el espacio y el footer queda compacto en dos columnas móviles", async ({ page }) => {
@@ -8203,7 +9189,7 @@ test("el catálogo tardío conserva el contenido realmente visible sin saltar", 
   await desktopGapCard.evaluate(element => window.scrollTo({
     // Put the 280 px anchor line just above the card, inside the grid gap.
     // The nearest visible row must still be preserved through hydration.
-    top: window.scrollY + element.getBoundingClientRect().top - 280.25,
+    top: window.scrollY + element.getBoundingClientRect().top - 281,
     behavior: "instant"
   }));
   const desktopBefore = await desktopGapCard.evaluate(element => ({

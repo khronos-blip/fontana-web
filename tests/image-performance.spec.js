@@ -221,7 +221,7 @@ test("la primera carga fría mantiene un fondo lila hasta que la imagen esté pi
   }
 });
 
-test("Bottega conserva la sección anterior hasta que su primera imagen esté pintada", async ({ page }) => {
+test("Bottega cambia al instante y conserva un marco estable hasta pintar la imagen", async ({ page }) => {
   let releaseResponsive;
   const responsiveGate = new Promise(resolve => { releaseResponsive = resolve; });
   let responsiveRequests = 0;
@@ -248,12 +248,12 @@ test("Bottega conserva la sección anterior hasta que su primera imagen esté pi
     await expect(bottega).toBeHidden();
 
     await bottegaFilter.click();
-    await expect(bottegaFilter).toHaveAttribute("aria-busy", "true");
     await expect.poll(() => responsiveRequests, {timeout:10000}).toBeGreaterThan(0);
 
     await expect(bottegaFilter).toHaveClass(/active/);
-    await expect(cake).toBeVisible();
-    await expect(bottega).toBeHidden();
+    await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(cake).toBeHidden();
+    await expect(bottega).toBeVisible();
     await expect(bottegaImage).toHaveClass(/catalog-image-pending/);
     const loadingPaint = await bottegaImage.evaluate(image => ({
       opacity:getComputedStyle(image).opacity,
@@ -266,11 +266,13 @@ test("Bottega conserva la sección anterior hasta que su primera imagen esté pi
       background:expect.stringContaining("linear-gradient")
     });
 
-    // A slow but valid response must not reintroduce the placeholder reveal.
+    // A slow but valid response keeps the stable frame without blocking the
+    // customer's navigation to the requested category.
     await page.waitForTimeout(1800);
-    await expect(bottegaFilter).toHaveAttribute("aria-busy", "true");
-    await expect(cake).toBeVisible();
-    await expect(bottega).toBeHidden();
+    await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(cake).toBeHidden();
+    await expect(bottega).toBeVisible();
+    await expect(bottegaImage).toHaveClass(/catalog-image-pending/);
 
     releaseResponsive();
     await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
@@ -290,7 +292,7 @@ test("Bottega conserva la sección anterior hasta que su primera imagen esté pi
   }
 });
 
-test("Salados y Bebidas esperan su primera imagen antes de sustituir la sección visible", async ({ browser }) => {
+test("Salados y Bebidas cambian al instante con un marco estable mientras carga la imagen", async ({ browser }) => {
   const scenarios = [
     {
       filterName:"Salado",
@@ -348,11 +350,13 @@ test("Salados y Bebidas esperan su primera imagen antes de sustituir la sección
       await expect(target).toBeHidden();
 
       await targetFilter.click();
-      await expect(targetFilter).toHaveAttribute("aria-busy", "true");
       await expect.poll(() => responsiveRequests, {timeout:10000}).toBeGreaterThan(0);
       await expect(targetFilter).toHaveClass(/active/);
-      await expect(cake).toBeVisible();
-      await expect(target).toBeHidden();
+      await expect(targetFilter).not.toHaveAttribute("aria-busy", /.+/);
+      await expect(cake).toBeHidden();
+      await expect(target).toBeVisible();
+      await expect(targetImage).toHaveClass(/catalog-image-pending/);
+      await expect(targetImage).toHaveCSS("opacity", "0");
 
       releaseResponsive();
       await expect(targetFilter).not.toHaveAttribute("aria-busy", /.+/);
@@ -439,21 +443,22 @@ test("los clics rápidos conservan solo el último filtro solicitado", async ({ 
     await beverageFilter.click();
 
     await expect(beverageFilter).toHaveClass(/active/);
-    await expect(beverageFilter).toHaveAttribute("aria-busy", "true");
+    await expect(beverageFilter).not.toHaveAttribute("aria-busy", /.+/);
     await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
     await expect(saladoFilter).not.toHaveAttribute("aria-busy", /.+/);
-    await expect(cake).toBeVisible();
+    await expect(cake).toBeHidden();
     await expect(bottega).toBeHidden();
     await expect(salado).toBeHidden();
-    await expect(beverage).toBeHidden();
+    await expect(beverage).toBeVisible();
 
     releases.bottega();
     releases.salado();
     await page.waitForTimeout(250);
-    await expect(beverageFilter).toHaveAttribute("aria-busy", "true");
-    await expect(cake).toBeVisible();
+    await expect(beverageFilter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(cake).toBeHidden();
     await expect(bottega).toBeHidden();
     await expect(salado).toBeHidden();
+    await expect(beverage).toBeVisible();
 
     releases.beverages();
     await expect(beverageFilter).not.toHaveAttribute("aria-busy", /.+/);
@@ -467,7 +472,7 @@ test("los clics rápidos conservan solo el último filtro solicitado", async ({ 
   }
 });
 
-test("una imagen atascada libera el filtro sin recuperar el corte de 1,6 segundos", async ({ page }) => {
+test("una imagen atascada no bloquea el filtro ni muestra un cuadro negro", async ({ page }) => {
   let releaseResponsive;
   const responsiveGate = new Promise(resolve => { releaseResponsive = resolve; });
   let responsiveRequests = 0;
@@ -490,14 +495,14 @@ test("una imagen atascada libera el filtro sin recuperar el corte de 1,6 segundo
     await expect(cakesFilter).not.toHaveAttribute("aria-busy", /.+/);
     await filter.click();
     await expect.poll(() => responsiveRequests, {timeout:10000}).toBeGreaterThan(0);
-    await page.waitForTimeout(1800);
-    await expect(filter).toHaveAttribute("aria-busy", "true");
-    await expect(cake).toBeVisible();
-    await expect(bottega).toBeHidden();
-
-    await expect(filter).not.toHaveAttribute("aria-busy", /.+/, {timeout:12000});
+    await expect(filter).not.toHaveAttribute("aria-busy", /.+/);
     await expect(cake).toBeHidden();
     await expect(bottega).toBeVisible();
+    await page.waitForTimeout(1800);
+    await expect(filter).not.toHaveAttribute("aria-busy", /.+/);
+    await expect(cake).toBeHidden();
+    await expect(bottega).toBeVisible();
+    releaseResponsive();
     await expect(image).toHaveAttribute("loading", "lazy");
     await expect(image).toHaveClass(/catalog-image-pending/);
     await expect(image).toHaveCSS("opacity", "0");
