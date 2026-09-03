@@ -88,6 +88,71 @@ async function closeProductCard(page) {
   await expect(expanded).toHaveCount(0, { timeout: 1500 });
 }
 
+async function expectCheckoutDatesContained(page, expectedIds) {
+  const layout = await page.locator("#checkoutForm").evaluate((form, dateIds) => {
+    const visible = element => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    };
+    const box = element => {
+      const rect = element.getBoundingClientRect();
+      return { left:rect.left, right:rect.right, top:rect.top, bottom:rect.bottom, width:rect.width, height:rect.height };
+    };
+    const visibleDates = [...form.querySelectorAll('input[type="date"]')].filter(visible);
+    const dates = dateIds.map(id => {
+      const input = form.querySelector(`#${id}`);
+      const field = input.closest(".field");
+      const card = input.closest(".split-delivery-card");
+      return {
+        id,
+        input:box(input),
+        field:box(field),
+        card:card ? box(card) : null
+      };
+    });
+    const drawer = form.closest("#drawer");
+    const splitFields = form.querySelector("#splitDeliveryFields");
+    const containers = dateIds.map(id => form.querySelector(`#${id}`).closest(".field"))
+      .filter((element, index, list) => element && visible(element) && list.indexOf(element) === index)
+      .map(element => ({
+        name:element.id || element.className,
+        clientWidth:element.clientWidth,
+        scrollWidth:element.scrollWidth
+      }));
+    return {
+      visibleIds:visibleDates.map(input => input.id),
+      dates,
+      containers,
+      form:box(form),
+      drawer:box(drawer),
+      splitFields:visible(splitFields) ? box(splitFields) : null,
+      pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth
+    };
+  }, expectedIds);
+
+  expect(layout.visibleIds).toEqual(expectedIds);
+  expect(layout.pageOverflow).toBeLessThanOrEqual(0);
+  expect(layout.form.left).toBeGreaterThanOrEqual(layout.drawer.left - 1);
+  expect(layout.form.right).toBeLessThanOrEqual(layout.drawer.right + 1);
+  if (layout.splitFields) {
+    expect(layout.splitFields.left).toBeGreaterThanOrEqual(layout.form.left - 1);
+    expect(layout.splitFields.right).toBeLessThanOrEqual(layout.form.right + 1);
+  }
+  for (const date of layout.dates) {
+    expect(date.input.width, date.id).toBeGreaterThan(0);
+    expect(date.input.left, `${date.id} dentro del campo`).toBeGreaterThanOrEqual(date.field.left - 1);
+    expect(date.input.right, `${date.id} dentro del campo`).toBeLessThanOrEqual(date.field.right + 1);
+    if (date.card) {
+      expect(date.input.left, `${date.id} dentro de la tarjeta`).toBeGreaterThanOrEqual(date.card.left - 1);
+      expect(date.input.right, `${date.id} dentro de la tarjeta`).toBeLessThanOrEqual(date.card.right + 1);
+    }
+  }
+  for (const container of layout.containers) {
+    expect(container.scrollWidth, `${container.name} sin desborde interno`).toBeLessThanOrEqual(container.clientWidth + 1);
+  }
+}
+
 async function seekPhysicalCardTurn(locator, currentTime = 430) {
   await expect.poll(() => locator.evaluate(element => element.getAnimations()
     .filter(animation => animation.effect?.target === element)
@@ -8722,6 +8787,44 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
   await expect(customization.locator("textarea")).toBeVisible();
 });
 
+test("el calendario conserva el ajuste de ancho para Safari móvil", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreview(page);
+
+  const contract = await page.locator("#requestedDate").evaluate(input => {
+    const rules = [...document.styleSheets].flatMap(sheet => {
+      try {
+        return [...sheet.cssRules];
+      } catch {
+        return [];
+      }
+    });
+    const rule = rules.find(candidate => candidate.selectorText === '.checkout-form input[type="date"]');
+    const style = rule?.style;
+    const computed = getComputedStyle(input);
+    return {
+      dateInputTypes:["requestedDate", "immediateRequestedDate", "preparedRequestedDate"]
+        .map(id => document.querySelector(`#${id}`)?.type),
+      width:style?.getPropertyValue("width") || "",
+      inlineSize:style?.getPropertyValue("inline-size") || "",
+      minWidth:style?.getPropertyValue("min-width") || "",
+      maxWidth:style?.getPropertyValue("max-width") || "",
+      justifySelf:style?.getPropertyValue("justify-self") || "",
+      appearance:computed.appearance
+    };
+  });
+
+  expect(contract).toEqual({
+    dateInputTypes:["date", "date", "date"],
+    width:"auto",
+    inlineSize:"auto",
+    minWidth:"0px",
+    maxWidth:"100%",
+    justifySelf:"stretch",
+    appearance:"auto"
+  });
+});
+
 test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
@@ -8739,6 +8842,7 @@ test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async 
   await expect(page.locator('input[name="deliveryPlan"][value="together"]')).toBeChecked();
   await expect(page.locator("#singleFulfillmentGroup")).toBeVisible();
   await expect(page.locator("#splitDeliveryFields")).toBeHidden();
+  await expectCheckoutDatesContained(page, ["requestedDate"]);
 
   await page.locator('input[name="deliveryPlan"][value="split"]').check();
   await expect(page.locator("#singleFulfillmentGroup")).toBeHidden();
@@ -8748,6 +8852,9 @@ test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async 
   await expect(page.locator("#preparedItemSummary")).toContainText("Torta de");
   await expect(page.locator("#immediateRequestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
   await expect(page.locator("#preparedRequestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
+  await expectCheckoutDatesContained(page, ["immediateRequestedDate", "preparedRequestedDate"]);
+  await page.locator("#immediateRequestedDate").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("calendarios-pedido-dividido-movil.png"), fullPage: false });
 
   await page.locator("#customerName").fill("Andrea Pérez");
   await page.locator("#customerPhone").fill("0412 000 0000");
@@ -8772,6 +8879,7 @@ test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async 
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect.poll(() => page.locator("#splitDeliveryFields").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
+  await expectCheckoutDatesContained(page, ["immediateRequestedDate", "preparedRequestedDate"]);
   await page.locator("#deliveryPlanPanel").scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("pedido-mixto-dividido-escritorio.png"), fullPage: false });
 });
