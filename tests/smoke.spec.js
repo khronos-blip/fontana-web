@@ -5255,7 +5255,8 @@ test("ningún producto agotado pasa a preordenar sin que la dueña lo elija", as
       settings: { productionWithElectricity: true, stockTodayOpen: true },
       products: [
         {id:"salado-cero",category:"salado",name:"Salado de prueba",price:12,image:"assets/tequenos-fit-fontana-pro.jpg",description:"Listo para preparar.",ingredients:"Harina y queso.",weight:"1 PAQUETE",status:"sold-out",stockQuantity:0,visible:true,allowPreorder:false,minimumBusinessDays:0},
-        {id:"torta-cero",category:"cakes",name:"Torta de prueba",price:40,image:"assets/chocolate-fontana-v2.jpg",description:"Torta completa.",ingredients:"Harina de almendra.",weight:"1 KG",status:"sold-out",stockQuantity:0,visible:true,allowPreorder:false,minimumBusinessDays:2}
+        {id:"torta-cero",category:"cakes",name:"Torta de prueba",price:40,image:"assets/chocolate-fontana-v2.jpg",description:"Torta completa.",ingredients:"Harina de almendra.",weight:"1 KG",status:"sold-out",stockQuantity:0,visible:true,allowPreorder:false,minimumBusinessDays:2},
+        {id:"torta-sin-precio",category:"cakes",name:"Torta sin precio",price:null,image:"assets/layer-cake-fontana-pro.webp",description:"Se cotiza según el diseño.",ingredients:"Harina de almendra.",weight:"1 KG",status:"sold-out",stockQuantity:0,visible:true,allowPreorder:false,minimumBusinessDays:2}
       ],
       builders: {}
     }));
@@ -5267,10 +5268,149 @@ test("ningún producto agotado pasa a preordenar sin que la dueña lo elija", as
   await salado.locator(".product-media").first().click();
   await expect(salado).toHaveClass(/product-flipped/);
   await expect(salado.locator(".product-back .add")).toHaveCount(0);
-  await expect(salado.locator(".product-back .product-quote")).toContainText("Preguntar disponibilidad");
+  await expect(salado.locator(".product-quote")).toHaveCount(0);
   await expect(page.locator("#cartCount")).toHaveText("0");
   await expect(page.locator('[data-product-id="torta-cero"] .add')).toHaveCount(0);
+  const unpriced = page.locator('[data-product-id="torta-sin-precio"]');
+  await expect(unpriced.locator(".product-quote")).toHaveText("Consultar por WhatsApp");
+  await expect(unpriced.locator(".product-quote")).not.toContainText("Preguntar disponibilidad");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("todas las tarjetas compactas mantienen la información dentro y los agotados no muestran consulta", async ({ page }) => {
+  test.setTimeout(90_000);
+  const soldOutIds = ["cachito-fit", "tequenos-fit", "raviolis", "san-pellegrino"];
+  const expectedWeights = new Map([
+    ["cachito-fit", "3 UNIDADES"],
+    ["tequenos-fit", "12 UNIDADES"],
+    ["raviolis", "180 G / 300 G"],
+    ["san-pellegrino", "330 ML"],
+    ["tevia-durazno", "360 ML"]
+  ]);
+
+  await page.setViewportSize({ width:390, height:844 });
+  await openPreview(page);
+  await page.evaluate(ids => {
+    const soldOut = new Set(ids);
+    const products = window.FONTANA_CONFIG.dynamicCatalog.map(product => {
+      if (soldOut.has(product.id)) {
+        const unavailableProduct = {
+          ...product,
+          availabilityMode:"sold-out",
+          status:"sold-out",
+          stockTracked:true,
+          stockQuantity:0,
+          allowPreorder:false,
+          immediate:false
+        };
+        if (product.id === "raviolis") {
+          unavailableProduct.variants = [
+            { name:"Ricotta de cabra y espinaca", status:"available" },
+            { name:"Carne", status:"available" }
+          ];
+        }
+        return unavailableProduct;
+      }
+      if (product.id === "tevia-durazno") {
+        return {
+          ...product,
+          availabilityMode:"available",
+          status:"available",
+          stockTracked:true,
+          stockQuantity:8,
+          allowPreorder:false,
+          immediate:true
+        };
+      }
+      return product;
+    });
+    localStorage.setItem("fontana-admin-catalog-v1", JSON.stringify({
+      version:2,
+      settings:{productionWithElectricity:true,stockTodayOpen:true},
+      operations:{verified:true,electricityEnabled:true},
+      products
+    }));
+  }, soldOutIds);
+
+  for (const viewport of [{ width:390, height:844 }, { width:1366, height:900 }]) {
+    await page.setViewportSize(viewport);
+    await page.reload();
+    const cards = page.locator(".product.product-flip-ready");
+    await expect(page.locator('[data-product-id="tevia-durazno"]')).toHaveClass(/product-flip-ready/);
+    await page.evaluate(() => document.fonts?.ready);
+    await expect(page.locator(".catalog-group-grid.product-height-syncing")).toHaveCount(0);
+    await expect(cards.locator(".product-quote").filter({ hasText:"Preguntar disponibilidad" })).toHaveCount(0);
+
+    for (const [id, weight] of expectedWeights) {
+      const card = page.locator(`.product[data-product-id="${id}"]`);
+      await expect(card.locator(".product-front .diet")).toHaveText(weight);
+      if (soldOutIds.includes(id)) {
+        await expect(card.locator(".product-tags")).toContainText("AGOTADO");
+        await expect(card.locator(".product-front .add")).toHaveCount(0);
+        await expect(card.locator(".product-quote")).toHaveCount(0);
+      }
+    }
+
+    const tevia = page.locator('[data-product-id="tevia-durazno"]');
+    await expect(tevia.locator(".product-front .add")).toBeEnabled();
+    await expect(tevia.locator(".product-front .product-quote")).toHaveCount(0);
+    await expect(page.locator('[data-product-id="raviolis"] .product-front .product-selection-summary')).toContainText("180 g · Ricotta de cabra y espinaca");
+
+    const layout = await page.locator([...expectedWeights.keys()].map(id => `.product[data-product-id="${id}"]`).join(",")).evaluateAll(elements => {
+      const visible = node => {
+        const box = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0;
+      };
+      const fits = (child, parent) => {
+        const inner = child.getBoundingClientRect();
+        const outer = parent.getBoundingClientRect();
+        return inner.left >= outer.left - 1 && inner.right <= outer.right + 1
+          && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+      };
+      return {
+        cards:elements.map(card => {
+          const front = card.querySelector(".product-front");
+          const measured = [
+            front,
+            front.querySelector(".product-body"),
+            front.querySelector(".product-top"),
+            front.querySelector("h3"),
+            front.querySelector(".price"),
+            front.querySelector("p"),
+            front.querySelector(".product-dietary-seals"),
+            front.querySelector(".product-selection-summary"),
+            front.querySelector(".product-selection-summary strong"),
+            front.querySelector(".product-safety"),
+            front.querySelector(".product-footer"),
+            front.querySelector(".diet"),
+            front.querySelector(".product-quantity-control"),
+            front.querySelector(".add")
+          ].filter(node => node && visible(node));
+          const descendants = [
+            ...front.querySelectorAll(".product-media,.product-body,.product-body>*,.product-top>*,.product-dietary-seals>*,.product-selection-summary>*,.product-footer>*")
+          ].filter(visible);
+          return {
+            id:card.dataset.productId,
+            outside:descendants.filter(node => !fits(node, card)).map(node => node.className || node.tagName),
+            clipped:measured.filter(node => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 2).map(node => node.className || node.tagName)
+          };
+        }).sort((left, right) => left.id.localeCompare(right.id)),
+        pageOverflow:document.documentElement.scrollWidth - document.documentElement.clientWidth
+      };
+    });
+    expect(layout, `tarjetas compactas en ${viewport.width}x${viewport.height}`).toEqual({
+      cards:[...expectedWeights.keys()].sort().map(id => ({ id, outside:[], clipped:[] })),
+      pageOverflow:0
+    });
+  }
+
+  const raviolis = page.locator('[data-product-id="raviolis"]');
+  await openProductCard(page, raviolis);
+  await expect(raviolis.locator(".product-back .product-quote")).toHaveCount(0);
+  await expect(raviolis.locator(".product-back .product-size")).toBeDisabled();
+  await expect(raviolis.locator(".product-back .product-variant")).toBeDisabled();
+  await closeProductCard(page);
 });
 
 test("los selectores de Fonkies y Fomb son compactos en escritorio y pueden plegarse", async ({ page }) => {
@@ -8397,7 +8537,7 @@ test("el panel publica disponible hoy, preordenar y agotado sin romper el carrit
   await expect(soldOut).toHaveClass(/product-sold-out/);
   await expect(soldOut).toHaveCSS("opacity", "0.66");
   await expect(soldOut.locator(".add")).toHaveCount(0);
-  await expect(soldOut.locator(".product-quote")).toContainText("Preguntar disponibilidad");
+  await expect(soldOut.locator(".product-quote")).toHaveCount(0);
   await openProductCard(page, soldOut);
   await expect(soldOut).toHaveCSS("opacity", "1");
   await expect(soldOut.locator(".product-expanded-media img")).not.toHaveCSS("filter", "none");

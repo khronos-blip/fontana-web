@@ -264,7 +264,7 @@
     .product p{color:var(--muted);font-size:.82rem;min-height:40px;margin:9px 0 18px}
     .product-variants{display:grid;gap:7px;margin:-2px 0 18px}.product-variants label{color:var(--plum);font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em}.product-variants select{width:100%;min-width:0;border:1px solid rgba(110,35,111,.22);border-radius:12px;background:rgba(255,255,255,.58);padding:10px 12px;color:var(--plum-dark);font-size:.75rem;font-weight:700}.product-variants select option{color:var(--ink);background:#fff}
     .product-selection-summary{display:none;width:100%;min-width:0;margin:0 0 18px;padding:10px 12px;border:1px solid rgba(110,35,111,.18);border-radius:12px;background:rgba(255,255,255,.54);color:var(--plum-dark);grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:9px;text-align:left}
-    .product-selection-summary span{font-size:.57rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase}.product-selection-summary strong{min-width:0;overflow:hidden;color:var(--plum-dark);font-size:.72rem;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}.product-selection-summary em{color:var(--plum);font-size:.58rem;font-style:normal;font-weight:900;white-space:nowrap}
+    .product-selection-summary span{font-size:.57rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase}.product-selection-summary strong{min-width:0;color:var(--plum-dark);font-size:.72rem;line-height:1.2;overflow-wrap:anywhere;white-space:normal}.product-selection-summary em{color:var(--plum);font-size:.58rem;font-style:normal;font-weight:900;white-space:nowrap}
     .product[data-category="salado"] .product-front .product-variants{display:none}
     .product[data-category="salado"] .product-front .product-selection-summary{display:grid}
     .product[data-category="salado"] .product-front .product-body{flex:1 1 auto;padding:18px}
@@ -292,7 +292,8 @@
     .product-dietary-seal span{font-size:.5rem;font-weight:900;line-height:1.05;letter-spacing:.035em;text-align:center;text-transform:uppercase}
     .builder-dietary-seals{width:max-content;max-width:100%;margin:-7px 0 16px;padding:0;border:0}
     .builder-dietary-seals .product-dietary-seal{flex-basis:72px}
-    .product-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
+    .product-footer{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
+    .product-footer>.diet{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
     .diet{font-size:.68rem;color:var(--green);font-weight:800}
     .add{border:0;background:var(--plum);color:#fff;width:42px;height:42px;border-radius:50%;font-size:1.35rem;display:grid;place-items:center}
     .add,.product-minus,.fonkie-stepper button,.qty button{touch-action:manipulation}

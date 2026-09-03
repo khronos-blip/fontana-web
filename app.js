@@ -4023,13 +4023,11 @@
         : "";
       const badgeMarkup = badges.length ? `<div class="product-tags">${badges.map((badge,index) => { const statusClass = badge === "TEMPORALMENTE NO DISPONIBLE" || badge === "AGOTADO" ? " status-unavailable" : badge.startsWith("PREORDENAR") ? " status-preorder" : ""; return `<span class="product-tag${index ? " secondary" : ""}${statusClass}">${escapeHtml(badge)}</span>`; }).join("")}</div>` : "";
       const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
-      const quoteText = soldOut && !preorder
-        ? `Hola Fontana sin gluten 💜 Quisiera saber para cuándo pueden tener disponible ${name}.`
-        : category === "bottega"
-          ? `Hola Fontana sin gluten 💜 Quisiera consultar la disponibilidad de ${name}${hasPrice ? ` (${money(price)})` : ""}.`
-          : `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
-      const quoteButton = (!hasPrice || pendingCatalogPublication || (soldOut && !preorder)) && whatsappNumber
-        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">${soldOut && !preorder ? "Preguntar disponibilidad" : pendingCatalogPublication ? "Consultar disponibilidad" : "Consultar por WhatsApp"}</a>`
+      const quoteText = category === "bottega"
+        ? `Hola Fontana sin gluten 💜 Quisiera consultar la disponibilidad de ${name}${hasPrice ? ` (${money(price)})` : ""}.`
+        : `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
+      const quoteButton = (!hasPrice || (pendingCatalogPublication && !(soldOut && !preorder))) && whatsappNumber
+        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">${!hasPrice ? "Consultar por WhatsApp" : "Consultar disponibilidad"}</a>`
         : "";
       const availabilityCopy = preorder ? "PREORDENAR · ENTREGA EN 2 DÍAS" : soldOut ? "AGOTADO" : immediate ? "DISPONIBLE HOY" : "";
       // Keep the product's presentation visible in the footer. Availability is
