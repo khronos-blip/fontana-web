@@ -5138,7 +5138,8 @@
 
   function toggleAddressFor(select, group, address) {
     const delivery = select.value === "delivery";
-    group.hidden = !delivery;
+    group.hidden = !delivery || select.disabled;
+    address.disabled = !delivery || select.disabled;
     address.required = delivery && !select.disabled;
   }
 
@@ -5315,6 +5316,9 @@
 
   function renderAllergyItemNotes() {
     const container = $("#allergyItemNotes");
+    const previousNotes = new Map($$("textarea", container).map(field => [field.name, {
+      value:field.value, open:field.closest("details")?.open
+    }]));
     const customizableItems = cart.filter(item => {
       if (item.category === "beverages" || item.category === "bottega") return false;
       const productId = item.productId || item.inventory?.productId;
@@ -5332,6 +5336,12 @@
         </div>
       </details>`;
     }).join("");
+    $$("textarea", container).forEach(field => {
+      const previous = previousNotes.get(field.name);
+      if (!previous) return;
+      field.value = previous.value;
+      field.closest("details").open = previous.open;
+    });
     container.hidden = customizableItems.length === 0;
   }
 
@@ -5435,11 +5445,14 @@
     return field.closest(".checkout-option-panel,.allergy-panel");
   }
 
-  function showCheckoutErrors(firstField) {
+  function showCheckoutErrors(firstField, message) {
     const summary = $("#checkoutValidation");
     summary.textContent = "";
     summary.hidden = true;
     if (!firstField) return;
+    const label = firstField.labels?.[0]?.textContent?.trim() || "Campo del pedido";
+    summary.textContent = message || `${label}: ${firstField.validationMessage || "Revisa este campo."}`;
+    summary.hidden = false;
     firstField.setAttribute("aria-invalid", "true");
     invalidCheckoutContainer(firstField)?.classList.add("checkout-invalid");
     firstField.scrollIntoView({ behavior:"smooth", block:"center" });
@@ -5467,7 +5480,7 @@
     if (!validateCheckoutFields()) return;
     const formData = new FormData(checkoutForm);
     if (formData.get("hasAllergies") === "yes" && !formData.getAll("allergens").length && !String(formData.get("otherAllergy") || "").trim()) {
-      showCheckoutErrors($("#otherAllergy"));
+      showCheckoutErrors($("#otherAllergy"), "Especifica la condición, alergia o intolerancia: selecciona una opción o escríbela en el campo de otra condición.");
       return;
     }
     await flushQuantityWork();

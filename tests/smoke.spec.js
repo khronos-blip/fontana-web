@@ -8765,7 +8765,7 @@ test("el checkout móvil no desborda, evita zoom y pliega las personalizaciones"
   expect(fit.formScrollWidth).toBeLessThanOrEqual(fit.formWidth);
 
   await page.locator('#checkoutForm button[type="submit"]').click();
-  await expect(page.locator("#checkoutValidation")).toBeHidden();
+  await expect(page.locator("#checkoutValidation")).toContainText("Nombre y apellido");
   await expect(page.locator("#customerName")).toHaveAttribute("aria-invalid", "true");
   await expect(page.locator("#customerPhone")).toHaveAttribute("aria-invalid", "true");
   await expect(page.locator("#customerName")).toHaveCSS("border-top-color", "rgb(239, 100, 111)");
@@ -8942,7 +8942,7 @@ test("el checkout de escritorio aprovecha el ancho sin desbordar", async ({ page
   expect(layout.columns).toBe(2);
 
   await page.locator('#checkoutForm button[type="submit"]').click();
-  await expect(page.locator("#checkoutValidation")).toBeHidden();
+  await expect(page.locator("#checkoutValidation")).toContainText("Nombre y apellido");
   await expect(page.locator("#customerName")).toHaveAttribute("aria-invalid", "true");
   await expect(page.locator("#customerPhone")).toHaveAttribute("aria-invalid", "true");
   await expect(page.locator("#checkoutPreparationGuide")).toContainText("Puede pedirse para el mismo día");
@@ -9631,6 +9631,38 @@ test("un pedido con alergias queda marcado para revisión", async ({ page, conte
   expect(message).toContain("Frutos secos");
   expect(message).toContain("Evitar frutos secos");
   expect(message).toContain("PENDIENTE DE REVISIÓN POR FONTANA");
+});
+
+test("revisión: conserva instrucciones al volver al carrito y omite la dirección al elegir pickup", async ({ page }) => {
+  await openPreview(page);
+  const cake = await openProductCard(page, '[data-id="pistacho"]');
+  await cake.locator(".product-back .add").click();
+  await fillCheckout(page, { allergies:true });
+  await page.locator("#fulfillment").selectOption("delivery");
+  await page.locator("#customerAddress").fill("Dirección de prueba");
+  await page.locator("#fulfillment").selectOption("pickup");
+  expect(await page.locator("#checkoutForm").evaluate(form => new FormData(form).get("address"))).toBeNull();
+  await page.locator("#backToCart").click();
+  await page.locator("#continueCheckout").click();
+  await expect(page.locator('[name^="allergyNote:"]').first()).toHaveValue("Evitar frutos secos");
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  await expect.poll(() => page.evaluate(() => window.__copiedOrder || "")).toContain("Evitar frutos secos");
+  expect(await page.evaluate(() => window.__copiedOrder)).not.toContain("Dirección de prueba");
+});
+
+test("revisión: el formulario explica el campo pendiente y la alergia sin especificar", async ({ page }) => {
+  await openPreview(page);
+  const cake = await openProductCard(page, '[data-id="pistacho"]');
+  await cake.locator(".product-back .add").click();
+  await fillCheckout(page, { allergies:true });
+  await page.locator("#customerName").fill("");
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  await expect(page.locator("#checkoutValidation")).toBeVisible();
+  await expect(page.locator("#checkoutValidation")).toContainText("Nombre y apellido");
+  await page.locator("#customerName").fill("Cliente de prueba");
+  await page.locator('input[name="allergens"][value="Frutos secos"]').uncheck();
+  await page.locator('#checkoutForm button[type="submit"]').click();
+  await expect(page.locator("#checkoutValidation")).toContainText("Especifica la condición");
 });
 
 test("SEO público es indexable y mantiene privado el panel", async ({ page, request }) => {
