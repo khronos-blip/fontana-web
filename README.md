@@ -6,8 +6,8 @@ Repositorio: <https://github.com/khronos-blip/fontana-web>
 
 ## Arquitectura
 
-- Hosting público: GitHub Pages, sin servidor local ni dependencia del Mac mini.
-- Código: este repositorio; cada `push` a `main` publica automáticamente el contenido de `dist` mediante GitHub Actions.
+- Hosting público: Cloudflare Pages, proyecto `fontana-web`, sin servidor local ni dependencia del Mac mini.
+- Código: este repositorio; `main` es la versión aprobada. El workflow de GitHub Actions publica una copia en GitHub Pages, pero su éxito no confirma la actualización del dominio en Cloudflare.
 - Administración: Cloudflare Worker + base de datos D1 en `api.fontanasingluten.com`, dentro del nivel gratuito.
 - Dominio: <https://fontanasingluten.com>.
 - Pedidos: enlace oficial `wa.me` con resumen, total, modalidad, pago y datos del cliente.
@@ -75,7 +75,9 @@ La configuración y operación del backend está documentada en `backend/README.
 
 ## Despliegue
 
-GitHub Pages usa la rama `main`, el comando `npm run build` y el artefacto `dist`. El dominio de producción es `fontanasingluten.com`; no se debe usar Cloudflare Tunnel para esta web.
+Cloudflare Pages usa el proyecto `fontana-web`, la rama de producción `main` y el artefacto `dist` generado por `npm run build`. El dominio de producción es `fontanasingluten.com`; no se debe usar Cloudflare Tunnel para esta web.
+
+Después del push, verificar el despliegue de Cloudflare y la coincidencia del HTML y los archivos versionados con `dist`. Si la integración automática no actualiza Cloudflare, publicar el build validado con `wrangler pages deploy dist --project-name fontana-web --branch main --commit-hash <commit-validado>`, usando la sesión autorizada del proyecto. No guardar credenciales en el repositorio. Un workflow de GitHub Pages correcto no sustituye esta comprobación.
 
 ## Verificación
 

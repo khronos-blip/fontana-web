@@ -4,6 +4,21 @@
   const config = window.FONTANA_CONFIG || {};
   const $ = (selector, context = document) => context.querySelector(selector);
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
+  function containDialogFocus(event, dialog) {
+    if (event.key !== "Tab" || event.defaultPrevented || !dialog) return;
+    const controls = $$("button, a[href], input, select, textarea, summary, [tabindex]", dialog)
+      .filter(element => element.tabIndex >= 0 && !element.matches(":disabled")
+        && !element.closest("[inert]") && element.getClientRects().length
+        && getComputedStyle(element).visibility !== "hidden");
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    const current = document.activeElement;
+    if (!first || current === dialog || !dialog.contains(current)
+      || (event.shiftKey && current === first) || (!event.shiftKey && current === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last || dialog : first || dialog).focus({ preventScroll: true });
+    }
+  }
   // The navigation seal is requested before the application script. A brief
   // connection reset could otherwise leave that always-visible brand image in
   // the browser's completed-but-broken state for the entire visit.
@@ -1882,6 +1897,7 @@
     backdrop.addEventListener("click", () => activeCloser?.());
     document.addEventListener("keydown", event => {
       if (event.key === "Escape") activeCloser?.();
+      if (!drawer.classList.contains("open")) containDialogFocus(event, activeCard && $(".product-back", activeCard));
     });
     const refreshActiveGeometry = () => activeGeometryRefresh?.();
     window.addEventListener("resize", refreshActiveGeometry);
@@ -1920,6 +1936,9 @@
       const back = document.createElement("div");
       back.className = "product-face product-back";
       back.setAttribute("aria-hidden", "true");
+      back.setAttribute("role", "dialog");
+      back.setAttribute("aria-modal", "true");
+      back.setAttribute("aria-label", title);
       back.tabIndex = -1;
       inner.append(front, back);
       card.append(inner);
@@ -4148,19 +4167,27 @@
     return `Llegaste al máximo disponible de ${itemName}. No puedes agregar más por ahora.`;
   }
 
+  let cartRestoreTarget = null;
   function openCart() {
+    if (!drawer.classList.contains("open")) cartRestoreTarget = document.activeElement;
     showCartStep();
     toast.classList.remove("show");
+    drawer.inert = false;
     drawer.classList.add("open");
     backdrop.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     document.body.classList.add("locked");
+    $("#closeCart").focus({ preventScroll: true });
   }
 
   function closeCart() {
+    if (!drawer.classList.contains("open")) return;
     drawerStatus.classList.remove("show");
     drawer.classList.remove("open");
     backdrop.classList.remove("open");
+    (cartRestoreTarget?.isConnected ? cartRestoreTarget : $("#cartButton"))?.focus({ preventScroll: true });
+    cartRestoreTarget = null;
+    drawer.inert = true;
     drawer.setAttribute("aria-hidden", "true");
     document.body.classList.remove("locked");
   }
@@ -6260,7 +6287,10 @@
   $("#cartButton").addEventListener("click", openCart);
   $("#closeCart").addEventListener("click", closeCart);
   $("#continueCheckout").addEventListener("click", showCheckoutStep);
-  backToCart.addEventListener("click", showCartStep);
+  backToCart.addEventListener("click", () => {
+    showCartStep();
+    ($("#continueCheckout").disabled ? $("#closeCart") : $("#continueCheckout")).focus({ preventScroll: true });
+  });
   backdrop.addEventListener("click", closeCart);
   checkoutForm.addEventListener("submit", submitOrder);
   checkoutForm.addEventListener("input", event => {
@@ -6286,7 +6316,11 @@
   });
   $$('input[name="deliveryPlan"]').forEach(input => input.addEventListener("change", toggleDeliveryPlan));
   $$('input[name="hasAllergies"]').forEach(input => input.addEventListener("change", toggleAllergyDetails));
-  document.addEventListener("keydown", event => event.key === "Escape" && closeCart());
+  document.addEventListener("keydown", event => {
+    if (!drawer.classList.contains("open")) return;
+    if (event.key === "Escape") closeCart();
+    else containDialogFocus(event, drawer);
+  });
 
   enhanceDietarySeals();
   setupElectricityNotice();

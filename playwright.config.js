@@ -4,12 +4,12 @@ module.exports = defineConfig({
   testDir: "./tests",
   webServer: [
     {
-      command: "python3 -m http.server 8767 --bind 127.0.0.1",
+      command: "python3 tests/serve.py 8767",
       url: "http://127.0.0.1:8767",
       reuseExistingServer: false
     },
     {
-      command: "npm run build && python3 -m http.server 8768 --bind 127.0.0.1 --directory dist",
+      command: "npm run build && python3 tests/serve.py 8768 --directory dist",
       url: "http://127.0.0.1:8768",
       reuseExistingServer: false
     }

@@ -5344,6 +5344,11 @@ test("ningún producto agotado pasa a preordenar sin que la dueña lo elija", as
 
 test("todas las tarjetas compactas mantienen la información dentro y los agotados no muestran consulta", async ({ page }) => {
   test.setTimeout(90_000);
+  const loadErrors = [];
+  page.on("pageerror", error => loadErrors.push(error.message));
+  page.on("requestfailed", request => {
+    if (["script", "document"].includes(request.resourceType())) loadErrors.push(`${request.url()}: ${request.failure()?.errorText}`);
+  });
   const soldOutIds = ["cachito-fit", "tequenos-fit", "raviolis", "san-pellegrino"];
   const expectedWeights = new Map([
     ["cachito-fit", "3 UNIDADES"],
@@ -5401,7 +5406,10 @@ test("todas las tarjetas compactas mantienen la información dentro y los agotad
     await page.setViewportSize(viewport);
     await page.reload();
     const cards = page.locator(".product.product-flip-ready");
-    await expect(page.locator('[data-product-id="tevia-durazno"]')).toHaveClass(/product-flip-ready/);
+    await expect(page.locator('[data-product-id="tevia-durazno"]')).toHaveClass(/product-flip-ready/).catch(error => {
+      error.message += `\nBrowser load errors: ${JSON.stringify(loadErrors)}`;
+      throw error;
+    });
     await page.evaluate(() => document.fonts?.ready);
     await expect(page.locator(".catalog-group-grid.product-height-syncing")).toHaveCount(0);
     await expect(cards.locator(".product-quote").filter({ hasText:"Preguntar disponibilidad" })).toHaveCount(0);
@@ -8848,6 +8856,8 @@ test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async 
   await expect(page.locator("#singleFulfillmentGroup")).toBeHidden();
   await expect(page.locator("#singleDateGroup")).toBeHidden();
   await expect(page.locator("#splitDeliveryFields")).toBeVisible();
+  await expect(page.locator("#splitDeliveryFields")).toHaveCSS("padding-top", "0px");
+  await expect(page.locator("#splitDeliveryFields")).toHaveCSS("padding-bottom", "0px");
   await expect(page.locator("#immediateItemSummary")).toContainText("Agua mineral Minalba");
   await expect(page.locator("#preparedItemSummary")).toContainText("Torta de");
   await expect(page.locator("#immediateRequestedDate")).toHaveAttribute("min", /\d{4}-\d{2}-\d{2}/);
@@ -8879,6 +8889,7 @@ test("un pedido mixto puede recibirse junto o dividirse en dos momentos", async 
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect.poll(() => page.locator("#splitDeliveryFields").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
+  await expect(page.locator("#splitDeliveryFields")).toHaveCSS("padding", "0px");
   await expectCheckoutDatesContained(page, ["immediateRequestedDate", "preparedRequestedDate"]);
   await page.locator("#deliveryPlanPanel").scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("pedido-mixto-dividido-escritorio.png"), fullPage: false });

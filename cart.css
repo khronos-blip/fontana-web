@@ -25,6 +25,9 @@
 .cart-view .drawer-foot{flex:0 0 auto;padding:16px 20px calc(18px + env(safe-area-inset-bottom,0px));border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.08);box-shadow:0 -10px 30px rgba(34,12,36,.12)}
 .cart-view .total{align-items:center;margin-bottom:12px;font-size:.96rem}
 .cart-view .drawer-foot .btn{min-height:50px}
+/* Keep the native select interaction, but avoid Safari's short system bezel. */
+.checkout-form .field select{appearance:none;-webkit-appearance:none;min-height:50px;padding-right:36px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%23f5dff6' stroke-width='2'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px}
+.checkout-form .split-delivery-fields{padding:0}
 @media(max-width:700px){
   .drawer.cart-view{right:0;bottom:0;width:100%;max-width:100%;max-height:calc(100vh - 8px);max-height:calc(100dvh - 8px);border-width:1px 0 0;border-radius:24px 24px 0 0;transform:translateY(105%)}
   .drawer.cart-view.open{transform:none}
