@@ -199,6 +199,10 @@
   let sales = [];
   let salesSummary = {todayCents:0,monthCents:0,yearCents:0,allCents:0,confirmedCount:0,pendingCount:0};
   let inventory = [];
+  const inventoryDrafts = new Map();
+  const inventoryPending = new Set();
+  let inventoryRequest = 0;
+  let inventoryDraftUser = "";
   let inventoryLoaded = false;
   let inventorySummary = {tracked:0,available:0,reserved:0,soldOut:0};
   let orders = [];
@@ -265,6 +269,8 @@
 
   async function enterPanel() {
     if (!currentSession?.ok && !localMode) throw new Error("La autenticación todavía no fue confirmada.");
+    if (inventoryDraftUser !== currentSession.username) inventoryDrafts.clear();
+    inventoryDraftUser = currentSession.username;
     await loadOperations();
     $("#loginView").hidden = true;
     $("#adminApp").hidden = false;
@@ -474,8 +480,60 @@
     $("#saveStatus").textContent = "Cambios pendientes";
   }
 
+  function validateCatalogDraft(candidate) {
+    const record = value => value && typeof value === "object" && !Array.isArray(value);
+    const price = (value, nullable = false) => (nullable && value == null) ||
+      ((typeof value === "number" || (typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value))) && Number.isFinite(Number(value)) && Number(value) >= 0 && Number.isSafeInteger(Math.round(Number(value) * 100)));
+    const quantity = value => value == null || (price(value) && Number.isSafeInteger(Number(value)) && Number(value) <= 100000);
+    const fail = message => { throw new Error(message); };
+    const namedOptions = (options, label, priced = false) => {
+      if (!Array.isArray(options)) fail(`${label}: lista no válida.`);
+      const names = new Set();
+      options.forEach(option => {
+        if (!record(option) || typeof option.name !== "string" || !option.name.trim()) fail(`${label}: falta un nombre válido.`);
+        const name = inventoryKeySlug(option.name);
+        if (names.has(name)) fail(`${label}: hay nombres repetidos.`);
+        names.add(name);
+        if (priced && !price(option.price, true)) fail(`${label}: revisa el precio; debe ser cero o mayor.`);
+        if (!quantity(option.stockQuantity)) fail(`${label}: la cantidad no es válida.`);
+        if (option.status !== undefined && !["available", "sold-out"].includes(option.status)) fail(`${label}: el estado no es válido.`);
+      });
+    };
+    if (!record(candidate) || !Array.isArray(candidate.products) || !record(candidate.builders)) fail("La estructura del catálogo no es válida.");
+    if (candidate.settings !== undefined && !record(candidate.settings)) fail("La configuración del catálogo no es válida.");
+    const ids = new Set();
+    candidate.products.forEach(product => {
+      if (!record(product) || typeof product.id !== "string" || !/^[a-z0-9-]+$/.test(product.id) || typeof product.name !== "string" || !product.name.trim()) fail("Hay un producto sin nombre o identificador válido.");
+      if (ids.has(product.id)) fail(`Identificador repetido: ${product.id}.`);
+      ids.add(product.id);
+      if (!price(product.price, true)) fail(`${product.name}: el precio debe ser cero o mayor, o quedar por confirmar.`);
+      if (!quantity(product.stockQuantity)) fail(`${product.name}: revisa la cantidad de inventario.`);
+      ["variants", "sizes"].forEach(key => { if (product[key] !== undefined) namedOptions(product[key], product.name, key === "sizes"); });
+      if (product.customLabels !== undefined && (!Array.isArray(product.customLabels) || product.customLabels.some(label => typeof label !== "string"))) fail(`${product.name}: las etiquetas no son válidas.`);
+    });
+    ["fonkies", "fomb"].forEach(kind => {
+      const builder = candidate.builders[kind];
+      if (builder === undefined) return; // Older copies may omit an entire builder.
+      if (!record(builder)) fail(`${kind}: configuración no válida.`);
+      namedOptions(builder.flavors, kind);
+      const fields = kind === "fonkies" ? ["singlePrice", "mixedPrice", "extraPrice"] : ["extraPrice"];
+      fields.forEach(field => { if (!price(builder[field])) fail(`${kind}: completa todos los precios con un número igual o mayor que cero.`); });
+      if (kind === "fonkies" && (!price(builder.minimumQuantity) || !Number.isSafeInteger(Number(builder.minimumQuantity)) || Number(builder.minimumQuantity) < 1 || Number(builder.minimumQuantity) > 1000)) fail("Fonkies: el mínimo debe ser un entero entre 1 y 1000.");
+      if (kind === "fomb") {
+        if (!Array.isArray(builder.sizes) || !builder.sizes.length) fail("Fomb: las presentaciones no son válidas.");
+        const quantities = new Set();
+        builder.sizes.forEach(size => {
+          if (!record(size) || !price(size.price)) fail("Fomb: completa el precio de cada presentación con un número igual o mayor que cero.");
+          if (!price(size.quantity) || !Number.isSafeInteger(Number(size.quantity)) || Number(size.quantity) < 1 || Number(size.quantity) > 1000 || quantities.has(Number(size.quantity))) fail("Fomb: las cantidades de presentación no son válidas o están repetidas.");
+          quantities.add(Number(size.quantity));
+        });
+      }
+    });
+  }
+
   async function saveState() {
     if (savingCatalog) return;
+    try { validateCatalogDraft(state); } catch(error) { toast(error.message); return; }
     savingCatalog = true;
     $("#saveAll").disabled = true;
     state.updatedAt = new Date().toISOString();
@@ -498,7 +556,7 @@
     } catch (error) {
       if (error.status === 409) toast("El catálogo cambió en otro dispositivo. Recarga antes de guardar.");
       else if (error.status === 401) { showLogin("Tu sesión venció. Inicia sesión nuevamente."); }
-      else toast("No se pudo guardar. Revisa la conexión e inténtalo de nuevo.");
+      else toast(error.message || "No se pudo guardar. Revisa la conexión e inténtalo de nuevo.");
     } finally { savingCatalog = false; $("#saveAll").disabled = false; }
   }
 
@@ -710,12 +768,14 @@
   }
 
   async function loadInventory() {
+    const request = ++inventoryRequest;
     try {
       if (localMode) {
         inventory = localInventoryItems();
         inventorySummary = calculateInventorySummary();
       } else {
         const payload = await apiFetch("/v1/admin/inventory");
+        if (request !== inventoryRequest) return;
         inventory = payload.items || [];
         inventorySummary = payload.summary || inventorySummary;
       }
@@ -724,7 +784,36 @@
       renderDashboardOperations();
       renderBuilder("fonkies");
       renderBuilder("fomb");
-    } catch (error) { if (error.status === 401) showLogin("Tu sesión venció."); else toast("No se pudo cargar el inventario."); }
+    } catch (error) { if (request !== inventoryRequest) return; if (error.status === 401) showLogin("Tu sesión venció."); else toast("No se pudo cargar el inventario."); }
+  }
+
+  function syncInventoryControls(row) {
+    const input = $("[data-stock-value]", row);
+    const control = $("[data-track-stock]", row);
+    const pending = inventoryPending.has(row.dataset.sku);
+    const valid = input.value !== "" && input.validity.valid;
+    const forced = Number(input.value) > 0 || Number(input.min) > 0;
+    if (forced) control.checked = true;
+    input.disabled = pending;
+    control.disabled = pending || forced || !valid;
+    $("[data-stock-help]", row).textContent = !valid ? "Escribe una cantidad válida para cambiar el control." : forced ? "Obligatorio mientras haya unidades o reservas." : "Sin unidades ni reservas puedes desactivar el control.";
+    $("[data-save-stock]", row).disabled = pending;
+    $$("[data-stock-delta]", row).forEach(button => {
+      button.disabled = pending || (Number(button.dataset.stockDelta) < 0 && Number(input.value) <= Number(input.min));
+    });
+    row.setAttribute("aria-busy", String(pending));
+  }
+
+  function rememberInventoryDraft(row) {
+    const sku = row.dataset.sku;
+    const item = inventory.find(entry => entry.sku === sku);
+    if (!item || inventoryPending.has(sku)) return;
+    syncInventoryControls(row);
+    const value = $("[data-stock-value]", row).value;
+    const trackStock = $("[data-track-stock]", row).checked;
+    const baseline = inventoryDrafts.get(sku)?.baseline || {onHand:item.onHand,trackStock:item.trackStock,updatedAt:item.updatedAt};
+    if (value !== "" && Number(value) === Number(baseline.onHand) && trackStock === Boolean(baseline.trackStock)) inventoryDrafts.delete(sku);
+    else inventoryDrafts.set(sku, {value,trackStock,baseline});
   }
 
   function renderInventory() {
@@ -739,20 +828,22 @@
     $("#inventoryStats").innerHTML = [[inventorySummary.available,"Disponibles"],[inventorySummary.reserved,"Reservadas"],[inventorySummary.tracked,"Artículos controlados"],[inventorySummary.soldOut,"Agotados"]].map(([value,label])=>`<article class="stat"><b>${Number(value||0)}</b><span>${label}</span></article>`).join("");
     $("#inventoryList").innerHTML = items.length ? items.map(item => {
       const minimum = Number(item.reserved || 0);
-      const value = Number(item.onHand || 0);
+      const draft = inventoryDrafts.get(item.sku);
+      const value = draft ? draft.value : Number(item.onHand || 0);
       const isBuilderFlavor = item.kind === "fonkies" || item.kind === "fomb";
       const displayName = isBuilderFlavor ? item.optionSummary : item.label;
       const context = item.kind === "fonkies"
         ? "Fonkies · galletas individuales"
         : item.kind === "fomb"
           ? "Fomb · bombones individuales"
-          : item.optionSummary || item.kind;
+          : item.optionSummary || "Producto";
       const quantityLabel = item.kind === "fonkies" ? "Galletas totales" : item.kind === "fomb" ? "Bombones totales" : "Cantidad total";
       const stockCopy = item.trackStock
         ? `${item.available} disponible${item.available===1?"":"s"} · ${item.reserved} reservada${item.reserved===1?"":"s"}`
         : "Control inactivo · disponibilidad por confirmar";
-      return `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy product-context">${productThumb(item,displayName)}<div class="product-context-copy"><span class="eyebrow">${escapeHtml(context)}</span><h3>${escapeHtml(displayName)}</h3><p>${escapeHtml(stockCopy)}</p></div></div><label class="stock-quantity-label">${escapeHtml(quantityLabel)}<div class="stock-stepper"><button type="button" data-stock-delta="-1" aria-label="Restar una unidad" ${value<=minimum?"disabled":""}>−</button><input data-stock-value aria-label="${escapeHtml(quantityLabel)} de ${escapeHtml(displayName)}" type="number" inputmode="numeric" min="${minimum}" step="1" value="${value}"><button type="button" data-stock-delta="1" aria-label="Sumar una unidad">+</button></div></label><label class="switch"><input data-track-stock type="checkbox" ${item.trackStock?"checked":""}><span>Control activo</span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`;
+      return `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy product-context">${productThumb(item,displayName)}<div class="product-context-copy"><span class="eyebrow">${escapeHtml(context)}</span><h3>${escapeHtml(displayName)}</h3><p>${escapeHtml(stockCopy)}</p></div></div><label class="stock-quantity-label">${escapeHtml(quantityLabel)}<div class="stock-stepper"><button type="button" data-stock-delta="-1" aria-label="Restar una unidad">−</button><input data-stock-value aria-label="${escapeHtml(quantityLabel)} de ${escapeHtml(displayName)}" type="number" inputmode="numeric" required min="${minimum}" max="100000" step="1" value="${escapeHtml(value)}"><button type="button" data-stock-delta="1" aria-label="Sumar una unidad">+</button></div></label><label class="switch"><input data-track-stock type="checkbox" aria-describedby="stock-help-${escapeHtml(item.sku)}" ${(draft ? draft.trackStock : item.trackStock)?"checked":""}><span>Control activo<small data-stock-help id="stock-help-${escapeHtml(item.sku)}"></small></span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`;
     }).join("") : '<div class="empty-list">No hay artículos que coincidan.</div>';
+    $$("#inventoryList [data-sku]").forEach(syncInventoryControls);
   }
 
   async function loadOrders() {
@@ -1562,17 +1653,33 @@
   }
 
   function parseVariants(value) {
-    return value.split(/\n/).map(line => line.trim()).filter(Boolean).map(line => {
-      const [name,status="available",quantity=""] = line.split("|").map(part => part.trim());
-      return {name,status:status === "sold-out" ? "sold-out" : "available",stockQuantity:quantity === "" ? null : Math.max(0, Number(quantity))};
-    });
+    return parseProductOptions(value, false);
   }
 
   function parseSizes(value) {
-    return value.split(/\n/).map(line => line.trim()).filter(Boolean).map(line => {
-      const [name,price,status="available",quantity=""] = line.split("|").map(part => part.trim());
-      return {name,price:Number(price),status:status === "sold-out" ? "sold-out" : "available",stockQuantity:quantity === "" ? null : Math.max(0, Number(quantity))};
-    }).filter(size => size.name && Number.isFinite(size.price));
+    return parseProductOptions(value, true);
+  }
+
+  function parseProductOptions(value, priced) {
+    const names = new Set();
+    return value.split(/\n/).map((line,index) => ({parts:line.split("|").map(part=>part.trim()),line,index})).filter(row=>row.line.trim()).map(({parts,index}) => {
+      const [name] = parts;
+      const label = `${priced ? "Presentaciones" : "Variantes"}, línea ${index+1}`;
+      if (!name || parts.length > (priced ? 4 : 3) || names.has(inventoryKeySlug(name))) throw new Error(`${label}: revisa el nombre y el formato; no puede estar repetido.`);
+      names.add(inventoryKeySlug(name));
+      const status = parts[priced ? 2 : 1] || "available";
+      const quantity = parts[priced ? 3 : 2] || "";
+      if (!["available","sold-out"].includes(status)) throw new Error(`${label}: usa available o sold-out como estado.`);
+      if (quantity && (!/^\d+$/.test(quantity) || Number(quantity) > 100000)) throw new Error(`${label}: la cantidad debe ser un entero entre cero y 100000.`);
+      const option = {name,status,stockQuantity:quantity === "" ? null : Number(quantity)};
+      if (priced) {
+        const amount = String(parts[1] || "").replace(",", ".");
+        if (amount === "null") { option.price = null; return option; } // Preserve explicit legacy quotes; blank is still invalid.
+        if (!/^\d+(?:\.\d{1,2})?$/.test(amount) || !Number.isFinite(Number(amount))) throw new Error(`${label}: escribe un precio válido igual o mayor que cero, con hasta dos decimales.`);
+        option.price = Number(amount);
+      }
+      return option;
+    });
   }
 
   const productWeightUnitLabels = {mg:"MG",g:"G",kg:"KG",ml:"ML",l:"L"};
@@ -1620,10 +1727,74 @@
     }
   }
 
+  const formImageUploads = new WeakMap();
+
+  function imageUploadState(form) {
+    if (!formImageUploads.has(form)) {
+      formImageUploads.set(form, {generation:0,pending:false});
+      form.closest("dialog").addEventListener("close", () => {
+        // A queued close event must not cancel a newly reopened editor.
+        if (!form.closest("dialog").open) resetFormImageUpload(form);
+      });
+      form.elements.image.addEventListener("input", () => resetFormImageUpload(form));
+    }
+    return formImageUploads.get(form);
+  }
+
+  function setFormImageUploadPending(form, pending) {
+    const upload = imageUploadState(form);
+    const button = form.querySelector('button[type="submit"]');
+    if (pending && !upload.pending) {
+      upload.buttonDisabled = button.disabled;
+      upload.buttonText = button.textContent;
+      button.disabled = true;
+      button.textContent = "Subiendo imagen…";
+      button.setAttribute("aria-busy", "true");
+    } else if (!pending && upload.pending) {
+      button.disabled = upload.buttonDisabled;
+      button.textContent = upload.buttonText;
+      button.removeAttribute("aria-busy");
+    }
+    upload.pending = pending;
+    if (pending) form.dataset.imageUploading = "true";
+    else delete form.dataset.imageUploading;
+  }
+
+  function resetFormImageUpload(form) {
+    imageUploadState(form).generation += 1;
+    setFormImageUploadPending(form, false);
+    form.querySelector('input[type="file"]').value = "";
+  }
+
+  async function uploadFormImage(input, previewSelector, failureMessage, announceSuccess = false) {
+    const form = input.form;
+    const file = input.files[0];
+    if (!file || !form.closest("dialog").open) return;
+    const upload = imageUploadState(form);
+    const generation = ++upload.generation;
+    const isCurrent = () => upload.generation === generation && form.closest("dialog").open;
+    setFormImageUploadPending(form, true);
+    try {
+      const imageUrl = await uploadImage(file);
+      if (!isCurrent() || !imageUrl) return;
+      form.elements.image.value = imageUrl;
+      $(previewSelector).style.backgroundImage = `url("${imageUrl}")`;
+      if (announceSuccess) toast(localMode ? "Imagen optimizada" : "Imagen optimizada y subida");
+    } catch {
+      if (isCurrent()) toast(failureMessage);
+    } finally {
+      if (upload.generation === generation) {
+        setFormImageUploadPending(form, false);
+        input.value = "";
+      }
+    }
+  }
+
   function openProduct(id) {
     const product = id ? state.products.find(item => item.id === id) : {id:"",name:"",brand:"",category:"cakes",price:"",description:"",ingredients:"",weight:"",availabilityLabel:"",availabilityMode:"available",minimumBusinessDays:0,status:"available",stockQuantity:null,visible:true,isNew:false,promo:false,immediate:true,allowPreorder:false,requiresElectricity:false,glutenFree:false,sugarFree:false,lactoseFree:false,eggFree:false,customLabels:[],image:"",variants:[],sizes:[]};
     if (!product) return;
     const form = $("#productForm");
+    resetFormImageUpload(form);
     $("#dialogTitle").textContent = id ? "Editar producto" : "Nuevo producto";
     form.elements.originalId.value = id || "";
     ["id","name","brand","category","description","ingredients","availabilityLabel","image"].forEach(field => { form.elements[field].value = product[field] ?? ""; });
@@ -1706,7 +1877,7 @@
     const title = kind === "fonkies" ? "Fonkies" : "Fomb";
     const pricing = kind === "fonkies"
       ? `<label>Precio REF · 4 iguales<input data-builder-field="singlePrice" type="number" min="0" step=".01" value="${builder.singlePrice}"></label><label>Precio REF · 4 mixtas<input data-builder-field="mixedPrice" type="number" min="0" step=".01" value="${builder.mixedPrice}"></label><label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label><label>Mínimo<input data-builder-field="minimumQuantity" type="number" min="1" value="${builder.minimumQuantity}"></label>`
-      : `<label>Precio REF · caja de 4<input data-builder-size="0" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[0]?.price ?? 15}"></label><label>Precio REF · caja de 12<input data-builder-size="1" data-size-field="price" type="number" min="0" step=".01" value="${builder.sizes[1]?.price ?? 30}"></label><label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label>`;
+      : builder.sizes.map((size,index) => `<label>Precio REF · caja de ${Number(size.quantity)}<input data-builder-size="${index}" data-size-field="price" type="number" min="0" step=".01" value="${escapeHtml(size.price)}"></label>`).join("") + `<label>Precio extra REF<input data-builder-field="extraPrice" type="number" min="0" step=".01" value="${builder.extraPrice}"></label>`;
     const builderMode = availabilityModeFor(builder);
     const availability = builder.visible === false ? "Oculto" : builderMode === "preorder" ? "Preordenar · 2 días" : builderMode === "sold-out" ? "Agotado" : "Disponible hoy";
     const flavorRows = builder.flavors.map((flavor,index) => {
@@ -1721,6 +1892,7 @@
   function openFlavor(kind,index) {
     const flavor = Number.isInteger(index) ? state.builders[kind].flavors[index] : {name:"",ingredients:"",image:"",availabilityMode:"available",status:"available"};
     const form = $("#flavorForm");
+    resetFormImageUpload(form);
     form.elements.builder.value = kind;
     form.elements.index.value = Number.isInteger(index) ? index : "";
     ["name","ingredients","image"].forEach(field => { form.elements[field].value = flavor[field] || ""; });
@@ -1836,7 +2008,15 @@
   document.addEventListener("click", event => { if (!event.target.closest("#adminMenu") && !event.target.closest("#adminMenuButton")) closeAdminMenu(); });
   ["#loginUsername", "#loginPassword"].forEach(selector => $(selector).addEventListener("keydown", event => { if (event.key === "Enter") $("#loginButton").click(); }));
   $("#logoutButton").addEventListener("click", async () => {
-    if (!localMode) await apiFetch("/v1/auth/logout", {method:"POST",body:"{}"}).catch(() => {});
+    if (inventoryPending.size || savingCatalog) return toast("Espera a que termine el guardado antes de cerrar sesión.");
+    if ((dirty || inventoryDrafts.size) && !confirm("Hay cambios sin guardar. ¿Descartarlos y cerrar sesión?")) return;
+    try { if (!localMode) await apiFetch("/v1/auth/logout", {method:"POST",body:"{}"}); }
+    catch(error) { toast(error.message || "No se pudo cerrar la sesión. Vuelve a intentarlo."); return; }
+    inventoryDrafts.clear();
+    ++inventoryRequest;
+    inventoryDraftUser = "";
+    currentSession = null;
+    dirty = false;
     showLogin("Sesión cerrada.");
   });
   $("#newUserForm").addEventListener("submit", async event => {
@@ -1936,32 +2116,33 @@
     image.dataset.fallbackApplied="true";image.classList.add("is-fallback");image.src=image.dataset.fallbackSrc||FALLBACK_IMAGE;
   },true);
   $("#customersList").addEventListener("toggle",event=>{const row=event.target.closest?.(".customer-row");if(row?.open)loadCustomerDetail(row.dataset.customerId);},true);
-  $("#inventoryList").addEventListener("input", event => {
-    const input=event.target.closest("[data-stock-value]");
-    if(!input || input.value === "") return;
-    const row=input.closest("[data-sku]");
-    const control=$("[data-track-stock]",row);
-    if(control) control.checked=true;
-  });
+  ["input", "change"].forEach(name => $("#inventoryList").addEventListener(name, event => {
+    if (!event.target.matches("[data-stock-value], [data-track-stock]")) return;
+    rememberInventoryDraft(event.target.closest("[data-sku]"));
+  }));
   $("#inventoryList").addEventListener("click", async event => {
     const deltaButton=event.target.closest("[data-stock-delta]");
     const button=event.target.closest("[data-save-stock]") || deltaButton;
     if (!button) return;
     const row=button.closest("[data-sku]");
-    if(row.dataset.saving)return;
+    const sku=row.dataset.sku;
+    if(inventoryPending.has(sku))return;
     const input=$("[data-stock-value]",row);
     const delta=Number(deltaButton?.dataset.stockDelta||0);
     if(deltaButton) input.value=String(Math.max(Number(input.min||0),Number(input.value||0)+delta));
     const onHand=Number(input.value);
     const minimum=Number(input.min||0);
-    if(!Number.isInteger(onHand)||onHand<minimum){
-      toast(minimum>0?`La cantidad debe ser un número entero igual o mayor que ${minimum}, porque hay unidades reservadas.`:"Escribe una cantidad entera igual o mayor que cero.");
+    rememberInventoryDraft(row);
+    if(input.value === "" || !Number.isInteger(onHand)||onHand<minimum||onHand>100000){
+      toast(minimum>0?`La cantidad debe ser un número entero entre ${minimum} y 100000, porque hay unidades reservadas.`:"Escribe una cantidad entera entre cero y 100000.");
       input.focus();
       return;
     }
-    const payload={onHand,trackStock:onHand>0 || $("[data-track-stock]",row).checked};
-    const controls=$$("input,button",row).map(element=>({element,disabled:element.disabled}));
-    row.dataset.saving="true";controls.forEach(({element})=>{element.disabled=true;});
+    const baseline=inventoryDrafts.get(sku)?.baseline || inventory.find(item=>item.sku===sku);
+    const payload={onHand,trackStock:onHand>0 || $("[data-track-stock]",row).checked,expectedOnHand:baseline.onHand,expectedTrackStock:baseline.trackStock,...(baseline.updatedAt != null ? {expectedUpdatedAt:baseline.updatedAt} : {})};
+    inventoryPending.add(sku);
+    ++inventoryRequest;
+    syncInventoryControls(row);
     try {
       if (localMode) {
         const item=inventory.find(entry=>entry.sku===row.dataset.sku);
@@ -1982,11 +2163,26 @@
           localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
           inventorySummary=calculateInventorySummary();
         }
-      } else await apiFetch(`/v1/admin/inventory/${encodeURIComponent(row.dataset.sku)}`,{method:"PUT",body:JSON.stringify({...payload,note:deltaButton?`Ajuste rápido ${delta>0?"+":""}${delta}`:"Cantidad escrita manualmente desde el panel"})});
+      } else {
+        const result=await apiFetch(`/v1/admin/inventory/${encodeURIComponent(sku)}`,{method:"PUT",body:JSON.stringify({...payload,note:deltaButton?`Ajuste rápido ${delta>0?"+":""}${delta}`:"Cantidad escrita manualmente desde el panel"})});
+        const item=inventory.find(entry=>entry.sku===sku);
+        if(item) Object.assign(item,{onHand,trackStock:payload.trackStock,available:Math.max(0,onHand-Number(item.reserved||0))},result);
+        inventorySummary=calculateInventorySummary();
+      }
+      inventoryDrafts.delete(sku);
+      if(!localMode){renderInventory();renderDashboardOperations();}
       toast(deltaButton?(delta>0?"Se sumó una unidad.":"Se restó una unidad."):"Cantidad actualizada para todos los clientes.");
       if(localMode){renderInventory();renderDashboardOperations();renderBuilder("fonkies");renderBuilder("fomb");}else await Promise.all([loadInventory(),loadActivity()]);
-    } catch(error){toast(error.message||"No se pudo actualizar la cantidad.");}
-    finally{delete row.dataset.saving;controls.forEach(({element,disabled})=>{element.disabled=disabled;});}
+    } catch(error){
+      if(error.status===409){
+        await loadInventory();
+        const latest=inventory.find(item=>item.sku===sku);
+        const draft=inventoryDrafts.get(sku);
+        if(latest && draft) draft.baseline={onHand:latest.onHand,trackStock:latest.trackStock,updatedAt:latest.updatedAt};
+        toast(`El inventario cambió en otro dispositivo${latest ? `: ahora hay ${latest.onHand} unidades` : ""}. Conservamos tu cantidad escrita; revísala antes de volver a guardar.`);
+      } else toast(error.message||"No se pudo actualizar la cantidad.");
+    }
+    finally{inventoryPending.delete(sku);$$("#inventoryList [data-sku]").filter(item=>item.dataset.sku===sku).forEach(syncInventoryControls);}
   });
   function paymentPayloadFromForm() {
     const form=$("#paymentForm");
@@ -2184,6 +2380,7 @@
   $("#productForm").addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
+    if (formImageUploads.get(form)?.pending) return toast("Espera a que termine de subir la imagen antes de guardar.");
     const data = new FormData(form);
     const originalId = data.get("originalId");
     const id = String(data.get("id")).trim();
@@ -2191,10 +2388,14 @@
     if (duplicate) return toast("Ya existe un producto con ese identificador");
     const weight = productWeightFromForm(form);
     if (weight.error) return toast(weight.error);
+    let variants, sizes;
+    try { variants = parseVariants(String(data.get("variants") || "")); sizes = parseSizes(String(data.get("sizes") || "")); }
+    catch(error) { toast(error.message); return; }
     const availability = availabilityFields(String(data.get("availabilityMode")));
     const product = {
-      id,name:String(data.get("name")).trim(),brand:String(data.get("brand") || "").trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:weight.value,availabilityLabel:String(data.get("availabilityLabel")).trim(),...availability,stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants:parseVariants(String(data.get("variants") || "")),sizes:parseSizes(String(data.get("sizes") || ""))
+      id,name:String(data.get("name")).trim(),brand:String(data.get("brand") || "").trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:weight.value,availabilityLabel:String(data.get("availabilityLabel")).trim(),...availability,stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants,sizes
     };
+    try { validateCatalogDraft({products:[product],builders:{}}); } catch(error) { toast(error.message); return; }
     const index = state.products.findIndex(item => item.id === originalId);
     if (index >= 0) state.products[index] = product; else state.products.push(product);
     markDirty();
@@ -2209,15 +2410,7 @@
     }
   }));
 
-  $("#productImageInput").addEventListener("change", async event => {
-    try {
-      const imageUrl = await uploadImage(event.target.files[0]);
-      if (!imageUrl) return;
-      $("#productForm").elements.image.value = imageUrl;
-      $("#productImagePreview").style.backgroundImage = `url("${imageUrl}")`;
-      toast(localMode ? "Imagen optimizada" : "Imagen optimizada y subida");
-    } catch { toast("No se pudo subir la imagen. Usa JPG, PNG o WebP de menos de 1,5 MB."); }
-  });
+  $("#productImageInput").addEventListener("change", event => uploadFormImage(event.currentTarget, "#productImagePreview", "No se pudo subir la imagen. Usa JPG, PNG o WebP de menos de 1,5 MB.", true));
 
   ["fonkiesEditor","fombEditor"].forEach(id => $(`#${id}`).addEventListener("click", event => {
     const openInventory = event.target.closest("[data-builder-inventory]");
@@ -2244,11 +2437,11 @@
       markDirty();
     } else if (event.target.dataset.builderField) {
       const field = event.target.dataset.builderField;
-      builder[field] = event.target.type === "checkbox" ? event.target.checked : event.target.type === "number" ? Number(event.target.value) : event.target.value;
+      builder[field] = event.target.type === "checkbox" ? event.target.checked : event.target.type === "number" && event.target.value !== "" ? Number(event.target.value) : event.target.value;
       markDirty();
     }
     if (event.target.dataset.builderSize) {
-      builder.sizes[Number(event.target.dataset.builderSize)][event.target.dataset.sizeField] = Number(event.target.value);
+      builder.sizes[Number(event.target.dataset.builderSize)][event.target.dataset.sizeField] = event.target.value === "" ? "" : Number(event.target.value);
       markDirty();
     }
   }));
@@ -2256,6 +2449,7 @@
   $("#flavorForm").addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
+    if (formImageUploads.get(form)?.pending) return toast("Espera a que termine de subir la imagen antes de guardar.");
     const data = new FormData(form);
     const kind = data.get("builder");
     const index = data.get("index") === "" ? -1 : Number(data.get("index"));
@@ -2276,14 +2470,7 @@
     $("#flavorDialog").close();
   });
 
-  $("#flavorImageInput").addEventListener("change", async event => {
-    try {
-      const imageUrl = await uploadImage(event.target.files[0]);
-      if (!imageUrl) return;
-      $("#flavorForm").elements.image.value = imageUrl;
-      $("#flavorImagePreview").style.backgroundImage = `url("${imageUrl}")`;
-    } catch { toast("No se pudo subir la imagen."); }
-  });
+  $("#flavorImageInput").addEventListener("change", event => uploadFormImage(event.currentTarget, "#flavorImagePreview", "No se pudo subir la imagen."));
 
   $$("[data-quick]").forEach(button => button.addEventListener("click", () => {
     openProductFilter(button.dataset.quick);
@@ -2299,16 +2486,21 @@
   });
 
   $("#importInput").addEventListener("change", async event => {
+    const file = event.target.files[0];
+    if (!file) return;
     try {
-      const imported = JSON.parse(await event.target.files[0].text());
-      if (!Array.isArray(imported?.products) || !imported.builders) throw new Error();
-      state = normalizeState(imported);
+      const imported = JSON.parse(await file.text());
+      validateCatalogDraft(imported);
+      const candidate = normalizeState(imported);
+      validateCatalogDraft(candidate);
+      const previous = state;
+      state = candidate;
+      try { renderAll(); } catch(error) { state = previous; renderAll(); throw error; }
       markDirty();
-      renderAll();
       toast("Copia cargada. Revisa y guarda los cambios.");
     } catch {
       toast("Ese archivo no es una copia válida de Fontana");
-    }
+    } finally { event.target.value = ""; }
   });
 
   $("#resetButton").addEventListener("click", () => {
@@ -2321,7 +2513,7 @@
   });
 
   window.addEventListener("beforeunload", event => {
-    if (!dirty) return;
+    if (!dirty && !inventoryDrafts.size && !inventoryPending.size) return;
     event.preventDefault();
   });
 

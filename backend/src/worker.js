@@ -428,7 +428,9 @@ export function resolveReservationCart(state, requestedItems, operations) {
       const sku = ["product", product.id, size ? stockSlug(size.name) : "base", variant ? stockSlug(variant.name) : "base"].join(":");
       const definition = definitionMap.get(sku);
       if (!definition) throw new Error("invalid_product");
-      const unitPriceCents = Math.round(Number(size?.price ?? product.price) * 100);
+      const price = catalogProductPrice(product, definition);
+      if (!Number.isFinite(price) || price < 0) throw new Error("invalid_product");
+      const unitPriceCents = Math.round(price * 100);
       const optionSummary = [size?.name, variant?.name, preorder ? "PRE-ORDER" : ""].filter(Boolean).join(" · ");
       snapshotItems.push({kind,productId:product.id,name:product.name,quantity,unitPriceCents,optionSummary,imageUrl:snapshotImageUrl(product.image),size:size?.name||"",variant:variant?.name||"",preorder});
       if (!preorder) addDemand(definition, quantity);
@@ -469,10 +471,10 @@ export function resolveReservationCart(state, requestedItems, operations) {
     let boxSize = 0;
     let extraCount = 0;
     if (kind === "fonkies") {
-      const minimum = Math.max(1, Number(builder.minimumQuantity || 4));
+      const minimum = Math.max(1, Number(builder.minimumQuantity ?? 4));
       if (selectedTotal < minimum) throw new Error("invalid_quantity");
-      const base = resolvedFlavors.length === 1 ? Number(builder.singlePrice || 15) : Number(builder.mixedPrice || 17);
-      unitPriceCents = Math.round((base + Math.max(0, selectedTotal - minimum) * Number(builder.extraPrice || 3.5)) * 100);
+      const base = resolvedFlavors.length === 1 ? Number(builder.singlePrice ?? 15) : Number(builder.mixedPrice ?? 17);
+      unitPriceCents = Math.round((base + Math.max(0, selectedTotal - minimum) * Number(builder.extraPrice ?? 3.5)) * 100);
     } else {
       const pricing = resolveFombPricing(builder, selectedTotal);
       if (!pricing || pricing.extraCount > 100) throw new Error("invalid_quantity");
@@ -942,25 +944,39 @@ async function updateInventory(request, env, url) {
   if (session instanceof Response) return session;
   const sku = decodeURIComponent(url.pathname.slice("/v1/admin/inventory/".length));
   if (!sku || sku.length > 240) return json({error:"Artículo de inventario inválido"},400);
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({error:"Indica una cantidad válida"},400);
+  const validQuantity = value => (typeof value === "number" || (typeof value === "string" && /^\d+$/.test(value.trim()))) && Number.isSafeInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 100000;
+  if (!validQuantity(body.onHand)) return json({error:"Indica una cantidad válida; usa 0 solo si no quedan unidades."},400);
   const onHand = Number(body.onHand);
   // Una cantidad positiva siempre representa inventario real. Evita que una
   // omisión accidental del switch deje existencias visibles pero sin límite.
-  const trackStock = Boolean(body.trackStock) || onHand > 0;
-  if (!Number.isInteger(onHand) || onHand < 0 || onHand > 100000) return json({error:"Indica una cantidad válida"},400);
-  const current = await env.DB.prepare("SELECT on_hand AS onHand, reserved, track_stock AS trackStock, label, option_summary AS optionSummary FROM inventory_items WHERE sku = ? AND active = 1").bind(sku).first();
+  if (body.trackStock !== undefined && typeof body.trackStock !== "boolean") return json({error:"El estado del control de inventario no es válido."},400);
+  const trackStock = body.trackStock === true || onHand > 0;
+  if (body.expectedOnHand !== undefined && !validQuantity(body.expectedOnHand)) return json({error:"La cantidad anterior de inventario no es válida."},400);
+  if (body.expectedTrackStock !== undefined && typeof body.expectedTrackStock !== "boolean") return json({error:"El estado anterior del control no es válido."},400);
+  if (body.expectedUpdatedAt !== undefined && (typeof body.expectedUpdatedAt !== "string" || !body.expectedUpdatedAt.trim())) return json({error:"La fecha anterior del inventario no es válida."},400);
+  const current = await env.DB.prepare("SELECT on_hand AS onHand, reserved, track_stock AS trackStock, label, option_summary AS optionSummary, updated_at AS updatedAt FROM inventory_items WHERE sku = ? AND active = 1").bind(sku).first();
   if (!current) return json({error:"Artículo de inventario no encontrado"},404);
+  if ((body.expectedOnHand !== undefined && Number(body.expectedOnHand) !== Number(current.onHand))
+    || (body.expectedTrackStock !== undefined && body.expectedTrackStock !== Boolean(current.trackStock))
+    || (body.expectedUpdatedAt !== undefined && body.expectedUpdatedAt !== current.updatedAt)) return staleStateResponse();
   if (onHand < Number(current.reserved||0)) return json({error:`No puedes bajar de ${current.reserved}: esas unidades están reservadas.`},409);
   if (!trackStock && Number(current.reserved||0)>0) return json({error:"Confirma o cancela las reservas antes de desactivar el control."},409);
-  const now = new Date().toISOString();
+  // Even two adjustments in the same millisecond must produce distinct tokens.
+  const now = new Date(Math.max(Date.now(), (Date.parse(current.updatedAt) || 0) + 1)).toISOString();
   const note = String(body.note||"Ajuste manual desde el panel").trim().slice(0,300);
   const delta = onHand-Number(current.onHand||0);
-  await env.DB.batch([
-    env.DB.prepare("UPDATE inventory_items SET on_hand = ?, track_stock = ?, updated_by = ?, updated_at = ? WHERE sku = ?").bind(onHand,trackStock?1:0,session.username,now,sku),
-    env.DB.prepare("INSERT INTO inventory_movements (sku, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) VALUES (?, 'adjustment', ?, 0, ?, ?, ?)").bind(sku,delta,note,session.username,now),
-    env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) VALUES (?, 'inventory_adjust', ?, ?)").bind(session.username,`${current.label}${current.optionSummary?` · ${current.optionSummary}`:""}: ${onHand}${trackStock?"":" (sin control)"}`,now)
+  // Compare and swap inside one transaction: a concurrent sale, reservation or
+  // adjustment may not be overwritten, nor leave a fictitious movement behind.
+  const results = await env.DB.batch([
+    env.DB.prepare("UPDATE inventory_items SET on_hand = ?, track_stock = ?, updated_by = ?, updated_at = ? WHERE sku = ? AND active = 1 AND on_hand = ? AND reserved = ? AND track_stock = ? AND updated_at = ?")
+      .bind(onHand,trackStock?1:0,session.username,now,sku,current.onHand,current.reserved,current.trackStock,current.updatedAt),
+    env.DB.prepare("INSERT INTO inventory_movements (sku, movement_type, delta_on_hand, delta_reserved, note, actor, created_at) SELECT ?, 'adjustment', ?, 0, ?, ?, ? WHERE changes() = 1").bind(sku,delta,note,session.username,now),
+    env.DB.prepare("INSERT INTO audit_log (username, action, details, created_at) SELECT ?, 'inventory_adjust', ?, ? WHERE changes() = 1").bind(session.username,`${current.label}${current.optionSummary?` · ${current.optionSummary}`:""}: ${onHand}${trackStock?"":" (sin control)"}`,now)
   ]);
-  return json({ok:true,sku,onHand,reserved:Number(current.reserved||0),available:onHand-Number(current.reserved||0),trackStock});
+  if (Number(results[0]?.meta?.changes || 0) !== 1) return staleStateResponse();
+  return json({ok:true,sku,onHand,reserved:Number(current.reserved||0),available:onHand-Number(current.reserved||0),trackStock,updatedAt:now});
 }
 
 async function expireReservations(env) {
@@ -1178,7 +1194,7 @@ async function putCatalog(request, env) {
   if (encoder.encode(raw).byteLength > MAX_CATALOG_BYTES) return json({ error: "El catálogo supera el tamaño permitido" }, 413);
   let payload;
   try { payload = JSON.parse(raw); } catch { return json({ error: "Catálogo inválido" }, 400); }
-  const validationError = validateCatalog(payload.state);
+  const validationError = validateCatalog(payload?.state);
   if (validationError) return json({ error: validationError }, 400);
   const existing = await env.DB.prepare("SELECT state_json AS stateJson, revision FROM catalog_state WHERE id = 'published'").first();
   const expectedRevision = Number(payload.expectedRevision);
@@ -1627,7 +1643,8 @@ async function getCustomer(request,env,url) {
 
 function catalogProductPrice(product,definition) {
   const size=(product?.sizes||[]).find(option=>option.name===definition?.sizeName)||null;
-  return Number(size?.price??product?.price);
+  const price = size ? size.price : product?.price;
+  return price === null || price === undefined || price === "" ? NaN : Number(price);
 }
 
 function builderFlavorForDefinition(state,definition) {
@@ -2161,16 +2178,56 @@ function exactArrayBuffer(value) {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
-function validateCatalog(state) {
-  if (!state || typeof state !== "object" || !Array.isArray(state.products) || !state.builders) return "Falta la estructura del catálogo";
+function catalogRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function validCatalogPrice(value, { nullable = false, optional = false } = {}) {
+  if (value === undefined) return optional;
+  if (value === null) return nullable;
+  if (typeof value !== "number" && !(typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim()))) return false;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 && Number.isSafeInteger(Math.round(number * 100));
+}
+
+function validCatalogStock(value) {
+  return value === undefined || value === null || (validCatalogPrice(value) && Number.isSafeInteger(Number(value)) && Number(value) <= 100000);
+}
+
+function catalogOptionError(options, label, { prices = false } = {}) {
+  if (options === undefined) return "";
+  if (!Array.isArray(options) || options.length > 500) return `La lista de ${label} no es válida`;
+  const keys = new Set();
+  for (const option of options) {
+    if (!catalogRecord(option) || typeof option.name !== "string" || !option.name.trim()) return `Cada opción de ${label} necesita nombre`;
+    const key = stockSlug(option.name);
+    if (keys.has(key)) return `Hay nombres de ${label} repetidos o indistinguibles para el inventario`;
+    keys.add(key);
+    if (prices && !validCatalogPrice(option.price, { nullable: true })) return `El precio de ${option.name} no es válido; debe ser cero o mayor, o null si falta confirmar`;
+    if (!validCatalogStock(option.stockQuantity)) return `El inventario de ${option.name} debe ser un entero entre 0 y 100000, o null si no se controla`;
+    if (option.status !== undefined && !["available", "sold-out"].includes(option.status)) return `El estado de ${option.name} no es válido`;
+  }
+  return "";
+}
+
+export function validateCatalog(state) {
+  if (!catalogRecord(state) || !Array.isArray(state.products) || !catalogRecord(state.builders)) return "Falta la estructura del catálogo";
+  if (state.settings !== undefined && !catalogRecord(state.settings)) return "La configuración del catálogo no es válida";
   if (state.products.length > 500) return "El catálogo supera 500 productos";
   const ids = new Set();
   for (const product of state.products) {
-    if (!product || typeof product !== "object") return "Hay un producto inválido";
+    if (!catalogRecord(product)) return "Hay un producto inválido";
     if (!/^[a-z0-9-]{1,80}$/.test(String(product.id || ""))) return "Todos los productos necesitan un identificador válido";
     if (ids.has(product.id)) return `El identificador ${product.id} está repetido`;
     ids.add(product.id);
-    if (!String(product.name || "").trim()) return `El producto ${product.id} no tiene nombre`;
+    if (typeof product.name !== "string" || !product.name.trim()) return `El producto ${product.id} no tiene nombre`;
+    if (!validCatalogPrice(product.price, { nullable: true, optional: true })) return `El precio de ${product.name} no es válido; debe ser cero o mayor, o null si falta confirmar`;
+    if (!validCatalogStock(product.stockQuantity)) return `El inventario de ${product.name} debe ser un entero entre 0 y 100000, o null si no se controla`;
+    const sizesError = catalogOptionError(product.sizes, `presentaciones de ${product.name}`, { prices: true });
+    if (sizesError) return sizesError;
+    const variantsError = catalogOptionError(product.variants, `variantes de ${product.name}`);
+    if (variantsError) return variantsError;
+    if (product.status !== undefined && !["available", "sold-out"].includes(product.status)) return `El estado de ${product.id} no es válido`;
     if (product.availabilityMode !== undefined && !["available", "preorder", "sold-out"].includes(product.availabilityMode)) return `La disponibilidad de ${product.id} no es válida`;
     if (product.availabilityMode === "available" && (product.status !== "available" || product.allowPreorder === true || product.immediate !== true)) return `La disponibilidad de ${product.id} no está sincronizada`;
     if (product.availabilityMode === "preorder" && (product.status !== "sold-out" || product.allowPreorder !== true || Number(product.minimumBusinessDays) !== 2)) return `La preventa de ${product.id} no está sincronizada`;
@@ -2179,19 +2236,39 @@ function validateCatalog(state) {
   }
   for (const kind of ["fonkies", "fomb"]) {
     const builder = state.builders[kind];
-    if (!builder) continue;
+    if (builder === undefined) continue;
+    if (!catalogRecord(builder)) return `La estructura de ${kind} no es válida`;
+    const identityError = validateBuilderInventoryIdentity(kind, builder);
+    if (identityError) return identityError;
+    if (builder.flavors.length > 500) return `La lista de sabores de ${kind} es demasiado larga`;
+    for (const field of ["singlePrice", "mixedPrice", "extraPrice"]) {
+      if (!validCatalogPrice(builder[field], { optional: true })) return `El precio ${field} de ${kind} no es válido; debe ser cero o mayor`;
+    }
+    if (builder.minimumQuantity !== undefined && (!validCatalogPrice(builder.minimumQuantity) || !Number.isSafeInteger(Number(builder.minimumQuantity)) || Number(builder.minimumQuantity) < 1 || Number(builder.minimumQuantity) > 1000)) return `El mínimo de ${kind} debe ser un entero positivo de hasta 1000 unidades`;
+    if (builder.sizes !== undefined) {
+      if (!Array.isArray(builder.sizes) || !builder.sizes.length || builder.sizes.length > 100) return `Las presentaciones de ${kind} no son válidas`;
+      const quantities = new Set();
+      for (const size of builder.sizes) {
+        if (!catalogRecord(size) || !validCatalogPrice(size.quantity) || !Number.isSafeInteger(Number(size.quantity)) || Number(size.quantity) < 1 || Number(size.quantity) > 1000) return `Las presentaciones de ${kind} necesitan una cantidad entera positiva`;
+        if (quantities.has(Number(size.quantity))) return `Hay cantidades de presentación repetidas en ${kind}`;
+        quantities.add(Number(size.quantity));
+        if (!validCatalogPrice(size.price)) return `El precio de la caja de ${size.quantity} ${kind} no es válido; debe ser cero o mayor`;
+      }
+    }
+    if (builder.status !== undefined && !["available", "sold-out"].includes(builder.status)) return `El estado de ${kind} no es válido`;
     if (builder.availabilityMode !== undefined && !["available", "preorder", "sold-out"].includes(builder.availabilityMode)) return `La disponibilidad de ${kind} no es válida`;
     if (builder.availabilityMode === "available" && (builder.status !== "available" || builder.allowPreorder === true || builder.immediate !== true)) return `La disponibilidad de ${kind} no está sincronizada`;
     if (builder.availabilityMode === "preorder" && (builder.status !== "sold-out" || builder.allowPreorder !== true || Number(builder.minimumBusinessDays) !== 2)) return `La preventa de ${kind} no está sincronizada`;
     if (builder.availabilityMode === "sold-out" && (builder.status !== "sold-out" || builder.allowPreorder === true)) return `El estado agotado de ${kind} no está sincronizado`;
     for (const flavor of builder.flavors || []) {
+      if (!catalogRecord(flavor) || typeof flavor.name !== "string") return `Hay un sabor inválido en ${kind}`;
+      if (!validCatalogStock(flavor.stockQuantity)) return `El inventario de ${flavor.name} debe ser un entero entre 0 y 100000, o null si no se controla`;
+      if (flavor.status !== undefined && !["available", "sold-out"].includes(flavor.status)) return `El estado de ${flavor.name} no es válido`;
       if (flavor.availabilityMode !== undefined && !["available", "preorder", "sold-out"].includes(flavor.availabilityMode)) return `La disponibilidad de ${flavor.name || "un sabor"} no es válida`;
       if (flavor.availabilityMode === "available" && (flavor.status !== "available" || flavor.allowPreorder === true || flavor.immediate !== true)) return `La disponibilidad de ${flavor.name || "un sabor"} no está sincronizada`;
       if (flavor.availabilityMode === "preorder" && (flavor.status !== "sold-out" || flavor.allowPreorder !== true || Number(flavor.minimumBusinessDays) !== 2)) return `La preventa de ${flavor.name || "un sabor"} no está sincronizada`;
       if (flavor.availabilityMode === "sold-out" && (flavor.status !== "sold-out" || flavor.allowPreorder === true)) return `El estado agotado de ${flavor.name || "un sabor"} no está sincronizado`;
     }
-    const identityError = validateBuilderInventoryIdentity(kind, builder);
-    if (identityError) return identityError;
   }
   return "";
 }

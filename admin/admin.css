@@ -3,6 +3,10 @@
 .toast.dialog-feedback{position:relative;inset:auto;flex:none;width:100%;max-width:none;margin:8px 0;padding:12px 14px;max-height:25dvh;overflow:auto;pointer-events:auto;font-size:.85rem;line-height:1.4;outline-offset:2px}
 .accounting-range label{min-width:0}
 .accounting-range input[type="date"]{min-width:0;max-width:100%;width:100%}
+.inventory-row [data-stock-help]{display:block;margin-top:4px;color:var(--muted);font-size:.65rem;font-weight:500;line-height:1.4}
+.inventory-row [data-save-stock]{min-height:44px}
+.inventory-row .stock-stepper{grid-template-columns:44px minmax(44px,1fr) 44px}
+.inventory-row .stock-stepper button,.inventory-row .stock-stepper input{height:44px}
 /* Keep the native picker, with a consistent touch target in Safari as in Chrome. */
 body select:not([multiple]){appearance:none;min-height:44px;padding-right:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%236e236f' stroke-width='1.7'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:12px 8px}
 :root{--plum:#6e236f;--plum-dark:#4b164d;--purple:#561858;--lilac:#ead1eb;--paper:#f8f1f5;--acid:#bedc57;--ink:#271b28;--muted:#755f76;--line:rgba(87,24,89,.15);--white:#fff;--shadow:0 22px 60px rgba(75,22,77,.14)}

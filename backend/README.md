@@ -91,3 +91,7 @@ La tienda mantiene `config.js` como respaldo si la API no está disponible. En p
 4. Entrar en `https://fontanasingluten.com/admin/`, revisar el catálogo inicial y pulsar **Guardar y publicar**.
 
 El catálogo usa revisiones para impedir que dos dispositivos sobrescriban silenciosamente cambios simultáneos. Si ocurre, el panel pide recargar antes de guardar.
+
+Los ajustes de inventario del panel envían `expectedUpdatedAt`, `expectedOnHand` y `expectedTrackStock`. El Worker comprueba esas condiciones y aplica el cambio junto con su movimiento y auditoría en una transacción; un conflicto devuelve `409` / `stale_state`. Los clientes antiguos pueden omitir las condiciones, pero conservan la comprobación atómica contra cambios durante la petición. Las cantidades deben ser enteros de 0 a 100000; un campo vacío no equivale a cero.
+
+El catálogo rechaza importes negativos, vacíos o no finitos y estructuras inválidas antes de persistir. Un precio cero explícito se conserva; `null` en productos o presentaciones significa precio por confirmar. Las correcciones de código que no cambian el esquema no necesitan migraciones, recrear usuarios ni volver a publicar el catálogo comercial.
