@@ -544,6 +544,9 @@
       inventory_adjust:["Inventario ajustado","inventory"], order_confirm:["Pedido confirmado","orders"], order_cancel:["Pedido cancelado","orders"],
       sale_create:["Venta registrada","sales"], sale_update:["Venta actualizada","sales"], sale_void:["Venta anulada","sales"], sale_delete:["Venta anulada","sales"],
       payment_confirm:["Pago confirmado","sales"], customer_upsert:["Cliente actualizado","sales"], expense_create:["Gasto registrado","sales"], expense_void:["Gasto anulado","sales"], exchange_rate_refresh:["Tasa BCV actualizada","sales"],
+      bcv_refresh:["Tasa BCV actualizada","sales"], exchange_rate_manual:["Tasa manual registrada","sales"],
+      order_confirm_payment:["Pedido confirmado con pago","orders"], order_extend:["Reserva ampliada","orders"],
+      sale_payment:["Abono registrado","sales"], sale_update_pending:["Venta pendiente actualizada","sales"], sale_create_legacy:["Venta registrada","sales"],
       login:["Inicio de sesión","security"], passkey_login:["Acceso con Face ID","security"], passkey_add:["Face ID activado","security"], passkey_delete:["Face ID eliminado","security"], user_create:["Usuario creado","security"], user_deactivate:["Usuario desactivado","security"], setup:["Panel configurado","security"], electricity_state:["Estado de electricidad","catalog"]
     };
     return groups[action] || [String(action || "Cambio").replaceAll("_"," "),"other"];
@@ -577,11 +580,16 @@
 
   function activityRow(item, compact = false) {
     const [label,group] = activityMeta(item.action);
-    const dateOptions = compact ? {timeStyle:"short"} : {dateStyle:"medium",timeStyle:"short"};
-    const date = item.createdAt ? new Date(item.createdAt).toLocaleString("es-VE",dateOptions) : "Fecha no disponible";
+    const dateOptions = {timeZone:"America/Caracas",...(compact ? {timeStyle:"short"} : {dateStyle:"medium",timeStyle:"short"})};
+    // D1 activity rows use created_at; local drafts use createdAt.
+    const timestamp = item.createdAt ?? item.created_at;
+    const parsedDate = timestamp ? new Date(timestamp) : null;
+    const date = parsedDate && Number.isFinite(parsedDate.getTime())
+      ? `<time datetime="${escapeHtml(parsedDate.toISOString())}">${escapeHtml(parsedDate.toLocaleString("es-VE",dateOptions))}</time>`
+      : "Fecha no disponible";
     const product = productFromReference({...item,name:item.productName || item.details});
     const media = product ? productThumb(product,product.name || "Producto relacionado") : `<span class="activity-dot ${escapeHtml(group)}"></span>`;
-    return `<article class="activity-row ${compact ? "compact-activity" : ""} ${product ? "has-product-image" : ""}">${media}<div><h3>${escapeHtml(label)}</h3><p>${escapeHtml(visibleActivityDetails(item.details))}</p><small>${escapeHtml(item.username || "sistema")} · ${escapeHtml(date)}</small></div></article>`;
+    return `<article class="activity-row ${compact ? "compact-activity" : ""} ${product ? "has-product-image" : ""}">${media}<div><h3>${escapeHtml(label)}</h3><p>${escapeHtml(visibleActivityDetails(item.details))}</p><small>${escapeHtml(item.username || "sistema")} · ${date}</small></div></article>`;
   }
 
   function renderActivity() {

@@ -34,6 +34,7 @@ async function panel(page, settings = {}) {
     if(path==='/v1/admin/inventory')return send({items:settings.inventory||[],summary:{}});
     if(path==='/v1/admin/users')return send({items:[{username:'audit',displayName:'Auditoría',active:1,role:settings.role||'owner'}],currentUser:'audit',canManageUsers:settings.role!=='admin'});
     if(path==='/v1/admin/sales')return send({items:settings.sales||[],summary:{}});
+    if(path==='/v1/admin/activity')return send({items:settings.activity||[]});
     return send({items:[],summary:{}});
   });
   await page.goto(`${origin}/admin/`);
@@ -291,4 +292,57 @@ test('Administrador sin rol propietario no puede cargar tasas ni administrar usu
   await page.keyboard.press('Escape');
   await page.locator('#adminMenuButton').click();await page.locator('[data-menu-view="security"]').click();
   await expect(page.locator('#newUserForm')).toBeHidden();
+});
+
+test.describe('Historial con el contrato real del servidor',()=>{
+  test.use({timezoneId:'Asia/Tokyo'});
+  test('created_at muestra fecha y hora de Caracas en Historial y Resumen',async({page},testInfo)=>{
+    const timestamp='2026-09-06T02:04:00.000Z';
+    await panel(page,{activity:[
+      {username:'audit',action:'catalog_save',details:'Revisión de prueba',created_at:timestamp},
+      {username:'audit',action:'inventory_adjust',details:'Inventario de prueba',created_at:'2026-09-05T15:30:00.000Z'}
+    ]});
+    await expect(page.locator('#activity')).toContainText('Revisión de prueba');
+    await expect(page.locator('#activity')).not.toContainText('Fecha no disponible');
+    const expected=await page.evaluate(value=>({
+      short:new Date(value).toLocaleString('es-VE',{timeZone:'America/Caracas',timeStyle:'short'}),
+      full:new Date(value).toLocaleString('es-VE',{timeZone:'America/Caracas',dateStyle:'medium',timeStyle:'short'})
+    }),timestamp);
+    await expect(page.locator('#activity .activity-row').first()).toContainText(expected.short);
+    await page.locator('#adminMenuButton').click();await page.locator('[data-menu-view="activity-log"]').click();
+    await expect(page.locator('#activityList .activity-row').first()).toContainText(expected.full);
+    await expect(page.locator('#activityList time').first()).toHaveAttribute('datetime',timestamp);
+    for(const width of [390,1366]){
+      await page.setViewportSize({width,height:844});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await page.screenshot({path:testInfo.outputPath(`historial-${width}.png`)});
+    }
+  });
+
+  test('Historial admite fechas locales y no inventa fechas ausentes o inválidas',async({page})=>{
+    await panel(page,{activity:[
+      {action:'catalog_save',details:'Fecha local',createdAt:'2026-09-05T15:30:00.000Z'},
+      {action:'catalog_save',details:'Sin fecha'},
+      {action:'catalog_save',details:'Fecha inválida',created_at:'invalid-date'}
+    ]});
+    await page.locator('#adminMenuButton').click();await page.locator('[data-menu-view="activity-log"]').click();
+    const rows=page.locator('#activityList .activity-row');
+    await expect(rows.nth(0)).not.toContainText('Fecha no disponible');
+    await expect(rows.nth(1)).toContainText('Fecha no disponible');
+    await expect(rows.nth(2)).toContainText('Fecha no disponible');
+    await expect(page.locator('#activityList')).not.toContainText('Invalid Date');
+  });
+
+  test('Las acciones reales de pedidos y cobros tienen etiquetas y filtros correctos',async({page})=>{
+    const actions={bcv_refresh:'Tasa BCV actualizada',exchange_rate_manual:'Tasa manual registrada',
+      order_confirm_payment:'Pedido confirmado con pago',order_extend:'Reserva ampliada',
+      sale_payment:'Abono registrado',sale_update_pending:'Venta pendiente actualizada',sale_create_legacy:'Venta registrada'};
+    await panel(page,{activity:Object.keys(actions).map(action=>({action,details:'Prueba aislada',created_at:'2026-09-05T15:30:00.000Z'}))});
+    await page.locator('#adminMenuButton').click();await page.locator('[data-menu-view="activity-log"]').click();
+    for(const label of Object.values(actions))await expect(page.locator('#activityList')).toContainText(label);
+    await page.locator('#activityTypeFilter').selectOption('orders');
+    await expect(page.locator('#activityList .activity-row')).toHaveCount(2);
+    await page.locator('#activityTypeFilter').selectOption('sales');
+    await expect(page.locator('#activityList .activity-row')).toHaveCount(5);
+  });
 });
