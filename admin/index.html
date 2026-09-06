@@ -98,7 +98,7 @@
 
         <section class="view" data-panel="products">
           <div class="page-head"><div><span class="eyebrow">Catálogo</span><h1>Productos</h1><p>Edita el contenido que aparece en la tienda y en WhatsApp.</p></div><button class="primary" data-action="new-product">+ Nuevo producto</button></div>
-          <div class="toolbar"><input id="productSearch" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="bottega">Bottega</option><option value="snacks">Otros</option></select><select id="statusFilter"><option value="all">Todos los estados</option><option value="available">Disponibles hoy</option><option value="preorder">Para preordenar</option><option value="sold-out">Agotados</option><option value="hidden">Ocultos</option><option value="new">Nuevos</option><option value="promo">Promoción</option></select></div>
+          <div class="toolbar"><input id="productSearch" aria-label="Buscar productos" type="search" placeholder="Buscar por nombre o ingrediente"><select id="categoryFilter" aria-label="Filtrar categoría de productos"><option value="all">Todas las categorías</option><option value="cakes">Tortas completas</option><option value="salado">Salado</option><option value="beverages">Bebidas</option><option value="bottega">Bottega</option><option value="snacks">Otros</option></select><select id="statusFilter" aria-label="Filtrar estado de productos"><option value="all">Todos los estados</option><option value="available">Disponibles hoy</option><option value="preorder">Para preordenar</option><option value="sold-out">Agotados</option><option value="hidden">Ocultos</option><option value="new">Nuevos</option><option value="promo">Promoción</option></select></div>
           <div class="filter-summary" id="productFilterSummary" aria-live="polite"></div>
           <div class="product-list" id="productList"></div>
         </section>
@@ -116,28 +116,28 @@
         <section class="view" data-panel="inventory">
           <div class="page-head"><div><span class="eyebrow">Inventario central</span><h1>Inventario</h1><p>Este es el único lugar para cambiar cantidades. Fonkies y Fomb se cuentan por galleta o bombón individual, no por caja. La tienda no publica las cifras: solo comunica si hay entrega inmediata, Pre-Order o disponibilidad por confirmar.</p></div><button class="ghost" id="refreshInventoryButton" type="button">Actualizar</button></div>
           <div class="stats" id="inventoryStats"></div>
-          <div class="toolbar inventory-toolbar"><input id="inventorySearch" type="search" placeholder="Buscar producto, sabor o presentación"><select id="inventoryKindFilter"><option value="all">Todo el inventario</option><option value="product">Productos</option><option value="fonkies">Sabores Fonkies</option><option value="fomb">Sabores Fomb</option></select><select id="inventoryStateFilter"><option value="all">Todos los niveles</option><option value="low">Stock bajo</option><option value="soldout">Agotados</option><option value="reserved">Con reservas</option></select></div>
+          <div class="toolbar inventory-toolbar"><input id="inventorySearch" aria-label="Buscar inventario" type="search" placeholder="Buscar producto, sabor o presentación"><select id="inventoryKindFilter" aria-label="Filtrar tipo de inventario"><option value="all">Todo el inventario</option><option value="product">Productos</option><option value="fonkies">Sabores Fonkies</option><option value="fomb">Sabores Fomb</option></select><select id="inventoryStateFilter" aria-label="Filtrar nivel de inventario"><option value="all">Todos los niveles</option><option value="low">Stock bajo</option><option value="soldout">Agotados</option><option value="reserved">Con reservas</option></select></div>
           <div class="inventory-list" id="inventoryList"></div>
         </section>
 
         <section class="view" data-panel="orders">
           <div class="page-head"><div><span class="eyebrow">Reservas de 30 minutos</span><h1>Pedidos</h1><p>Confirma los pagados, cancela los abandonados o amplía una reserva si el cliente necesita tiempo.</p></div><button class="ghost" id="refreshOrdersButton" type="button">Actualizar</button></div>
           <div class="stats" id="orderStats"></div>
-          <div class="toolbar orders-toolbar"><input id="orderSearch" type="search" placeholder="Buscar código, cliente o teléfono"><select id="orderStatusFilter"><option value="active">Reservados activos</option><option value="all">Todos</option><option value="confirmed">Confirmados</option><option value="cancelled">Cancelados</option><option value="expired">Vencidos</option></select></div>
+          <div class="toolbar orders-toolbar"><input id="orderSearch" aria-label="Buscar pedidos" type="search" placeholder="Buscar código, cliente o teléfono"><select id="orderStatusFilter" aria-label="Filtrar estado de pedidos"><option value="active">Reservados activos</option><option value="all">Todos</option><option value="confirmed">Confirmados</option><option value="cancelled">Cancelados</option><option value="expired">Vencidos</option></select></div>
           <div class="orders-list" id="ordersList"></div>
         </section>
 
         <section class="view" data-panel="sales">
           <div class="page-head"><div><span class="eyebrow">Control de ingresos</span><h1>Ventas</h1><p>Registra lo vendido con sus productos, cliente, cobros y tasa utilizada. Los pedidos de WhatsApp no se cuentan hasta confirmar el pago.</p></div><button class="primary" id="newSaleButton" type="button">+ Registrar venta</button></div>
           <div class="stats sales-stats" id="salesStats"></div>
-          <div class="toolbar sales-toolbar"><input id="saleSearch" type="search" placeholder="Buscar cliente, producto o nota"><select id="saleStatusFilter"><option value="all">Todos los estados</option><option value="confirmed">Ventas confirmadas</option><option value="pending">Pendientes de cobro</option><option value="cancelled">Anuladas</option></select><select id="salePeriodFilter"><option value="all">Todo el historial</option><option value="today">Hoy</option><option value="month">Este mes</option><option value="year">Este año</option></select></div>
+          <div class="toolbar sales-toolbar"><input id="saleSearch" aria-label="Buscar ventas" type="search" placeholder="Buscar cliente, producto o nota"><select id="saleStatusFilter" aria-label="Filtrar estado de ventas"><option value="all">Todos los estados</option><option value="confirmed">Ventas confirmadas</option><option value="pending">Pendientes de cobro</option><option value="cancelled">Anuladas</option></select><select id="salePeriodFilter" aria-label="Filtrar período de ventas"><option value="all">Todo el historial</option><option value="today">Hoy</option><option value="month">Este mes</option><option value="year">Este año</option></select></div>
           <div class="sales-list" id="salesList"></div>
         </section>
 
         <section class="view" data-panel="customers">
           <div class="page-head"><div><span class="eyebrow">Relación con clientes</span><h1>Clientes</h1><p>Las compras confirmadas se agrupan por teléfono para identificar clientes recurrentes sin duplicarlos por nombre.</p></div><button class="ghost" id="refreshCustomersButton" type="button">Actualizar</button></div>
           <div class="stats" id="customerStats"></div>
-          <div class="toolbar customers-toolbar"><input id="customerSearch" type="search" placeholder="Buscar por nombre, teléfono o email"><select id="customerTypeFilter"><option value="all">Todos los clientes</option><option value="recurrent">Recurrentes</option><option value="new">Una compra</option><option value="balance">Con saldo pendiente</option></select></div>
+          <div class="toolbar customers-toolbar"><input id="customerSearch" aria-label="Buscar clientes" type="search" placeholder="Buscar por nombre, teléfono o email"><select id="customerTypeFilter" aria-label="Filtrar tipo de cliente"><option value="all">Todos los clientes</option><option value="recurrent">Recurrentes</option><option value="new">Una compra</option><option value="balance">Con saldo pendiente</option></select></div>
           <div class="customers-list" id="customersList"></div>
         </section>
 
@@ -196,14 +196,14 @@
 
         <section class="view" data-panel="activity-log">
           <div class="page-head"><div><span class="eyebrow">Trazabilidad</span><h1>Historial de cambios</h1><p>Consulta quién modificó el catálogo, el inventario, los pedidos, las ventas o los accesos.</p></div><button class="ghost" id="refreshActivityButton" type="button">Actualizar</button></div>
-          <div class="toolbar activity-toolbar"><input id="activitySearch" type="search" placeholder="Buscar usuario, acción o detalle"><select id="activityTypeFilter"><option value="all">Todas las acciones</option><option value="catalog">Catálogo</option><option value="inventory">Inventario</option><option value="orders">Pedidos</option><option value="sales">Ventas</option><option value="security">Seguridad</option></select></div>
+          <div class="toolbar activity-toolbar"><input id="activitySearch" aria-label="Buscar historial" type="search" placeholder="Buscar usuario, acción o detalle"><select id="activityTypeFilter" aria-label="Filtrar tipo de actividad"><option value="all">Todas las acciones</option><option value="catalog">Catálogo</option><option value="inventory">Inventario</option><option value="orders">Pedidos</option><option value="sales">Ventas</option><option value="security">Seguridad</option></select></div>
           <div class="activity-list" id="activityList"></div>
         </section>
       </main>
     </div>
   </div>
 
-  <dialog id="productDialog">
+  <dialog id="productDialog" aria-labelledby="dialogTitle">
     <form id="productForm" method="dialog">
       <div class="dialog-head"><div><span class="eyebrow">Producto</span><h2 id="dialogTitle">Nuevo producto</h2></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
       <input type="hidden" name="originalId">
@@ -251,7 +251,7 @@
       <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="saveProductButton" type="submit">Guardar producto</button></div>
     </form>
   </dialog>
-  <dialog id="flavorDialog">
+  <dialog id="flavorDialog" aria-labelledby="flavorDialogTitle">
     <form id="flavorForm" method="dialog">
       <div class="dialog-head"><div><span class="eyebrow">Sabor</span><h2 id="flavorDialogTitle">Editar sabor</h2></div><button class="icon-close" type="button" data-close-dialog aria-label="Cerrar">×</button></div>
       <input type="hidden" name="builder"><input type="hidden" name="index">

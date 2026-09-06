@@ -194,6 +194,7 @@
   let remoteRevision = 0;
   let pendingConfiguredProductCount = 0;
   let dirty = false;
+  let savingCatalog = false;
   let currentSession = null;
   let sales = [];
   let salesSummary = {todayCents:0,monthCents:0,yearCents:0,allCents:0,confirmedCount:0,pendingCount:0};
@@ -208,27 +209,35 @@
   let expenses = [];
   let accountingSummary = {collectedFunctionalCents:0,receivableFunctionalCents:0,cashInflowFunctionalCents:0,cashOutflowFunctionalCents:0,netCashFunctionalCents:0,expenseFunctionalCents:0,paymentsByCurrency:[],paymentsByMethod:[]};
   let accountingRange = {from:"",to:""};
+  let accountingRequest = 0;
   let paymentCatalogSelection = new Map();
   let paymentDialogMode = "manual";
   let activeOrderForPayment = null;
   const exchangeRateCache = new Map();
+  const rateRequests = new WeakMap();
   let activityItems = [];
   let operations = { electricityEnabled: true, updatedAt: null, updatedBy: "system", affectedCount: 1 };
 
   async function apiFetch(path, options = {}) {
     if (!apiBase) throw new Error("API_NOT_CONFIGURED");
-    const response = await fetch(`${apiBase}${path}`, {credentials:"include",cache:"no-store", ...options, headers:{...(options.body instanceof FormData ? {} : {"Content-Type":"application/json"}), ...(options.headers || {})}});
+    const response = await fetch(`${apiBase}${path}`, {credentials:"include",cache:"no-store",signal:AbortSignal.timeout(20000), ...options, headers:{...(options.body instanceof FormData ? {} : {"Content-Type":"application/json"}), ...(options.headers || {})}}).catch(error => {
+      if (["TimeoutError", "AbortError"].includes(error.name)) throw new Error("El servidor tardó demasiado. Tus datos siguen en el formulario; vuelve a intentarlo.");
+      throw new Error("No se pudo conectar. Revisa tu conexión y vuelve a intentarlo.");
+    });
     const payload = response.status === 204 ? null : await response.json().catch(() => null);
     if (!response.ok) {
       const error = new Error(payload?.error || `HTTP_${response.status}`);
       error.status = response.status;
       error.code = payload?.code || "";
+      if (response.status === 401 && path.startsWith("/v1/admin/")) showLogin("Tu sesión venció. Inicia sesión nuevamente.");
       throw error;
     }
     return payload;
   }
 
   function showLogin(message = "") {
+    $$("dialog[open]").forEach(dialog => dialog.close());
+    closeAdminMenu();
     $("#adminApp").hidden = true;
     $("#loginView").hidden = false;
     if (message) $("#loginStatus").textContent = message;
@@ -256,9 +265,9 @@
 
   async function enterPanel() {
     if (!currentSession?.ok && !localMode) throw new Error("La autenticación todavía no fue confirmada.");
+    await loadOperations();
     $("#loginView").hidden = true;
     $("#adminApp").hidden = false;
-    await loadOperations();
     renderAll();
     if (pendingConfiguredProductCount) {
       $("#saveStatus").textContent = `${pendingConfiguredProductCount} productos nuevos pendientes de publicar`;
@@ -393,9 +402,10 @@
 
   function scaledRateToNumber(rate) {
     if (!rate) return 0;
-    if (Number.isFinite(Number(rate.exact))) return Number(rate.exact);
-    const scale = Number(rate.rateScale || 8);
-    return Number(rate.rateScaled || 0) / (10 ** scale);
+    // `exact` in the API is a date-match boolean, never an exchange rate.
+    const scale = Number(rate.rateScale ?? 8);
+    const value = Number(rate.rateScaled) / (10 ** scale);
+    return Number.isFinite(value) && value > 0 ? value : 0;
   }
 
   function paymentRateCopy(payment = {}) {
@@ -447,10 +457,16 @@
 
   function toast(message) {
     const element = $("#adminToast");
+    const dialog = $$("dialog[open]").at(-1);
+    clearTimeout(toast.timer);
+    element.classList.toggle("dialog-feedback", Boolean(dialog));
+    element.setAttribute("role", dialog ? "alert" : "status");
+    if (dialog) $(".dialog-actions", dialog).before(element);
+    else document.body.append(element);
     element.textContent = message;
     element.classList.add("show");
-    clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => element.classList.remove("show"), 2600);
+    if (dialog) { element.tabIndex = -1; element.focus({preventScroll:true}); }
+    else toast.timer = setTimeout(() => element.classList.remove("show"), 5000);
   }
 
   function markDirty() {
@@ -459,7 +475,11 @@
   }
 
   async function saveState() {
+    if (savingCatalog) return;
+    savingCatalog = true;
+    $("#saveAll").disabled = true;
     state.updatedAt = new Date().toISOString();
+    const snapshot = JSON.stringify(state);
     try {
       if (localMode) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -468,18 +488,18 @@
         const payload = await apiFetch("/v1/admin/catalog", {method:"PUT", body:JSON.stringify({state, expectedRevision:remoteRevision})});
         remoteRevision = Number(payload?.revision || remoteRevision + 1);
       }
-      dirty = false;
+      dirty = JSON.stringify(state) !== snapshot;
       pendingConfiguredProductCount = 0;
-      $("#saveStatus").textContent = localMode ? "Borrador local guardado" : "Publicado para todos";
+      $("#saveStatus").textContent = dirty ? "Cambios pendientes" : localMode ? "Borrador local guardado" : "Publicado para todos";
       renderAll();
       await loadInventory();
       if (!localMode) await loadActivity();
-      toast(localMode ? "Cambios guardados en este navegador" : "Cambios publicados en la tienda");
+      toast(dirty ? "Se guardó la versión enviada. Quedan cambios posteriores pendientes de publicar." : localMode ? "Cambios guardados en este navegador" : "Cambios publicados en la tienda");
     } catch (error) {
       if (error.status === 409) toast("El catálogo cambió en otro dispositivo. Recarga antes de guardar.");
       else if (error.status === 401) { showLogin("Tu sesión venció. Inicia sesión nuevamente."); }
       else toast("No se pudo guardar. Revisa la conexión e inténtalo de nuevo.");
-    }
+    } finally { savingCatalog = false; $("#saveAll").disabled = false; }
   }
 
   function showView(name) {
@@ -974,6 +994,8 @@
   }
 
   function setPaymentLineCurrencyState(line) {
+    rateRequests.delete(line);
+    delete line.dataset.rateLoading;
     const fields = paymentLineElements(line);
     const isVes = fields.currency.value === "VES";
     const isEur = fields.currency.value === "EUR";
@@ -1007,15 +1029,29 @@
 
   async function refreshPaymentLineRate(line, force = false) {
     const fields = paymentLineElements(line);
+    const request = {};
+    rateRequests.set(line, request);
+    delete line.dataset.rateLoading;
     if (fields.currency.value === "USD" || fields.sourceType.value === "manual") return;
     const date = $("#paymentForm").elements.soldAt.value;
+    const currency = fields.currency.value;
+    const basis = currency === "EUR" ? "EUR" : fields.basis.value;
+    const isCurrent = () => line.isConnected && rateRequests.get(line) === request
+      && fields.sourceType.value === "BCV" && fields.currency.value === currency
+      && fields.basis.value === basis && $("#paymentForm").elements.soldAt.value === date;
+    fields.rate.value = "";
+    fields.valueDate.value = "";
+    delete line.dataset.exchangeRateId;
+    delete line.dataset.exchangeRateSourceUrl;
+    line.dataset.rateLoading = "true";
+    updatePaymentBalance();
     fields.status.classList.remove("is-error");
     fields.status.textContent = "Buscando la tasa oficial del BCV…";
     try {
       const payload = await fetchExchangeRates(date,force);
-      const basis=fields.currency.value==="EUR"?"EUR":fields.basis.value;
+      if (!isCurrent()) return;
       const rate = payload?.rates?.[basis] || null;
-      if (!rate) throw new Error("No hay una tasa oficial disponible para esa fecha.");
+      if (!rate?.id || !scaledRateToNumber(rate)) throw new Error("No hay una tasa oficial válida disponible para esa fecha.");
       fields.rate.value = scaledRateToNumber(rate).toFixed(8).replace(/0+$/,"").replace(/\.$/,"");
       fields.valueDate.value = rate.valueDate || date;
       line.dataset.exchangeRateId = rate.id || "";
@@ -1023,12 +1059,15 @@
       fields.status.textContent = `BCV ${basis} · Fecha valor ${rate.valueDate || date}${fields.currency.value==="EUR"?" · el libro funcional usa también el USD de esa fecha":""}${rate.status && rate.status !== "official" ? ` · ${rate.status}` : ""}`;
       updatePaymentBalance();
     } catch (error) {
+      if (!isCurrent()) return;
       fields.rate.value = "";
       fields.valueDate.value = date;
       delete line.dataset.exchangeRateId;
       fields.status.classList.add("is-error");
-      fields.status.textContent = `${error.message || "No se pudo obtener la tasa."} Puedes cambiar Origen a carga manual; se exigirá un motivo.`;
+      fields.status.textContent = `${error.message || "No se pudo obtener la tasa."} ${currentSession?.role === "owner" ? "Puedes cambiar Origen a carga manual; se exigirá un motivo." : "Solicita a la propietaria que revise la tasa; no registres un valor estimado."}`;
       updatePaymentBalance();
+    } finally {
+      if (rateRequests.get(line) === request) { delete line.dataset.rateLoading; updatePaymentBalance(); }
     }
   }
 
@@ -1078,6 +1117,9 @@
     const currencyMismatch = $$(".payment-line",form).some(line => { const fields=paymentLineElements(line); return fields.currency.value === "VES" ? fields.basis.value !== form.elements.referenceCurrency.value : fields.currency.value !== form.elements.referenceCurrency.value; });
     $("#paymentBalance").innerHTML = `<div><span>Total esperado</span><b>${escapeHtml(centsMoney(totalCents))}</b></div><div><span>Equivalente recibido</span><b>${escapeHtml(centsMoney(receivedCents))}</b></div><div class="${balanceCents?"has-balance":"is-complete"}"><span>${balanceCents?"Saldo pendiente":overCents?"Diferencia a revisar":"Pago completo"}</span><b>${escapeHtml(centsMoney(balanceCents || overCents))}</b></div><div class="payment-balance-note">${currencyMismatch ? "Corrige la moneda o la base BCV: todos los cobros deben coincidir con la moneda de referencia de esta venta." : "El equivalente usa la tasa congelada en cada cobro. No se recalculará con tasas futuras."}</div>`;
     const status = form.elements.status;
+    if ($$(".payment-line",form).some(line => {const fields=paymentLineElements(line);return fields.amount.value && fields.currency.value !== "USD" && (!decimalToMinor(fields.rate.value,8) || line.dataset.rateLoading);})) {
+      $(".payment-balance-note",form).textContent = "Falta una tasa BCV válida. El equivalente recibido y el saldo todavía no se pueden confirmar.";
+    }
     if (status && paymentDialogMode === "order") status.value = "confirmed";
   }
 
@@ -1090,6 +1132,7 @@
     form.elements.expectedVersion.value = "";
     form.elements.soldAt.value = caracasDate();
     form.elements.referenceCurrency.value = "USD";
+    form.elements.referenceCurrency.disabled = false;
     form.elements.status.value = "confirmed";
     $("#soldAtLabelText").textContent = "Fecha de venta";
     $("#savePaymentButton").textContent = "Confirmar pago y venta";
@@ -1144,6 +1187,7 @@
     paymentDialogMode="sale-payment";form.elements.saleId.value=sale.id;form.elements.expectedVersion.value=String(sale.mutationVersion??0);form.elements.customerName.value=sale.customerName||customerProfile.name||"";form.elements.customerPhone.value=sale.customerPhone||customerProfile.phone||"";form.elements.customerEmail.value=sale.customerEmail||customerProfile.email||"";form.elements.customerAddress.value=sale.customerAddress||customerProfile.address||customerProfile.defaultAddress||"";form.elements.customerNotes.value=sale.customerNotes||customerProfile.notes||customerProfile.internalNotes||"";form.elements.channel.value=sale.channel||"WhatsApp";form.elements.orderReference.value=sale.orderCode||sale.orderReference||"";form.elements.referenceCurrency.value=sale.referenceCurrency||sale.currency||"USD";form.elements.total.value=(balance/100).toFixed(2);form.elements.total.readOnly=true;form.elements.status.value="confirmed";form.elements.status.disabled=true;
     $("#paymentDialogTitle").textContent="Registrar abono";$("#paymentDialogDescription").textContent=`Saldo por cobrar de la venta: ${centsMoney(balance)}. El nuevo cobro conservará su propia moneda y tasa.`;$("#soldAtLabelText").textContent="Fecha del cobro";$("#savePaymentButton").textContent="Registrar abono";$("#orderPaymentItems").hidden=false;$("#saleCatalogPicker").hidden=true;$("#catalogSearchLabel").hidden=true;$(".custom-sale-item").hidden=true;
     $("#orderPaymentItems").innerHTML=lines.map(item=>`<div class="payment-summary-item">${productThumb(item,item.name)}<div><h4>${escapeHtml(item.name)}</h4><small>${escapeHtml(item.optionSummary||"")}</small></div><b>${item.quantity}×</b></div>`).join("")||`<div class="payment-summary-item">${productThumb({},"Producto")}<div><h4>Venta registrada</h4><small>Detalle histórico</small></div></div>`;
+    form.elements.referenceCurrency.disabled = true;
     addPaymentLine({currency:form.elements.referenceCurrency.value,method:"Efectivo"});updatePaymentBalance();$("#paymentDialog").showModal();
   }
 
@@ -1338,6 +1382,7 @@
   }
 
   async function loadAccounting() {
+    const request = ++accountingRequest;
     const errorBox=$("#accountingError");
     if(errorBox){errorBox.hidden=true;errorBox.textContent="";}
     try {
@@ -1350,11 +1395,13 @@
       } else {
         const query=new URLSearchParams(accountingRange).toString();
         const [summaryPayload,expensePayload]=await Promise.all([apiFetch(`/v1/admin/accounting/summary?${query}`),apiFetch(`/v1/admin/expenses?${query}`)]);
+        if(request!==accountingRequest)return;
         expenses=expensePayload.items||[];
         accountingSummary=normalizeAccountingSummary(summaryPayload);
       }
       renderAccounting();
     } catch (error) {
+      if(request!==accountingRequest)return;
       const message=error.status===401?"Tu sesión venció.":`No se pudo cargar la contabilidad. ${error.message||"Intenta nuevamente."}`;
       if(errorBox){errorBox.textContent=message;errorBox.hidden=false;}
       if (error.status===401) showLogin(message); else toast(message);
@@ -1382,6 +1429,8 @@
   }
 
   function setExpenseRateState() {
+    rateRequests.delete($("#expenseForm"));
+    delete $("#expenseForm").dataset.rateLoading;
     const form=$("#expenseForm"),currency=form.elements.currency.value,needsRate=currency==="VES"||currency==="EUR",isManual=form.elements.rateSourceType.value==="manual";
     if(currency==="EUR")form.elements.rateBasis.value="EUR";
     [form.elements.bcvRate,form.elements.rateValueDate,form.elements.rateSourceType].forEach(field=>{field.disabled=!needsRate;field.required=needsRate;});
@@ -1395,14 +1444,19 @@
   async function refreshExpenseRate(force=false) {
     const form=$("#expenseForm");
     const currency=form.elements.currency.value;
+    const request={};rateRequests.set(form,request);delete form.dataset.rateLoading;
     if(currency==="USD"||form.elements.rateSourceType.value==="manual")return;
+    const date=form.elements.spentAt.value,basis=currency==="EUR"?"EUR":form.elements.rateBasis.value;
+    const isCurrent=()=>rateRequests.get(form)===request&&form.elements.currency.value===currency&&form.elements.rateBasis.value===basis&&form.elements.spentAt.value===date&&form.elements.rateSourceType.value==="BCV";
+    form.elements.bcvRate.value="";form.elements.rateValueDate.value="";delete form.dataset.exchangeRateId;delete form.dataset.exchangeRateSourceUrl;form.dataset.rateLoading="true";
     const status=$("#expenseRateStatus");status.classList.remove("is-error");status.textContent="Buscando la tasa oficial del BCV…";
     try{
-      const basis=currency==="EUR"?"EUR":form.elements.rateBasis.value;
-      const payload=await fetchExchangeRates(form.elements.spentAt.value,force),rate=payload?.rates?.[basis];
-      if(!rate)throw new Error("No hay una tasa oficial disponible para esa fecha.");
+      const payload=await fetchExchangeRates(date,force),rate=payload?.rates?.[basis];
+      if(!isCurrent())return;
+      if(!rate?.id||!scaledRateToNumber(rate))throw new Error("No hay una tasa oficial válida disponible para esa fecha.");
       form.elements.bcvRate.value=scaledRateToNumber(rate).toFixed(8).replace(/0+$/,"").replace(/\.$/,"");form.elements.rateValueDate.value=rate.valueDate||form.elements.spentAt.value;form.dataset.exchangeRateId=rate.id||"";form.dataset.exchangeRateSourceUrl=rate.sourceUrl||"https://www.bcv.org.ve/";status.textContent=`BCV ${basis} · Fecha valor ${rate.valueDate||form.elements.spentAt.value}${currency==="EUR"?" · el libro usa también el USD de esa fecha":""}`;
-    }catch(error){form.elements.bcvRate.value="";form.elements.rateValueDate.value=form.elements.spentAt.value;delete form.dataset.exchangeRateId;status.classList.add("is-error");status.textContent=`${error.message} La propietaria puede justificar una tasa manual.`;}
+    }catch(error){if(!isCurrent())return;form.elements.bcvRate.value="";form.elements.rateValueDate.value=date;delete form.dataset.exchangeRateId;status.classList.add("is-error");status.textContent=`${error.message} La propietaria puede justificar una tasa manual.`;}
+    finally{if(rateRequests.get(form)===request)delete form.dataset.rateLoading;}
   }
 
   function openExpenseDialog() {
@@ -1417,6 +1471,7 @@
     const payload={idempotencyKey,expenseDate:form.elements.spentAt.value,category:form.elements.category.value,description:String(form.elements.description.value).trim(),amountMinor,amountScale:2,currency,referenceCurrency,method:form.elements.method.value,reference:String(form.elements.reference.value||"").trim(),notes:String(form.elements.notes.value||"").trim()};
     if(currency==="USD"){payload.referenceAmountCents=amountMinor;payload.functionalAmountCents=amountMinor;}
     else{
+      if(form.dataset.rateLoading)throw new Error("Espera a que termine la consulta de la tasa BCV antes de guardar el gasto.");
       const rateScaled=decimalToMinor(form.elements.bcvRate.value,8);if(!rateScaled||!form.elements.rateValueDate.value)throw new Error(`Completa la tasa BCV y su fecha valor para este gasto en ${currency}.`);
       payload.rateBasis=rateBasis;payload.exchangeRateValueDate=form.elements.rateValueDate.value;
       if(currency==="EUR")payload.referenceAmountCents=amountMinor;
@@ -1836,6 +1891,14 @@
   $("#electricityToggle").addEventListener("click", toggleElectricity);
   $$('[data-action="new-product"]').forEach(button => button.addEventListener("click", () => openProduct()));
   $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => button.closest("dialog")?.close()));
+  $$("dialog").forEach(dialog => dialog.addEventListener("close", () => {
+    const notice=$("#adminToast",dialog);
+    if(notice){clearTimeout(toast.timer);notice.classList.remove("show","dialog-feedback");notice.setAttribute("role","status");document.body.append(notice);}
+    $$(".payment-line, #expenseForm",dialog).forEach(element=>{rateRequests.delete(element);delete element.dataset.rateLoading;});
+  }));
+  document.addEventListener("keydown",event=>{
+    if(event.key==="Escape"&&!$("#adminMenu").hidden){closeAdminMenu();$("#adminMenuButton").focus();}
+  });
   $("#saveAll").addEventListener("click", () => saveState());
   ["#productSearch","#categoryFilter","#statusFilter"].forEach(selector => $(selector).addEventListener("input", renderProducts));
   ["#saleSearch","#saleStatusFilter","#salePeriodFilter"].forEach(selector => $(selector).addEventListener("input", renderSales));
@@ -1877,6 +1940,7 @@
     const button=event.target.closest("[data-save-stock]") || deltaButton;
     if (!button) return;
     const row=button.closest("[data-sku]");
+    if(row.dataset.saving)return;
     const input=$("[data-stock-value]",row);
     const delta=Number(deltaButton?.dataset.stockDelta||0);
     if(deltaButton) input.value=String(Math.max(Number(input.min||0),Number(input.value||0)+delta));
@@ -1888,7 +1952,8 @@
       return;
     }
     const payload={onHand,trackStock:onHand>0 || $("[data-track-stock]",row).checked};
-    button.disabled=true;
+    const controls=$$("input,button",row).map(element=>({element,disabled:element.disabled}));
+    row.dataset.saving="true";controls.forEach(({element})=>{element.disabled=true;});
     try {
       if (localMode) {
         const item=inventory.find(entry=>entry.sku===row.dataset.sku);
@@ -1913,10 +1978,11 @@
       toast(deltaButton?(delta>0?"Se sumó una unidad.":"Se restó una unidad."):"Cantidad actualizada para todos los clientes.");
       if(localMode){renderInventory();renderDashboardOperations();renderBuilder("fonkies");renderBuilder("fomb");}else await Promise.all([loadInventory(),loadActivity()]);
     } catch(error){toast(error.message||"No se pudo actualizar la cantidad.");}
-    finally{button.disabled=false;}
+    finally{delete row.dataset.saving;controls.forEach(({element,disabled})=>{element.disabled=disabled;});}
   });
   function paymentPayloadFromForm() {
     const form=$("#paymentForm");
+    if(!form.elements.soldAt.value || !form.elements.soldAt.validity.valid) throw new Error("Indica una fecha válida para la venta o el cobro.");
     const totalRefCents=decimalToMinor(form.elements.total.value,2);
     if (totalRefCents===null || totalRefCents<0) throw new Error("Indica un monto total válido.");
     const customer={name:String(form.elements.customerName.value||"").trim(),phone:String(form.elements.customerPhone.value||"").trim(),email:String(form.elements.customerEmail.value||"").trim(),address:String(form.elements.customerAddress.value||"").trim(),notes:String(form.elements.customerNotes.value||"").trim()};
@@ -1931,14 +1997,12 @@
       if (!amountMinor) throw new Error("Cada cobro debe tener un monto mayor que cero.");
       if (!["VES","USD","EUR"].includes(fields.currency.value)) throw new Error("Selecciona una moneda válida.");
       if (fields.currency.value!=="VES" && fields.currency.value!==referenceCurrency) throw new Error(`Un pago en ${fields.currency.value} no puede conciliarse con una venta basada en ${referenceCurrency} sin una tasa cruzada. Usa la misma moneda de referencia.`);
-      const referenceAmountCents=paymentReferenceCents(line);
-      if(!referenceAmountCents)throw new Error("No se pudo convertir este cobro a la moneda de referencia. Revisa la moneda y la tasa.");
-      const payment={amountMinor,amountScale:2,currency:fields.currency.value,method:fields.method.value,referenceAmountCents,reference:String(fields.reference.value||"").trim(),notes:String(fields.notes.value||"").trim()};
-      if(referenceCurrency==="USD")payment.functionalAmountCents=referenceAmountCents;
+      const payment={amountMinor,amountScale:2,currency:fields.currency.value,method:fields.method.value,reference:String(fields.reference.value||"").trim(),notes:String(fields.notes.value||"").trim()};
       if (fields.currency.value==="VES"||fields.currency.value==="EUR") {
+        if(line.dataset.rateLoading)throw new Error("Espera a que termine la consulta de la tasa BCV antes de confirmar el cobro.");
         const expectedBasis=fields.currency.value==="EUR"?"EUR":referenceCurrency;
         if (fields.basis.value!==expectedBasis) throw new Error(`La base BCV debe ser ${expectedBasis}, igual que la moneda de referencia de la venta.`);
-        if (!fields.valueDate.value || !fields.rate.value) throw new Error(`Completa la tasa BCV y su fecha valor para el cobro en ${fields.currency.value}.`);
+        if (!fields.valueDate.value || !decimalToMinor(fields.rate.value,8)) throw new Error(`Falta una tasa BCV válida para el cobro en ${fields.currency.value}. Revisa la fecha y el origen de la tasa; no uses cero.`);
         payment.rateBasis=expectedBasis;
         payment.exchangeRateValueDate=fields.valueDate.value;
         if (fields.sourceType.value==="manual") {
@@ -1953,6 +2017,10 @@
           payment.exchangeRateId=line.dataset.exchangeRateId;
         }
       }
+      const referenceAmountCents=paymentReferenceCents(line);
+      if(!referenceAmountCents)throw new Error("El equivalente del cobro debe ser de al menos 0,01 en la moneda de referencia. Revisa el monto y la tasa.");
+      payment.referenceAmountCents=referenceAmountCents;
+      if(referenceCurrency==="USD")payment.functionalAmountCents=referenceAmountCents;
       payments.push(payment);
     });
     const requiresCustomer=payments.length||form.elements.status.value==="confirmed";
@@ -2004,24 +2072,34 @@
     if(event.target===fields.currency){
       delete line.dataset.exchangeRateId;delete line.dataset.exchangeRateSourceUrl;
       if(fields.currency.value==="VES")fields.basis.value=$("#paymentForm").elements.referenceCurrency.value;
-      if(fields.currency.value==="EUR"||fields.currency.value==="USD"){$("#paymentForm").elements.referenceCurrency.value=fields.currency.value;$$('.payment-line',$("#paymentLines")).forEach(other=>{const otherFields=paymentLineElements(other);if(otherFields.currency.value==="VES")otherFields.basis.value=fields.currency.value;});}
+      if((fields.currency.value==="EUR"||fields.currency.value==="USD") && paymentDialogMode!=="sale-payment") $("#paymentForm").elements.referenceCurrency.value=fields.currency.value;
       setPaymentLineCurrencyState(line);
-      if(fields.currency.value!=="USD")refreshPaymentLineRate(line);
+      refreshPaymentBases();
     }else if(event.target===fields.basis){
       delete line.dataset.exchangeRateId;delete line.dataset.exchangeRateSourceUrl;
-      $("#paymentForm").elements.referenceCurrency.value=fields.basis.value;
-      $$(".payment-line",$("#paymentLines")).forEach(other=>{const otherFields=paymentLineElements(other);if(otherFields.currency.value==="VES")otherFields.basis.value=fields.basis.value;});
-      refreshPaymentLineRate(line,true);
+      if(paymentDialogMode!=="sale-payment")$("#paymentForm").elements.referenceCurrency.value=fields.basis.value;
+      if(fields.sourceType.value==="manual")fields.rate.value="";
+      refreshPaymentBases(true);
     }else if(event.target===fields.sourceType){
       if(fields.sourceType.value==="manual"&&currentSession?.role!=="owner"){fields.sourceType.value="BCV";toast("Solo la propietaria puede cargar tasas manuales.");}
       setPaymentLineCurrencyState(line);if(fields.sourceType.value==="BCV")refreshPaymentLineRate(line,true);
     }else updatePaymentBalance();
   });
+  function refreshPaymentBases(force=false) {
+    const reference=$("#paymentForm").elements.referenceCurrency.value;
+    $$(".payment-line",$("#paymentLines")).forEach(line=>{
+      const fields=paymentLineElements(line);
+      if(fields.currency.value==="VES"){
+        if(fields.basis.value!==reference && fields.sourceType.value==="manual")fields.rate.value="";
+        fields.basis.value=reference;
+      }
+      refreshPaymentLineRate(line,force);
+    });
+    updatePaymentBalance();
+  }
   $("#paymentForm").elements.total.addEventListener("input",updatePaymentBalance);
   $("#paymentForm").elements.soldAt.addEventListener("change",()=>{$$(".payment-line",$("#paymentLines")).forEach(line=>refreshPaymentLineRate(line,true));});
-  $("#paymentForm").elements.referenceCurrency.addEventListener("change",event=>{
-    $$(".payment-line",$("#paymentLines")).forEach(line=>{const fields=paymentLineElements(line);if(fields.currency.value==="VES"){fields.basis.value=event.target.value;refreshPaymentLineRate(line,true);}});updatePaymentBalance();
-  });
+  $("#paymentForm").elements.referenceCurrency.addEventListener("change",()=>refreshPaymentBases(true));
 
   $("#salesList").addEventListener("click", event => {
     const addPayment=event.target.closest("[data-add-sale-payment]");
