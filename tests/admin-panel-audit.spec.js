@@ -72,6 +72,22 @@ async function finishDelayedResponse(page, path, release) {
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 }
 
+test('Nuevo producto normaliza el identificador y retira un aviso ya corregido', async ({page}) => {
+  await panel(page);
+  await page.locator('[data-view="products"]').click();
+  await page.locator('[data-action="new-product"]').last().click();
+  const form=page.locator('#productForm');
+  await form.locator('[name="name"]').fill('Mini cake de limón');
+  await form.locator('[name="id"]').fill('pistacho');
+  await form.locator('[type="submit"]').click();
+  await visibleNotice(page,'#productDialog','Ya existe un producto');
+  await form.locator('[name="id"]').fill('Mini Cake Limón 12');
+  await expect(form.locator('[name="id"]')).toHaveValue('mini-cake-limon-12');
+  await expect(page.locator('#adminToast')).not.toHaveClass(/show/);
+  await form.locator('[type="submit"]').click();
+  await expect(page.locator('#productDialog')).not.toBeVisible();
+});
+
 for(const exact of [true,false])test(`BCV exact=${exact} es una fecha, no el valor: venta y gasto usan 80`,async({page})=>{
   const writes=await panel(page,{exact});
   const form=await sale(page);

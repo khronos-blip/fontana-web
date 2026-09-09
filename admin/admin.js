@@ -24,6 +24,16 @@
       .slice(0, 70) || "sabor";
   }
 
+  function productIdentifier(value) {
+    return String(value || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 80);
+  }
+
   function availableInventoryKey(baseValue, usedKeys) {
     const requested = String(baseValue || "").trim();
     const base = INVENTORY_KEY_PATTERN.test(requested) ? requested : inventoryKeySlug(requested);
@@ -503,7 +513,9 @@
     if (candidate.settings !== undefined && !record(candidate.settings)) fail("La configuración del catálogo no es válida.");
     const ids = new Set();
     candidate.products.forEach(product => {
-      if (!record(product) || typeof product.id !== "string" || !/^[a-z0-9-]+$/.test(product.id) || typeof product.name !== "string" || !product.name.trim()) fail("Hay un producto sin nombre o identificador válido.");
+      if (!record(product)) fail("Hay un producto con información no válida.");
+      if (typeof product.name !== "string" || !product.name.trim()) fail("Escribe el nombre del producto.");
+      if (typeof product.id !== "string" || !/^[a-z0-9-]+$/.test(product.id)) fail(`${product.name}: revisa el identificador; usa minúsculas, números y guiones.`);
       if (ids.has(product.id)) fail(`Identificador repetido: ${product.id}.`);
       ids.add(product.id);
       if (!price(product.price, true)) fail(`${product.name}: el precio debe ser cero o mayor, o quedar por confirmar.`);
@@ -2383,7 +2395,8 @@
     if (formImageUploads.get(form)?.pending) return toast("Espera a que termine de subir la imagen antes de guardar.");
     const data = new FormData(form);
     const originalId = data.get("originalId");
-    const id = String(data.get("id")).trim();
+    const id = productIdentifier(data.get("id"));
+    form.elements.id.value = id;
     const duplicate = state.products.some(product => product.id === id && product.id !== originalId && !product.deleted);
     if (duplicate) return toast("Ya existe un producto con ese identificador");
     const weight = productWeightFromForm(form);
@@ -2405,6 +2418,9 @@
   });
 
   ["input","change"].forEach(eventName => $("#productForm").addEventListener(eventName, event => {
+    if (event.target.matches('[name="id"]')) event.target.value = productIdentifier(event.target.value);
+    const notice = $("#adminToast", event.currentTarget.closest("dialog"));
+    if (notice?.classList.contains("show")) notice.classList.remove("show");
     if (event.target.matches('[name="weightEnabled"],[name="weightValue"],[name="weightUnit"],[name="weightCustom"]')) {
       syncProductWeightForm(event.currentTarget);
     }
