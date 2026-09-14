@@ -544,12 +544,13 @@
   }
 
   async function saveState() {
-    if (savingCatalog) return;
-    try { validateCatalogDraft(state); } catch(error) { toast(error.message); return; }
+    if (savingCatalog) return false;
+    try { validateCatalogDraft(state); } catch(error) { toast(error.message); return false; }
     savingCatalog = true;
     $("#saveAll").disabled = true;
     state.updatedAt = new Date().toISOString();
     const snapshot = JSON.stringify(state);
+    let saved = false;
     try {
       if (localMode) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -565,11 +566,13 @@
       await loadInventory();
       if (!localMode) await loadActivity();
       toast(dirty ? "Se guardó la versión enviada. Quedan cambios posteriores pendientes de publicar." : localMode ? "Cambios guardados en este navegador" : "Cambios publicados en la tienda");
+      saved = true;
     } catch (error) {
       if (error.status === 409) toast("El catálogo cambió en otro dispositivo. Recarga antes de guardar.");
       else if (error.status === 401) { showLogin("Tu sesión venció. Inicia sesión nuevamente."); }
       else toast(error.message || "No se pudo guardar. Revisa la conexión e inténtalo de nuevo.");
     } finally { savingCatalog = false; $("#saveAll").disabled = false; }
+    return saved;
   }
 
   function showView(name) {
@@ -2389,7 +2392,7 @@
     }
   });
 
-  $("#productForm").addEventListener("submit", event => {
+  $("#productForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
     if (formImageUploads.get(form)?.pending) return toast("Espera a que termine de subir la imagen antes de guardar.");
@@ -2413,8 +2416,13 @@
     if (index >= 0) state.products[index] = product; else state.products.push(product);
     markDirty();
     renderAll();
-    $("#productDialog").close();
-    toast("Producto listo para guardar");
+    const submit = $("#saveProductButton");
+    submit.disabled = true;
+    form.setAttribute("aria-busy", "true");
+    const saved = await saveState();
+    submit.disabled = false;
+    form.removeAttribute("aria-busy");
+    if (saved) $("#productDialog").close();
   });
 
   ["input","change"].forEach(eventName => $("#productForm").addEventListener(eventName, event => {

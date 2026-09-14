@@ -8183,7 +8183,7 @@ test("renombrar conserva el SKU y recrear un sabor no hereda inventario anterior
   await expect(recreatedRow).not.toContainText("5 disp.");
 });
 
-test("el panel administrador permite entrar, editar y reflejar el catálogo en la tienda", async ({ page }) => {
+test("guardar un producto lo publica y refleja directamente en la tienda", async ({ page }) => {
   await page.goto("/admin/");
   await expect(page.getByRole("heading", { name: "Gestiona Fontana" })).toBeVisible();
   await page.getByRole("button", { name: "Entrar al panel" }).click();
@@ -8193,7 +8193,7 @@ test("el panel administrador permite entrar, editar y reflejar el catálogo en l
   await page.locator('#productForm [name="description"]').fill("Disponible para celebrar hoy.");
   await page.locator('#productForm [name="promo"]').check();
   await page.getByRole("button", { name: "Guardar producto" }).click();
-  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator("#saveStatus")).toHaveText("Borrador local guardado");
 
   await page.goto("/");
   await page.getByRole("button", { name: "Promo del día" }).click();

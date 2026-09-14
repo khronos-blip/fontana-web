@@ -393,12 +393,13 @@ test('Una subida fallida conserva la imagen y permite repetir el mismo archivo',
   await expect(form.locator('[type="submit"]')).toBeEnabled();
 });
 
-test('Copia inválida: JSON roto y constructor incompleto conservan todo el borrador', async ({page}) => {
+test('Copia inválida: JSON roto y constructor incompleto conservan el último producto publicado', async ({page}) => {
   const writes = await panel(page);
   const form = await product(page, 'pistacho');
   await form.locator('[name="name"]').fill('Borrador aislado que debe conservarse');
   await form.locator('[type="submit"]').click();
   await expect(page.locator('#productDialog')).not.toBeVisible();
+  await expect.poll(() => writes.filter(write => write.path === catalogPath).length).toBe(1);
   for (const content of ['{"products":', JSON.stringify({products:[], builders:{fomb:{}}})]) {
     await page.locator('#adminMenuButton').click();
     await page.locator('[data-menu-view="backup"]').click();
@@ -406,10 +407,10 @@ test('Copia inválida: JSON roto y constructor incompleto conservan todo el borr
     await expect(page.locator('#adminToast')).toContainText(/no.*válid|inválid/i);
     await page.locator('[data-view="products"]').click();
     await expect(page.locator('[data-product-id="pistacho"]')).toContainText('Borrador aislado que debe conservarse');
-    await expect(page.locator('#saveStatus')).toContainText('pendientes');
+    await expect(page.locator('#saveStatus')).toHaveText('Publicado para todos');
   }
-  expect(writes).toEqual([]);
-  const saved = await publish(page, writes);
+  expect(writes.filter(write => write.path === catalogPath)).toHaveLength(1);
+  const saved = writes.find(write => write.path === catalogPath).body.state;
   expect(saved.products.find(item => item.id === 'pistacho').name).toBe('Borrador aislado que debe conservarse');
   expect(saved.builders.fomb.sizes.length).toBeGreaterThan(0);
   expect(saved.builders.fonkies.flavors.length).toBeGreaterThan(0);
