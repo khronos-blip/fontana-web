@@ -1004,14 +1004,15 @@ async function expireReservations(env) {
 async function listOrders(request, env) {
   const session = await requireSession(request, env);
   if (session instanceof Response) return session;
+  const offset = listOffset(request);
   await expireReservations(env);
   const [result,paymentRows]=await Promise.all([
-    env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, currency, customer_id AS customerId, customer_name AS customerName, customer_phone AS customerPhone, fulfillment, requested_date AS requestedDate, payment_method AS paymentMethod, snapshot_json AS snapshotJson, created_at AS createdAt, updated_at AS updatedAt, confirmed_by AS confirmedBy, cancelled_by AS cancelledBy,voided_at AS voidedAt,void_reason AS voidReason,COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='stock_order' AND entity_id=stock_orders.id),0) AS mutationVersion FROM stock_orders ORDER BY created_at DESC LIMIT 500").all(),
+    env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, currency, customer_id AS customerId, customer_name AS customerName, customer_phone AS customerPhone, fulfillment, requested_date AS requestedDate, payment_method AS paymentMethod, snapshot_json AS snapshotJson, created_at AS createdAt, updated_at AS updatedAt, confirmed_by AS confirmedBy, cancelled_by AS cancelledBy,voided_at AS voidedAt,void_reason AS voidReason,COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='stock_order' AND entity_id=stock_orders.id),0) AS mutationVersion FROM stock_orders ORDER BY created_at DESC, id DESC LIMIT 500 OFFSET ?").bind(offset).all(),
     env.DB.prepare("SELECT p.order_id AS orderId,p.id,p.status,p.method,p.paid_currency AS currency,p.amount_minor AS amountMinor,p.amount_scale AS amountScale,p.reference_amount_cents AS referenceAmountCents,p.functional_amount_cents AS functionalAmountCents,p.payment_date AS paymentDate,p.transaction_reference AS reference,s.id AS saleId,s.payment_status AS paymentStatus FROM payments p JOIN sales s ON s.id=p.sale_id WHERE p.order_id IS NOT NULL ORDER BY p.confirmed_at").all()
   ]);
   const paymentsByOrder=new Map();for(const payment of paymentRows.results||[]){if(!paymentsByOrder.has(payment.orderId))paymentsByOrder.set(payment.orderId,[]);paymentsByOrder.get(payment.orderId).push(payment);}
   const items = (result.results||[]).map(row=>{let snapshot={};try{snapshot=JSON.parse(row.snapshotJson||"{}");}catch{} const {snapshotJson,...order}=row;const payments=paymentsByOrder.get(row.id)||[];return {...order,expiresAt:Number(order.expiresAt),items:snapshot.items||[],customer:snapshot.customer||{},payments,saleId:payments[0]?.saleId||null,paymentStatus:payments[0]?.paymentStatus||(order.status==="confirmed"?"legacy":"unpaid")};});
-  return json({items,summary:{reserved:items.filter(item=>item.status==="reserved").length,confirmed:items.filter(item=>item.status==="confirmed").length,expired:items.filter(item=>item.status==="expired").length}});
+  return json({items,nextOffset:items.length===500?offset+500:null,summary:{reserved:items.filter(item=>item.status==="reserved").length,confirmed:items.filter(item=>item.status==="confirmed").length,expired:items.filter(item=>item.status==="expired").length}});
 }
 
 async function changeOrderStatus(request, env, url) {
@@ -1598,6 +1599,7 @@ async function createManualExchangeRate(request,env) {
 async function listCustomers(request,env,url) {
   const session=await requireSession(request,env);
   if (session instanceof Response) return session;
+  const offset=listOffset(request);
   const search=cleanText(url.searchParams.get("search"),100);
   const limit=Math.min(500,Math.max(1,Number(url.searchParams.get("limit"))||200));
   const like=`%${search.replace(/[\\%_]/g,"\\$&")}%`;
@@ -1608,7 +1610,7 @@ async function listCustomers(request,env,url) {
     COALESCE(SUM(CASE WHEN s.status='confirmed' THEN s.functional_total_cents ELSE 0 END),0) AS lifetimeFunctionalUsdCents
     FROM customers c LEFT JOIN sales s ON s.customer_id=c.id
     WHERE c.archived_at IS NULL AND (?='' OR c.name LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR c.normalized_phone LIKE ? ESCAPE '\\')
-    GROUP BY c.id ORDER BY lastPurchaseAt DESC, c.updated_at DESC LIMIT ?`).bind(search,like,like,like,limit).all();
+    GROUP BY c.id ORDER BY lastPurchaseAt DESC, c.updated_at DESC,c.id DESC LIMIT ? OFFSET ?`).bind(search,like,like,like,limit,offset).all();
   const [paymentStats,balanceRows]=await Promise.all([
     env.DB.prepare("SELECT s.customer_id AS customerId,SUM(p.functional_amount_cents) AS collected FROM payments p JOIN sales s ON s.id=p.sale_id WHERE p.status='confirmed' AND s.customer_id IS NOT NULL GROUP BY s.customer_id").all(),
     env.DB.prepare("SELECT s.id,s.customer_id AS customerId,s.total_cents AS totalCents,s.functional_total_cents AS functionalTotalCents,COALESCE(SUM(CASE WHEN p.status='confirmed' THEN p.reference_amount_cents ELSE 0 END),0) AS paidReferenceCents FROM sales s LEFT JOIN payments p ON p.sale_id=s.id WHERE s.status='confirmed' AND s.customer_id IS NOT NULL GROUP BY s.id").all()
@@ -1616,19 +1618,20 @@ async function listCustomers(request,env,url) {
   const collectedMap=new Map((paymentStats.results||[]).map(row=>[row.customerId,Number(row.collected||0)])),outstandingMap=new Map();
   for(const row of balanceRows.results||[]){const state=derivePaymentStatus(Number(row.totalCents),Number(row.paidReferenceCents));const carryingPaid=state?Number(row.functionalTotalCents||0)-Math.round(Number(row.functionalTotalCents||0)*state.balanceRefCents/Math.max(1,Number(row.totalCents))):0;const outstanding=Math.max(0,Number(row.functionalTotalCents||0)-carryingPaid);outstandingMap.set(row.customerId,(outstandingMap.get(row.customerId)||0)+outstanding);}
   const items=(result.results||[]).map(item=>({...item,confirmedSalesCount:Number(item.confirmedSalesCount||0),lifetimeFunctionalUsdCents:Number(item.lifetimeFunctionalUsdCents||0),collectedFunctionalUsdCents:collectedMap.get(item.id)||0,outstandingFunctionalUsdCents:outstandingMap.get(item.id)||0,averageTicketFunctionalUsdCents:Number(item.confirmedSalesCount||0)?Math.round(Number(item.lifetimeFunctionalUsdCents||0)/Number(item.confirmedSalesCount)):0,recurrent:Number(item.confirmedSalesCount||0)>=2}));
-  return json({items,summary:{total:items.length,recurrent:items.filter(item=>item.recurrent).length,functionalCurrency:"USD"}});
+  return json({items,nextOffset:items.length===limit?offset+limit:null,summary:{total:items.length,recurrent:items.filter(item=>item.recurrent).length,functionalCurrency:"USD"}});
 }
 
 async function getCustomer(request,env,url) {
   const session=await requireSession(request,env);
   if (session instanceof Response) return session;
+  const offset=listOffset(request);
   const id=decodeURIComponent(url.pathname.split("/").pop()||"");
   if (!/^cus-[a-zA-Z0-9_-]{20,50}$/.test(id)) return json({error:"Cliente inválido"},400);
   const customer=await env.DB.prepare("SELECT id,name,phone,normalized_phone AS normalizedPhone,email,default_address AS defaultAddress,internal_notes AS internalNotes,created_at AS createdAt,updated_at AS updatedAt FROM customers WHERE id=? AND archived_at IS NULL").bind(id).first();
   if (!customer) return json({error:"Cliente no encontrado"},404);
   const saleRows=await env.DB.prepare(`SELECT id,sold_at AS soldAt,total_cents AS totalCents,currency,reference_currency AS referenceCurrency,functional_total_cents AS functionalTotalCents,status,payment_status AS paymentStatus,channel,notes,
     COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='sale' AND entity_id=sales.id),0) AS mutationVersion
-    FROM sales WHERE customer_id=? ORDER BY sold_at DESC,created_at DESC LIMIT 250`).bind(id).all();
+    FROM sales WHERE customer_id=? ORDER BY sold_at DESC,created_at DESC,id DESC LIMIT 250 OFFSET ?`).bind(id,offset).all();
   const sales=[];
   for (const sale of saleRows.results||[]) {
     const [itemRows,paymentRows]=await Promise.all([
@@ -1638,7 +1641,7 @@ async function getCustomer(request,env,url) {
     sales.push({...sale,functionalTotalCents:Number(sale.functionalTotalCents||0),items:itemRows.results||[],payments:paymentRows.results||[]});
   }
   const confirmed=sales.filter(sale=>sale.status==="confirmed");
-  return json({customer:{...customer,confirmedSalesCount:confirmed.length,recurrent:confirmed.length>=2,lifetimeFunctionalUsdCents:confirmed.reduce((sum,sale)=>sum+Number(sale.functionalTotalCents||0),0)},sales,functionalCurrency:"USD"});
+  return json({customer:{...customer,confirmedSalesCount:confirmed.length,recurrent:confirmed.length>=2,lifetimeFunctionalUsdCents:confirmed.reduce((sum,sale)=>sum+Number(sale.functionalTotalCents||0),0)},sales,nextOffset:sales.length===250?offset+250:null,functionalCurrency:"USD"});
 }
 
 function catalogProductPrice(product,definition) {
@@ -1738,6 +1741,7 @@ function manualInventoryStatements(env,inventory,saleId,session,now) {
 async function listSales(request, env) {
   const session = await requireSession(request, env);
   if (session instanceof Response) return session;
+  const offset = listOffset(request);
   const [result,itemRows,paymentRows]=await Promise.all([
     env.DB.prepare(`SELECT id,sold_at AS soldAt,total_cents AS totalCents,currency,reference_currency AS referenceCurrency,functional_currency AS functionalCurrency,
       functional_total_cents AS functionalTotalCents,reference_exchange_rate_id AS referenceExchangeRateId,reference_exchange_rate_scaled AS referenceExchangeRateScaled,reference_exchange_rate_value_date AS referenceExchangeRateValueDate,
@@ -1745,7 +1749,7 @@ async function listSales(request, env) {
       customer_name AS customerName,customer_phone AS customerPhone,items_text AS itemsText,notes,order_id AS orderId,voided_at AS voidedAt,void_reason AS voidReason,
       created_by AS createdBy,created_at AS createdAt,updated_by AS updatedBy,updated_at AS updatedAt,
       COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='sale' AND entity_id=sales.id),0) AS mutationVersion
-      FROM sales ORDER BY sold_at DESC,created_at DESC LIMIT 1000`).all(),
+      FROM sales ORDER BY sold_at DESC,created_at DESC,id DESC LIMIT 1000 OFFSET ?`).bind(offset).all(),
     env.DB.prepare("SELECT id,sale_id AS saleId,product_id AS productId,sku,item_name_snapshot AS name,option_summary_snapshot AS optionSummary,image_url_snapshot AS imageUrl,quantity,price_currency AS priceCurrency,unit_price_cents AS unitPriceCents,line_total_cents AS lineTotalCents FROM sale_items ORDER BY created_at,id").all(),
     env.DB.prepare("SELECT id,sale_id AS saleId,status,method,paid_currency AS currency,amount_minor AS amountMinor,amount_scale AS amountScale,reference_currency AS referenceCurrency,reference_amount_cents AS referenceAmountCents,functional_amount_cents AS functionalAmountCents,rate_basis AS rateBasis,exchange_rate_id AS exchangeRateId,exchange_rate_scaled AS exchangeRateScaled,exchange_rate_value_date AS exchangeRateValueDate,functional_exchange_rate_id AS functionalExchangeRateId,functional_exchange_rate_scaled AS functionalExchangeRateScaled,functional_exchange_rate_value_date AS functionalExchangeRateValueDate,payment_date AS paymentDate,transaction_reference AS reference,notes,confirmed_at AS confirmedAt FROM payments ORDER BY confirmed_at,id").all()
   ]);
@@ -1760,7 +1764,7 @@ async function listSales(request, env) {
   const totalsByCurrency={};
   for(const sale of confirmed) totalsByCurrency[sale.referenceCurrency]=(totalsByCurrency[sale.referenceCurrency]||0)+Number(sale.totalCents||0);
   return json({
-    items,
+    items, nextOffset:items.length===1000?offset+1000:null,
     summary: {
       functionalCurrency:"USD",
       todayFunctionalUsdCents:sumFunctional(confirmed.filter(item => item.soldAt === today)),
@@ -1997,15 +2001,16 @@ async function voidSale(request,env,url) {
 
 async function listExpenses(request,env,url){
   const session=await requireSession(request,env);if(session instanceof Response)return session;
+  const offset = listOffset(request);
   const from=cleanText(url.searchParams.get("from"),10),to=cleanText(url.searchParams.get("to"),10);
   if((from&&!isIsoDate(from))||(to&&!isIsoDate(to)))return json({error:"Rango de fechas inválido"},400);
   const result=await env.DB.prepare(`SELECT id,expense_date AS expenseDate,category,description,status,amount_minor AS amountMinor,amount_scale AS amountScale,currency,payment_method AS method,
     reference_currency AS referenceCurrency,reference_amount_cents AS referenceAmountCents,functional_amount_cents AS functionalAmountCents,transaction_reference AS reference,notes,
     exchange_rate_value_date AS exchangeRateValueDate,created_by AS createdBy,created_at AS createdAt,voided_at AS voidedAt,void_reason AS voidReason,
     COALESCE((SELECT MAX(version) FROM entity_mutation_claims WHERE entity_type='expense' AND entity_id=expenses.id),0) AS mutationVersion
-    FROM expenses WHERE (?='' OR expense_date>=?) AND (?='' OR expense_date<=?) ORDER BY expense_date DESC,created_at DESC LIMIT 1000`).bind(from,from,to,to).all();
+    FROM expenses WHERE (?='' OR expense_date>=?) AND (?='' OR expense_date<=?) ORDER BY expense_date DESC,created_at DESC,id DESC LIMIT 1000 OFFSET ?`).bind(from,from,to,to,offset).all();
   const items=result.results||[],posted=items.filter(item=>item.status==="posted"),byCurrency={};for(const item of posted)byCurrency[item.currency]=(byCurrency[item.currency]||0)+Number(item.amountMinor||0);
-  return json({items,summary:{functionalCurrency:"USD",totalFunctionalUsdCents:posted.reduce((sum,item)=>sum+Number(item.functionalAmountCents||0),0),byCurrency,postedCount:posted.length,voidedCount:items.length-posted.length}});
+  return json({items,nextOffset:items.length===1000?offset+1000:null,summary:{functionalCurrency:"USD",totalFunctionalUsdCents:posted.reduce((sum,item)=>sum+Number(item.functionalAmountCents||0),0),byCurrency,postedCount:posted.length,voidedCount:items.length-posted.length}});
 }
 
 async function createExpense(request,env){
@@ -2085,8 +2090,16 @@ async function getAccountingSummary(request,env,url){
 async function getActivity(request, env) {
   const session = await requireSession(request, env);
   if (session instanceof Response) return session;
-  const result = await env.DB.prepare("SELECT username, action, details, created_at FROM audit_log ORDER BY id DESC LIMIT 20").all();
-  return json({ items: result.results || [] });
+  const raw = new URL(request.url).searchParams.get("cursor");
+  const cursor = raw && /^\d+$/.test(raw) && Number.isSafeInteger(Number(raw)) ? Number(raw) : Number.MAX_SAFE_INTEGER;
+  const result = await env.DB.prepare("SELECT id, username, action, details, created_at FROM audit_log WHERE id < ? ORDER BY id DESC LIMIT 100").bind(cursor).all();
+  const items = result.results || [];
+  return json({items,nextCursor:items.length===100?items[items.length-1].id:null});
+}
+
+function listOffset(request) {
+  const value = Number(new URL(request.url).searchParams.get("offset") || 0);
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 async function requireSession(request, env, reject = true) {

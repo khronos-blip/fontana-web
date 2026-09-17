@@ -10,7 +10,7 @@ Este archivo es el contexto operativo obligatorio para cualquier sesión de Code
 - Cada `push` a `main` debe activar un despliegue automático en Cloudflare Pages.
 - No usar servidores del Mac mini, LaunchAgents ni Cloudflare Tunnel para alojar esta web.
 - Dominio de producción: `https://fontanasingluten.com` (Cloudflare Registrar + Pages).
-- La tienda pública es estática (HTML, CSS y JavaScript). El catálogo, acceso privado, inventario, reservas y ventas usan el Worker + D1 documentado en `backend/README.md`; los secretos viven únicamente en Cloudflare.
+- El menú principal usa HTML, CSS y JavaScript. Las fichas, categorías y sitemap se sirven mediante Pages Functions consultando el catálogo público. El catálogo, acceso privado, inventario, reservas y ventas usan el Worker + D1 documentado en `backend/README.md`; los secretos viven únicamente en Cloudflare.
 
 ## Cambios frecuentes
 
@@ -44,7 +44,7 @@ Para una vista local temporal se puede usar cualquier servidor estático, pero n
 ## Reglas de producción
 
 - No inventar precios, reseñas, horarios, zonas de entrega ni formas de pago.
-- Mantener `previewMode: true` y `noindex` hasta recibir aprobación final de la clienta.
+- La tienda ya está aprobada y opera con `previewMode: false`. Conservar ese estado; los entornos de prueba no deben reservar pedidos reales. El administrador mantiene `noindex`.
 - Para activar pedidos: validar el número con código internacional, ponerlo en `whatsappNumber` y cambiar `previewMode` a `false`.
 - El mensaje debe indicar que el pedido queda pendiente hasta confirmar el pago.
 - Ejecutar `npm test` antes de hacer `push`.

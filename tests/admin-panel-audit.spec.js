@@ -34,7 +34,7 @@ async function panel(page, settings = {}) {
     if(path==='/v1/admin/inventory')return send({items:settings.inventory||[],summary:{}});
     if(path==='/v1/admin/users')return send({items:[{username:'audit',displayName:'Auditoría',active:1,role:settings.role||'owner'}],currentUser:'audit',canManageUsers:settings.role!=='admin'});
     if(path==='/v1/admin/sales')return send({items:settings.sales||[],summary:{}});
-    if(path==='/v1/admin/activity')return send({items:settings.activity||[]});
+    if(path==='/v1/admin/activity')return send(settings.activityResponse?.(url)||{items:settings.activity||[]});
     return send({items:[],summary:{}});
   });
   await page.goto(`${origin}/admin/`);
@@ -54,6 +54,81 @@ async function sale(page) {
   await form.locator('[name="customerPhone"]').fill('04120000000');
   return form;
 }
+
+test('Producto nuevo reintenta un 503 sin duplicarse ni dejar borrador al cancelar',async({page})=>{
+  const settings={writeError:'Servicio temporalmente no disponible',writeStatus:503};
+  const writes=await panel(page,settings);
+  await page.locator('[data-view="products"]').click();
+  await page.locator('[data-action="new-product"]').last().click();
+  const form=page.locator('#productForm');
+  await form.locator('[name="name"]').fill('Reintento seguro');
+  await form.locator('[name="id"]').fill('reintento-seguro');
+  await form.locator('[name="price"]').fill('10');
+  await page.locator('#saveProductButton').click();
+  await expect(page.locator('#productDialog #adminToast')).toContainText('Servicio temporalmente');
+  await expect(page.locator('#saveProductButton')).toBeEnabled();
+  settings.writeStatus=200;settings.writeError='';
+  await page.locator('#saveProductButton').click();
+  await expect(page.locator('#productDialog')).toBeHidden();
+  const catalogWrites=writes.filter(x=>x.path==='/v1/admin/catalog');
+  expect(catalogWrites).toHaveLength(2);
+  expect(catalogWrites[1].body.state.products.filter(p=>p.id==='reintento-seguro')).toHaveLength(1);
+  await page.locator('[data-action="new-product"]').last().click();
+  await form.locator('[name="name"]').fill('Cancelado tras error');
+  await form.locator('[name="id"]').fill('cancelado-tras-error');
+  settings.writeStatus=503;settings.writeError='Temporal';
+  await page.locator('#saveProductButton').click();
+  await expect(page.locator('#productDialog #adminToast')).toContainText('Temporal');
+  await page.locator('#productDialog [data-close-dialog]').last().click();
+  settings.writeStatus=200;settings.writeError='';
+  await page.locator('#saveAll').click();
+  await expect.poll(()=>writes.filter(x=>x.path==='/v1/admin/catalog').length).toBe(4);
+  expect(writes.filter(x=>x.path==='/v1/admin/catalog').at(-1).body.state.products.some(p=>p.id==='cancelado-tras-error')).toBe(false);
+});
+
+test('Guardar producto avisa antes de publicar cambios de otra sección',async({page})=>{
+  const writes=await panel(page);
+  await page.locator('[data-view="fonkies"]').click();
+  await page.locator('#fonkiesEditor summary').click();
+  await page.locator('#fonkiesEditor [data-builder-availability]').selectOption('sold-out');
+  await page.locator('[data-view="products"]').click();
+  await page.locator('[data-edit="pistacho"]').click();
+  let message='';
+  page.once('dialog',async d=>{message=d.message();await d.dismiss();});
+  await page.locator('#saveProductButton').click();
+  expect(message).toContain('otros cambios pendientes');
+  expect(writes.filter(x=>x.path==='/v1/admin/catalog')).toHaveLength(0);
+  await expect(page.locator('#productDialog')).toBeVisible();
+  page.once('dialog',d=>d.accept());
+  await page.locator('#saveProductButton').click();
+  await expect(page.locator('#productDialog')).toBeHidden();
+  expect(writes.find(x=>x.path==='/v1/admin/catalog').body.state.builders.fonkies.availabilityMode).toBe('sold-out');
+});
+
+test('Historial carga páginas antiguas antes de buscar y conserva fechas',async({page})=>{
+  await panel(page,{activityResponse:url=>url.searchParams.has('cursor')
+    ? {items:[{id:1,action:'catalog_save',details:'Revisión antigua localizable',created_at:'2026-01-01T12:00:00Z'}],nextCursor:null}
+    : {items:[{id:101,action:'inventory_adjust',details:'Reciente',created_at:'2026-09-17T12:00:00Z'}],nextCursor:101}});
+  await page.locator('#adminMenuButton').click();await page.locator('[data-menu-view="activity-log"]').click();
+  await page.locator('#activitySearch').fill('antigua localizable');
+  await expect(page.locator('#activityList')).toContainText('Revisión antigua localizable');
+  await expect(page.locator('#activityList')).not.toContainText('Fecha no disponible');
+});
+
+test('Publicación de producto mantiene el diálogo hasta resolver la petición',async({page})=>{
+  let release;
+  const pending=new Promise(resolve=>release=resolve);
+  const writes=await panel(page,{onWrite:async path=>{if(path==='/v1/admin/catalog')await pending;}});
+  await page.locator('[data-view="products"]').click();
+  await page.locator('[data-edit="pistacho"]').click();
+  await page.locator('#saveProductButton').click();
+  await expect(page.locator('#productForm')).toHaveAttribute('aria-busy','true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#productDialog')).toBeVisible();
+  release();
+  await expect(page.locator('#productDialog')).toBeHidden();
+  expect(writes.filter(x=>x.path==='/v1/admin/catalog')).toHaveLength(1);
+});
 
 async function visibleNotice(page, dialog, text) {
   const notice=page.locator(`${dialog} #adminToast`);
@@ -245,9 +320,13 @@ test('Publicar no duplica la petición ni da por publicados cambios editados dur
   await page.locator('#productForm [type="submit"]').click();
   release();
   await expect(page.locator('#saveAll')).toBeEnabled();
-  await expect(page.locator('#saveStatus')).toHaveText('Cambios pendientes');
+  await expect(page.locator('#productDialog')).toBeVisible();
+  await expect(page.locator('#productForm [name="name"]')).toHaveValue('Edición posterior aislada');
   expect(writes).toHaveLength(1);
   expect(writes[0].body.state.products.find(p=>p.id==='pistacho').name).not.toBe('Edición posterior aislada');
+  await page.locator('#saveProductButton').click();
+  await expect(page.locator('#productDialog')).toBeHidden();
+  expect(writes[1].body.state.products.find(p=>p.id==='pistacho').name).toBe('Edición posterior aislada');
 });
 
 test('Anular exige motivo y confirmación dentro del diálogo, sin borrar historial',async({page})=>{

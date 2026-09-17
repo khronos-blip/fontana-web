@@ -12,17 +12,15 @@ window.FONTANA_CONFIG = {
   locale: "es-VE",
   previewMode: false,
   adminApiBase: "https://api.fontanasingluten.com",
-  // El menú local ya contiene el catálogo completo: si la primera carga de la
-  // API tarda más de dos segundos, se habilita esa copia y cada cambio de
-  // cantidad sigue validándose contra el servidor. Al abrir el checkout se
-  // concede más tiempo para reconciliar precios y disponibilidad recientes.
+  // Si la API tarda, el catálogo inicial se identifica como no verificado.
+  // Cada cantidad se valida y el envío exige refrescar precios contra D1.
   initialCatalogApiTimeoutMs: 2000,
   catalogApiTimeoutMs: 5000,
   stockValidationTimeoutMs: 6000,
   pickupLabel: "Pickup en Mañongo (detalles por WhatsApp)",
   deliveryLabel: "Delivery en todo Carabobo (costo confirmado por WhatsApp)",
-  // Catálogo editable. Hasta aprobar un panel privado, este archivo es la
-  // fuente segura para activar promociones, marcar entrega inmediata o agotado.
+  // Catálogo inicial para desarrollo y recuperación explícita. En producción,
+  // la fuente de verdad es el catálogo publicado desde el panel privado.
   // status: "available" | "sold-out". promo/immediate aceptan true/false.
   // variants permite controlar cada sabor por separado con el mismo status.
   dynamicCatalog: [

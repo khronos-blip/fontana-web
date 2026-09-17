@@ -81,7 +81,9 @@ npm run api:migrate:local
 npm run api:dev
 ```
 
-La tienda mantiene `config.js` como respaldo si la API no está disponible. En producción, el panel no permite el modo local ni guarda contraseñas en el navegador.
+La tienda puede mostrar el catálogo inicial si la API no está disponible, pero lo señala como no verificado y bloquea el envío hasta actualizar precios. Las fichas y el sitemap de Cloudflare Pages consultan el catálogo público; ante un fallo devuelven 503 temporal, nunca precios antiguos. En producción, el panel no permite el modo local ni guarda contraseñas en el navegador.
+
+Los listados administrativos exponen `nextOffset` (pedidos, ventas, gastos, clientes e historial de un cliente) o `nextCursor` (actividad). El panel recorre las páginas antes de aplicar búsquedas y calcular totales globales; nunca suma una página como si fuera todo el registro. La paginación no cambia saldos, existencias ni asientos.
 
 ## Publicación
 

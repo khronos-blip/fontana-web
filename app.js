@@ -175,6 +175,20 @@
     });
   }, true);
   let adminStateVerified = false;
+  function showCatalogVerification(verified) {
+    if (localMode) return;
+    let notice = $("#catalogVerification");
+    if (!notice) {
+      notice = document.createElement("p");
+      notice.id = "catalogVerification";
+      notice.className = "catalog-verification";
+      notice.setAttribute("role", "status");
+      $("#products")?.before(notice);
+    }
+    notice.textContent = "No pudimos verificar el catálogo. Los precios y la disponibilidad mostrados pueden estar desactualizados. Vuelve a cargar antes de confirmar tu pedido.";
+    notice.hidden = verified;
+    document.documentElement.classList.toggle("catalog-unverified", !verified);
+  }
   // The catalogue request can be slow or offline; the visible menu heading
   // must not wait for it before running its existing entrance animation.
   setupMenuIntro();
@@ -5073,7 +5087,11 @@
     if (storefrontCatalogRefresh) return storefrontCatalogRefresh;
     storefrontCatalogRefresh = (async () => {
       const latestState = await readAdminState();
-      if (!latestState || !Array.isArray(latestState.products)) return { refreshed:false, changed:false };
+      if (!latestState || !Array.isArray(latestState.products)) {
+        showCatalogVerification(false);
+        return { refreshed:false, changed:false };
+      }
+      showCatalogVerification(true);
 
       // A customer may still tap a cart stepper while the catalogue request is
       // in flight. Settle that work before canonical IDs or prices are replaced.
@@ -5511,7 +5529,11 @@
       return;
     }
     await flushQuantityWork();
-    await refreshAdminStateAndCart();
+    const refreshedCatalog = await refreshAdminStateAndCart();
+    if (!localMode && !refreshedCatalog.refreshed) {
+      say("No pudimos verificar los precios actuales. No se envió el pedido. Revisa tu conexión y vuelve a intentarlo.");
+      return;
+    }
     if (cart.some(isElectricityBlockedCartItem)) {
       say("Hay un producto que ya no está disponible. Vuelve al carrito y retíralo para continuar.");
       return;
@@ -5760,6 +5782,7 @@
   setupCatalogGroups();
 
   adminState = await adminStatePromise;
+  showCatalogVerification(Boolean(adminState));
   const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
   const catalogHydrationHeight = catalogHydrationScrollAnchor ? holdCatalogHydrationHeight() : null;
   let hydrationInputController = null;

@@ -84,6 +84,9 @@ dialog>form>.dialog-actions .primary{min-width:160px}
   dialog>form>.dialog-actions .primary,dialog>form>.dialog-actions .ghost{width:100%;min-width:0;padding:0 10px}
   .icon-close{width:44px;height:44px;flex:0 0 44px}
 }
+/* Pending publication stays visible on small screens without changing header height. */
+.draft-help{padding:0 20px;color:var(--muted);font-size:.8rem;line-height:1.5}
+@media(max-width:620px){.top-actions .save-status{display:block;position:absolute;top:49px;right:76px;max-width:230px;font-size:10px;line-height:14px;text-align:right}.top-actions{padding-bottom:10px}.topbar .admin-menu-button{margin-bottom:-10px}.activity-row small,.inventory-row label,.save-status{font-size:12px}}
 
 /* Constructores compactos: la configuración se abre solo cuando se necesita. */
 #fonkiesEditor,#fombEditor,.builder-card{width:100%;min-width:0;max-width:100%}

@@ -33,6 +33,10 @@ jobs:
         run: npm ci
       - name: Build versioned static site
         run: npm run build
+      - name: Install test browser
+        run: npx playwright install --with-deps chromium
+      - name: Verify regressions before publication
+        run: npm test
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

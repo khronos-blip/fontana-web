@@ -16,7 +16,7 @@ module.exports = defineConfig({
   ],
   use: {
     baseURL: process.env.FONTANA_BASE_URL || "http://127.0.0.1:8767",
-    channel: "chrome",
+    channel: process.env.CI ? undefined : "chrome",
     viewport: { width: 390, height: 844 },
     permissions: ["clipboard-read", "clipboard-write"]
   }

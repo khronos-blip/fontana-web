@@ -187,7 +187,7 @@
         <section class="view" data-panel="backup">
           <div class="page-head"><div><span class="eyebrow">Seguridad operativa</span><h1>Copias y publicación</h1><p>Respalda el catálogo antes de cambios grandes.</p></div></div>
           <div class="panel-grid">
-            <article class="panel"><h2>Exportar copia</h2><p>Descarga todos los productos y ajustes publicados en un archivo JSON.</p><button class="primary" id="exportButton">Descargar copia</button></article>
+            <article class="panel"><h2>Exportar copia</h2><p>Descarga el catálogo de este navegador, incluidos los cambios pendientes. La copia indica la revisión y si es borrador; no incluye ventas, clientes ni inventario.</p><button class="primary" id="exportButton">Descargar copia</button></article>
             <article class="panel"><h2>Restaurar copia</h2><p>Importa una copia, revísala y publícala con Guardar.</p><label class="file-button">Seleccionar archivo<input id="importInput" type="file" accept="application/json"></label></article>
             <article class="panel"><h2>Publicación global</h2><p>La base de datos comparte los cambios con todos los móviles. Al enviar WhatsApp se reserva el stock por 30 minutos; al confirmar el pedido se descuenta y se registra la venta.</p><span class="status-pill">Base de datos conectada</span></article>
             <article class="panel"><h2>Recuperar catálogo inicial</h2><p>Carga de nuevo el catálogo incluido en la web. Debes guardar para publicarlo.</p><button class="danger" id="resetButton">Cargar catálogo inicial</button></article>
@@ -261,7 +261,8 @@
         <label class="wide">Ingredientes<textarea name="ingredients" rows="4"></textarea></label>
         <div class="image-field wide"><div class="image-preview" id="flavorImagePreview"></div><div><label>Ruta de imagen<input name="image"></label><label class="file-button">Subir y optimizar imagen<input id="flavorImageInput" type="file" accept="image/jpeg,image/png,image/webp"></label></div></div>
       </div>
-      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="saveFlavorButton" type="submit">Guardar sabor</button></div>
+      <p class="draft-help">Este botón guarda un borrador. Después pulsa «Guardar y publicar» para actualizar la tienda.</p>
+      <div class="dialog-actions"><button class="ghost" type="button" data-close-dialog>Cancelar</button><button class="primary" id="saveFlavorButton" type="submit" aria-label="Guardar sabor">Guardar borrador del sabor</button></div>
     </form>
   </dialog>
   <dialog id="paymentDialog" aria-labelledby="paymentDialogTitle" aria-describedby="paymentDialogDescription">

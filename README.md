@@ -1,6 +1,6 @@
 # Fontana Web
 
-Sitio estático de Fontana con catálogo, carrito persistente y entrega del pedido a WhatsApp.
+Tienda de Fontana con catálogo, fichas sincronizadas, carrito persistente y entrega del pedido a WhatsApp.
 
 Repositorio: <https://github.com/khronos-blip/fontana-web>
 
@@ -36,7 +36,7 @@ Al confirmar una venta se guarda el cliente por teléfono normalizado, el detall
 
 En producción, el panel guarda en D1 y los cambios se reflejan para todos los visitantes. Las contraseñas se derivan con PBKDF2, las sesiones usan cookies seguras y los secretos no forman parte del JavaScript público. Face ID se implementa con WebAuthn: la biometría permanece en el dispositivo y el servidor solo almacena la clave pública de cada passkey. En `localhost` se conserva un modo de revisión con `localStorage` para pruebas automáticas, nunca para producción.
 
-`config.js` continúa siendo la fuente original y el respaldo seguro del catálogo publicado:
+`config.js` conserva el catálogo inicial para desarrollo y recuperación explícita. No es la fuente de verdad comercial después de publicar desde el panel. Si falla la API, el menú identifica esa copia como no verificada y no confirma pedidos con precios antiguos:
 
 1. Editar el producto dentro de `dynamicCatalog`.
 2. Para productos con varias presentaciones, añadir `sizes` con `name`, `price` y `status`; el carrito y WhatsApp tomarán automáticamente la presentación, el precio y el relleno elegidos.
@@ -59,11 +59,12 @@ Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo es
 El build también publica una página 404 útil, información del pedido, privacidad, una tarjeta social de 1200 × 630 y variantes responsivas WebP de alta calidad. Los originales permanecen disponibles como fuente de máxima resolución. La entrega a Google Search Console y la creación o edición del Perfil de Empresa requieren la cuenta de la propietaria y siguen la lista de comprobación de `docs/google-discovery.md`.
 
 - `seo-data.mjs` contiene los textos y la clasificación SEO de los productos estáticos y de los constructores Fonkies/Fomb.
-- Los productos administrables se leen directamente de `config.js`; no hay que duplicarlos en otra lista.
+- En el dominio principal, las fichas, categorías y sitemap consultan el catálogo publicado de D1 mediante Pages Functions; las altas, cambios y bajas del administrador no requieren reconstruir la web. No usan credenciales privadas ni exponen cantidades.
+- `seo-render.mjs` comparte las plantillas entre el build y Pages Functions, conservando el diseño. La copia estática de GitHub Pages y el build local son solo respaldo de desarrollo, no certifican datos comerciales vigentes.
 - `seo.css` define exclusivamente la presentación de las páginas de categoría y producto.
 - Los archivos públicos grandes salen versionados por contenido (`app.*.js`, `config.*.js` y `seo.*.css`) para permitir caché y mantener liviano el HTML inicial.
 
-Después de cambiar productos, imágenes o textos públicos, hay que volver a ejecutar el build antes de publicar. Las fichas con precio no confirmado omiten `Offer`; las fichas agotadas publican su estado real.
+Los cambios de código requieren build y despliegue; los cambios del catálogo administrativo se reflejan directamente en las fichas públicas. Si la API no puede verificar el catálogo, las fichas devuelven 503 temporal (sin reutilizar precios antiguos) y el menú avisa que los datos están sin verificar. El envío del pedido exige una nueva consulta satisfactoria. Las fichas con precio no confirmado omiten `Offer`.
 
 ## Configuración operativa
 

@@ -201,6 +201,7 @@
   }
 
   let state = defaultState();
+  let publishedCatalog = clone(state);
   let remoteRevision = 0;
   let pendingConfiguredProductCount = 0;
   let dirty = false;
@@ -263,6 +264,7 @@
     const publishedIds = new Set((sourceState.products || []).map(product => product.id));
     pendingConfiguredProductCount = originalProducts.filter(product => !publishedIds.has(product.id)).length;
     state = normalizeState(sourceState);
+    publishedCatalog = clone(state);
     remoteRevision = Number(payload?.revision || 0);
     if (pendingConfiguredProductCount) dirty = true;
   }
@@ -543,22 +545,24 @@
     });
   }
 
-  async function saveState() {
+  async function saveState(candidate = state) {
     if (savingCatalog) return false;
-    try { validateCatalogDraft(state); } catch(error) { toast(error.message); return false; }
+    try { validateCatalogDraft(candidate); } catch(error) { toast(error.message); return false; }
     savingCatalog = true;
     $("#saveAll").disabled = true;
-    state.updatedAt = new Date().toISOString();
-    const snapshot = JSON.stringify(state);
+    candidate.updatedAt = new Date().toISOString();
+    const snapshot = JSON.stringify(candidate);
     let saved = false;
     try {
       if (localMode) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        activityItems.unshift({username:currentSession?.username || "revision-local",action:"catalog_save",details:"Catálogo actualizado",createdAt:state.updatedAt});
+        localStorage.setItem(STORAGE_KEY, snapshot);
+        activityItems.unshift({username:currentSession?.username || "revision-local",action:"catalog_save",details:"Catálogo actualizado",createdAt:candidate.updatedAt});
       } else {
-        const payload = await apiFetch("/v1/admin/catalog", {method:"PUT", body:JSON.stringify({state, expectedRevision:remoteRevision})});
+        const payload = await apiFetch("/v1/admin/catalog", {method:"PUT", body:JSON.stringify({state:candidate, expectedRevision:remoteRevision})});
         remoteRevision = Number(payload?.revision || remoteRevision + 1);
       }
+      state = candidate;
+      publishedCatalog = JSON.parse(snapshot);
       dirty = JSON.stringify(state) !== snapshot;
       pendingConfiguredProductCount = 0;
       $("#saveStatus").textContent = dirty ? "Cambios pendientes" : localMode ? "Borrador local guardado" : "Publicado para todos";
@@ -625,12 +629,37 @@
     return groups[action] || [String(action || "Cambio").replaceAll("_"," "),"other"];
   }
 
+  async function allAdminPages(path, field = "items") {
+    const first = await apiFetch(path);
+    const items = [...(first[field] || [])];
+    const seen = new Set();
+    let page = first;
+    while (page.nextCursor != null || page.nextOffset != null) {
+      const key = page.nextCursor != null ? "cursor" : "offset";
+      const value = page.nextCursor ?? page.nextOffset;
+      const token = key + ":" + value;
+      if (seen.has(token)) throw new Error("No se pudo completar el registro. Vuelve a cargar.");
+      seen.add(token);
+      const url = new URL(path, apiBase);
+      url.searchParams.set(key, value);
+      page = await apiFetch(url.pathname + url.search);
+      items.push(...(page[field] || []));
+    }
+    const unique = new Set();
+    const completeItems = items.filter(item => {
+      if (item.id == null) return true;
+      if (unique.has(item.id)) return false;
+      unique.add(item.id); return true;
+    });
+    return {...first,[field]:completeItems,summary:seen.size ? undefined : first.summary};
+  }
+
   async function loadActivity() {
     try {
       if (localMode) {
         if (!activityItems.length && state.updatedAt) activityItems = [{username:currentSession?.username || "revision-local",action:"catalog_save",details:"Catálogo local actualizado",createdAt:state.updatedAt}];
       } else {
-        const payload = await apiFetch("/v1/admin/activity");
+        const payload = await allAdminPages("/v1/admin/activity");
         activityItems = payload.items || [];
       }
       renderActivity();
@@ -853,9 +882,20 @@
           ? "Fomb · bombones individuales"
           : item.optionSummary || "Producto";
       const quantityLabel = item.kind === "fonkies" ? "Galletas totales" : item.kind === "fomb" ? "Bombones totales" : "Cantidad total";
-      const stockCopy = item.trackStock
+      const owner = item.kind === "product" ? publishedCatalog.products.find(p=>p.id===item.productId) : publishedCatalog.builders[item.kind];
+      const size = owner?.sizes?.find(s=>s.name===item.sizeName);
+      const variant = owner?.variants?.find(v=>v.name===item.variantName);
+      const flavor = owner?.flavors?.find(f=>(f.inventoryKey || inventoryKeySlug(f.name))===item.sku.split(":").pop());
+      const storeReason = owner?.visible === false ? "Oculto en la tienda"
+        : owner?.requiresElectricity && operations.electricityEnabled === false ? "Pausado por electricidad"
+        : availabilityModeFor(owner || {}) === "sold-out" ? "Pausado en el catálogo, aunque haya unidades"
+        : (flavor && availabilityModeFor(flavor)==="sold-out") || (!item.trackStock && [size,variant].some(option=>option && availabilityModeFor(option)==="sold-out")) ? "Opción pausada en el catálogo"
+        : item.trackStock && Number(item.available)===0 ? "Sin unidades libres para reservar"
+        : availabilityModeFor(owner || {})==="preorder" || (flavor && availabilityModeFor(flavor)==="preorder") ? "Solo preorden · entrega en 2 días"
+        : "Disponible según las reglas del catálogo";
+      const stockCopy = (item.trackStock
         ? `${item.available} disponible${item.available===1?"":"s"} · ${item.reserved} reservada${item.reserved===1?"":"s"}`
-        : "Control inactivo · disponibilidad por confirmar";
+        : "Control inactivo · disponibilidad por confirmar") + " · Tienda: " + storeReason;
       return `<article class="inventory-row" data-sku="${escapeHtml(item.sku)}"><div class="inventory-copy product-context">${productThumb(item,displayName)}<div class="product-context-copy"><span class="eyebrow">${escapeHtml(context)}</span><h3>${escapeHtml(displayName)}</h3><p>${escapeHtml(stockCopy)}</p></div></div><label class="stock-quantity-label">${escapeHtml(quantityLabel)}<div class="stock-stepper"><button type="button" data-stock-delta="-1" aria-label="Restar una unidad">−</button><input data-stock-value aria-label="${escapeHtml(quantityLabel)} de ${escapeHtml(displayName)}" type="number" inputmode="numeric" required min="${minimum}" max="100000" step="1" value="${escapeHtml(value)}"><button type="button" data-stock-delta="1" aria-label="Sumar una unidad">+</button></div></label><label class="switch"><input data-track-stock type="checkbox" aria-describedby="stock-help-${escapeHtml(item.sku)}" ${(draft ? draft.trackStock : item.trackStock)?"checked":""}><span>Control activo<small data-stock-help id="stock-help-${escapeHtml(item.sku)}"></small></span></label><button class="primary compact" data-save-stock type="button">Guardar</button></article>`;
     }).join("") : '<div class="empty-list">No hay artículos que coincidan.</div>';
     $$("#inventoryList [data-sku]").forEach(syncInventoryControls);
@@ -864,7 +904,7 @@
   async function loadOrders() {
     try {
       if (localMode) { orders=[]; orderSummary={reserved:0,confirmed:0,expired:0}; }
-      else { const payload=await apiFetch("/v1/admin/orders"); orders=payload.items||[]; orderSummary=payload.summary||orderSummary; }
+      else { const payload=await allAdminPages("/v1/admin/orders"); orders=payload.items||[]; orderSummary=payload.summary||{reserved:orders.filter(o=>o.status==="reserved").length,confirmed:orders.filter(o=>o.status==="confirmed").length,expired:orders.filter(o=>o.status==="expired").length}; }
       renderOrders();
       renderDashboardOperations();
     } catch (error) { if (error.status===401) showLogin("Tu sesión venció."); else toast("No se pudieron cargar los pedidos."); }
@@ -951,7 +991,7 @@
         sales = readLocalSales();
         salesSummary = calculateSalesSummary(sales);
       } else {
-        const payload = await apiFetch("/v1/admin/sales");
+        const payload = await allAdminPages("/v1/admin/sales");
         sales = payload.items || [];
         const calculated=calculateSalesSummary(sales),summary=payload.summary||{};
         const backendBalances=summary.partialCount===undefined&&summary.pendingCount===undefined?calculated.pendingCount:Number(summary.partialCount||0)+Number(summary.pendingCount||0);
@@ -1342,7 +1382,7 @@
         customers = deriveLocalCustomers();
         customerSummary = calculateCustomerSummary();
       } else {
-        const payload = await apiFetch("/v1/admin/customers?limit=250");
+        const payload = await allAdminPages("/v1/admin/customers?limit=250");
         customers = payload.items || [];
         customerSummary = {...calculateCustomerSummary(customers),...(payload.summary || {})};
       }
@@ -1403,12 +1443,15 @@
   async function loadCustomerDetail(id) {
     if (localMode || customerDetails.has(String(id))) return;
     try {
-      const payload = await apiFetch(`/v1/admin/customers/${encodeURIComponent(id)}`);
+      const payload = await allAdminPages(`/v1/admin/customers/${encodeURIComponent(id)}`, "sales");
       customerDetails.set(String(id),payload);
       const customer=customers.find(item=>String(item.id)===String(id));
       if(customer&&Array.isArray(payload.sales)){
         if(payload.customer)Object.assign(customer,payload.customer);
         const committed=payload.sales.filter(isCommittedSale);
+        customer.confirmedSalesCount=committed.length;
+        customer.recurrent=committed.length>=2;
+        customer.lifetimeFunctionalUsdCents=committed.reduce((sum,sale)=>sum+saleFunctionalCents(sale),0);
         customer.collectedFunctionalUsdCents=committed.reduce((sum,sale)=>sum+saleFunctionalPaidCents(sale),0);
         customer.outstandingFunctionalUsdCents=committed.reduce((sum,sale)=>sum+saleFunctionalBalanceCents(sale),0);
         customerSummary=calculateCustomerSummary(customers);
@@ -1508,7 +1551,7 @@
         accountingSummary=calculatedAccounting();
       } else {
         const query=new URLSearchParams(accountingRange).toString();
-        const [summaryPayload,expensePayload]=await Promise.all([apiFetch(`/v1/admin/accounting/summary?${query}`),apiFetch(`/v1/admin/expenses?${query}`)]);
+        const [summaryPayload,expensePayload]=await Promise.all([apiFetch(`/v1/admin/accounting/summary?${query}`),allAdminPages(`/v1/admin/expenses?${query}`)]);
         if(request!==accountingRequest)return;
         expenses=expensePayload.items||[];
         accountingSummary=normalizeAccountingSummary(summaryPayload);
@@ -2000,6 +2043,7 @@
     try {
       if (localMode) {
         state = readState();
+        publishedCatalog = clone(state);
       } else {
         const username = $("#loginUsername").value.trim();
         const password = $("#loginPassword").value;
@@ -2094,6 +2138,9 @@
   $("#electricityToggle").addEventListener("click", toggleElectricity);
   $$('[data-action="new-product"]').forEach(button => button.addEventListener("click", () => openProduct()));
   $$('[data-close-dialog]').forEach(button => button.addEventListener("click", () => button.closest("dialog")?.close()));
+  $("#productDialog").addEventListener("cancel", event => {
+    if ($("#productForm").getAttribute("aria-busy") === "true") event.preventDefault();
+  });
   $$("dialog").forEach(dialog => dialog.addEventListener("close", () => {
     const notice=$("#adminToast",dialog);
     if(notice){clearTimeout(toast.timer);notice.classList.remove("show","dialog-feedback");notice.setAttribute("role","status");document.body.append(notice);}
@@ -2394,6 +2441,7 @@
 
   $("#productForm").addEventListener("submit", async event => {
     event.preventDefault();
+    if (savingCatalog) return toast("Hay una publicación en curso. Conservamos tu formulario; espera a que termine y vuelve a guardar.");
     const form = event.currentTarget;
     if (formImageUploads.get(form)?.pending) return toast("Espera a que termine de subir la imagen antes de guardar.");
     const data = new FormData(form);
@@ -2412,17 +2460,22 @@
       id,name:String(data.get("name")).trim(),brand:String(data.get("brand") || "").trim(),category:data.get("category"),price:data.get("price") === "" ? null : Number(data.get("price")),image:String(data.get("image")).trim(),description:String(data.get("description")).trim(),ingredients:String(data.get("ingredients")).trim(),weight:weight.value,availabilityLabel:String(data.get("availabilityLabel")).trim(),...availability,stockQuantity:data.get("stockQuantity") === "" ? null : Math.max(0,Number(data.get("stockQuantity"))),visible:data.get("visible") === "on",isNew:data.get("isNew") === "on",promo:data.get("promo") === "on",requiresElectricity:data.get("requiresElectricity") === "on",glutenFree:data.get("glutenFree") === "on",sugarFree:data.get("sugarFree") === "on",lactoseFree:data.get("lactoseFree") === "on",eggFree:data.get("eggFree") === "on",customLabels:String(data.get("customLabels") || "").split(/\n/).map(label => label.trim()).filter(Boolean),variants,sizes
     };
     try { validateCatalogDraft({products:[product],builders:{}}); } catch(error) { toast(error.message); return; }
-    const index = state.products.findIndex(item => item.id === originalId);
-    if (index >= 0) state.products[index] = product; else state.products.push(product);
-    markDirty();
-    renderAll();
+    const outsideProduct = catalog => ({...catalog,updatedAt:null,backupInfo:undefined,products:catalog.products.filter(item=>item.id!==originalId)});
+    const otherDrafts = JSON.stringify(outsideProduct(state)) !== JSON.stringify(outsideProduct(publishedCatalog));
+    if (dirty && otherDrafts && !confirm("Hay otros cambios pendientes en el catálogo. Guardar publicará también esos cambios, además de este producto. ¿Publicar todos los cambios?")) return;
+    const candidate = clone(state);
+    const index = candidate.products.findIndex(item => item.id === originalId);
+    if (index >= 0) candidate.products[index] = product; else candidate.products.push(product);
     const submit = $("#saveProductButton");
     submit.disabled = true;
     form.setAttribute("aria-busy", "true");
-    const saved = await saveState();
+    form.inert = true;
+    const saved = await saveState(candidate);
+    form.inert = false;
     submit.disabled = false;
     form.removeAttribute("aria-busy");
     if (saved) $("#productDialog").close();
+    else $("#adminToast")?.focus();
   });
 
   ["input","change"].forEach(eventName => $("#productForm").addEventListener(eventName, event => {
@@ -2449,7 +2502,14 @@
       const [kind,index] = remove.dataset.deleteFlavor.split(":");
       if (confirm("¿Eliminar este sabor?")) { state.builders[kind].flavors.splice(Number(index),1); markDirty(); renderBuilder(kind); }
     }
-    if (save) { markDirty(); saveState(); }
+    if (save) {
+      const kind = save.dataset.saveBuilder;
+      const otherChanges = JSON.stringify(state.products)!==JSON.stringify(publishedCatalog.products)
+        || JSON.stringify(state.settings)!==JSON.stringify(publishedCatalog.settings)
+        || Object.keys(state.builders).some(key=>key!==kind && JSON.stringify(state.builders[key])!==JSON.stringify(publishedCatalog.builders[key]));
+      if (otherChanges && !confirm("Se publicarán también cambios pendientes de otras secciones del catálogo. ¿Publicar todos los cambios?")) return;
+      markDirty(); saveState();
+    }
   }));
 
   ["fonkiesEditor","fombEditor"].forEach(id => $(`#${id}`).addEventListener("input", event => {
@@ -2501,7 +2561,8 @@
   }));
 
   $("#exportButton").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+    const backup = {...state,backupInfo:{exportedAt:new Date().toISOString(),revision:remoteRevision,status:dirty ? "draft" : "published",scope:"catalog-only"}};
+    const blob = new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = `fontana-catalogo-${caracasDate()}.json`;
@@ -2544,6 +2605,7 @@
   async function bootstrap() {
     if (localMode) {
       state = readState();
+      publishedCatalog = clone(state);
       currentSession = { username:"revision-local", displayName:"Revisión local", role:"owner" };
       showLogin("Modo local de revisión: acceso abierto en este dispositivo.");
       return;
