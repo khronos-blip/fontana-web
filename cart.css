@@ -56,4 +56,5 @@
 @media(min-width:961px){
   .menu-section .menu-intro h2{max-width:none;white-space:nowrap;font-size:clamp(5.4rem,7.4vw,6.6rem)}
 }
-.product-top h3{min-width:0;overflow-wrap:anywhere}
+.product-front .product-top{flex-wrap:wrap}
+.product-top h3{min-width:0;overflow-wrap:break-word}
