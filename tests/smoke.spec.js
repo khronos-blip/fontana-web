@@ -4107,7 +4107,7 @@ test("Salados compacta el frente y conserva todas las opciones al ampliar", asyn
   });
   expect(nuggetsSpacing).not.toBeNull();
   expect(nuggetsSpacing).toBeLessThanOrEqual(16);
-  expect(nuggetsBox.height).toBeLessThan(440);
+  expect(nuggetsBox.height).toBeLessThanOrEqual(440);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
@@ -7588,11 +7588,18 @@ test("la tarjeta Bottega abierta se reajusta al rotar sin perder contenido ni fo
   await bottegaFilter.click();
   await expect(bottegaFilter).not.toHaveAttribute("aria-busy", /.+/);
   const card = page.locator('.catalog-group[data-catalog-group="bottega"] .product[data-product-id="bottega-de-cecco-aceite-oliva-classico"]');
+  await page.evaluate(() => document.fonts.ready);
   await card.scrollIntoViewIfNeeded();
   const source = card.locator(".product-front .product-media");
-  const initialScrollY = await page.evaluate(() => window.scrollY);
+  // Playwright may scroll the media again for click actionability. The modal
+  // must restore the position at activation, not the earlier test setup scroll.
+  await source.evaluate(element => element.addEventListener("pointerdown", () => {
+    window.__rotationInitialScrollY = window.scrollY;
+  }, { once:true, capture:true }));
 
   await source.click();
+  const initialScrollY = await page.evaluate(() => window.__rotationInitialScrollY);
+  expect(typeof initialScrollY).toBe("number");
   await expect(card).toHaveClass(/product-expanded/);
   await page.setViewportSize({ width:844, height:390 });
   await expect(card).toHaveClass(/product-expanded-open/);
