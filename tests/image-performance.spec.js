@@ -502,9 +502,12 @@ test("una imagen atascada no bloquea el filtro ni muestra un cuadro negro", asyn
     await expect(filter).not.toHaveAttribute("aria-busy", /.+/);
     await expect(cake).toBeHidden();
     await expect(bottega).toBeVisible();
+    await expect(image).toHaveClass(/catalog-image-pending/);
     releaseResponsive();
     await expect(image).toHaveAttribute("loading", "lazy");
-    await expect(image).toHaveClass(/catalog-image-pending/);
+    await expect(image).toHaveClass(/catalog-image-error/);
+    await expect(bottega.locator('.product-front .catalog-image-fallback')).toContainText('Imagen no disponible');
+    await expect(bottega.locator('.product-front .product-media')).not.toHaveClass(/catalog-image-loading/);
     await expect(image).toHaveCSS("opacity", "0");
   } finally {
     releaseResponsive?.();

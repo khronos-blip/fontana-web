@@ -1,7 +1,7 @@
 const {test, expect} = require('@playwright/test');
 
 // Use the production code path with isolated API fixtures, never real records.
-const origin = 'http://fontana.localhost:8767';
+const origin = process.env.FONTANA_ADMIN_TEST_ORIGIN || 'http://fontana.localhost:8767';
 function rates(date, exact = true) {
   return {date, rates:Object.fromEntries([['USD',80],['EUR',92]].map(([currency,value]) => [currency, {
     id:`test-${currency}-${date}`,currency,rateScaled:value*100000000,rateScale:8,
@@ -55,6 +55,22 @@ async function sale(page) {
   return form;
 }
 
+async function discardDialog(page, id, escape = false) {
+  let confirmed = false;
+  const discard = async dialog => {
+    expect(dialog.message()).toContain('cambios sin guardar');
+    confirmed = true;
+    await dialog.accept();
+  };
+  page.on('dialog', discard);
+  try {
+    if (escape) await page.keyboard.press('Escape');
+    else await page.locator(`${id} [data-close-dialog]`).first().click();
+    await expect(page.locator(id)).toBeHidden();
+    expect(confirmed).toBe(true);
+  } finally { page.off('dialog', discard); }
+}
+
 test('Producto nuevo reintenta un 503 sin duplicarse ni dejar borrador al cancelar',async({page})=>{
   const settings={writeError:'Servicio temporalmente no disponible',writeStatus:503};
   const writes=await panel(page,settings);
@@ -79,7 +95,7 @@ test('Producto nuevo reintenta un 503 sin duplicarse ni dejar borrador al cancel
   settings.writeStatus=503;settings.writeError='Temporal';
   await page.locator('#saveProductButton').click();
   await expect(page.locator('#productDialog #adminToast')).toContainText('Temporal');
-  await page.locator('#productDialog [data-close-dialog]').last().click();
+  await discardDialog(page,'#productDialog');
   settings.writeStatus=200;settings.writeError='';
   await page.locator('#saveAll').click();
   await expect.poll(()=>writes.filter(x=>x.path==='/v1/admin/catalog').length).toBe(4);
@@ -224,7 +240,7 @@ test('Las respuestas BCV tardías no sobrescriben otra fecha ni una tasa manual'
   await finishDelayedResponse(page,'date=2026-08-01',release);
   await expect(form.locator('.rate-status')).toContainText('2026-08-02');
   await expect(form.locator('[name="rateValueDate"]')).toHaveValue('2026-08-02');
-  await page.locator('#paymentDialog [data-close-dialog]').first().click();
+  await discardDialog(page,'#paymentDialog');
   let releaseExpense;
   const expenseDelay=new Promise(resolve=>releaseExpense=resolve);
   settings.rateResponse=async date=>{await expenseDelay;return rates(date);};
@@ -252,7 +268,7 @@ test('Cambiar base actualiza todos los cobros y un abono no cambia la moneda his
     await expect(lines.nth(i).locator('[name="bcvRate"]')).toHaveValue('92');
     await expect(lines.nth(i)).toHaveAttribute('data-exchange-rate-id',/^test-EUR-/);
   }
-  await page.locator('#paymentDialog [data-close-dialog]').first().click();
+  await discardDialog(page,'#paymentDialog');
   await page.locator('[data-add-sale-payment]').first().click();
   await expect(form.locator('[name="referenceCurrency"]')).toBeDisabled();
   await form.locator('[name="paidCurrency"]').selectOption('EUR');
@@ -299,10 +315,10 @@ test('Panel completo: doce áreas y modales accesibles a 360, 390, 768 y 1366',a
   await page.locator('[data-view="products"]').click();await page.locator('[data-action="new-product"]').last().click();
   await page.locator('#productForm [name="id"]').fill('pistacho');await page.locator('#productForm [name="name"]').fill('Prueba duplicada');
   await page.locator('#productForm [type="submit"]').click();
-  await visibleNotice(page,'#productDialog','Ya existe un producto');await page.keyboard.press('Escape');
+  await visibleNotice(page,'#productDialog','Ya existe un producto');await discardDialog(page,'#productDialog',true);
   await page.locator('[data-view="fonkies"]').click();await page.locator('[data-add-flavor="fonkies"]').click();
   await page.locator('#flavorForm [name="name"]').fill('Chips de Chocolate Oscuro');await page.locator('#flavorForm [type="submit"]').click();
-  await visibleNotice(page,'#flavorDialog','Ya existe un sabor');await page.keyboard.press('Escape');
+  await visibleNotice(page,'#flavorDialog','Ya existe un sabor');await discardDialog(page,'#flavorDialog',true);
   await page.locator('#adminMenuButton').click();await page.keyboard.press('Escape');
   await expect(page.locator('#adminMenu')).not.toBeVisible();await expect(page.locator('#adminMenuButton')).toBeFocused();
   expect(errors).toEqual([]);
@@ -384,7 +400,7 @@ test('Administrador sin rol propietario no puede cargar tasas ni administrar usu
   const form=await sale(page);
   await expect(form.locator('[name="rateSourceType"] option[value="manual"]')).toHaveJSProperty('disabled',true);
   await expect(form.locator('.rate-status')).toContainText('Solicita a la propietaria');
-  await page.keyboard.press('Escape');
+  await discardDialog(page,'#paymentDialog',true);
   await page.locator('#adminMenuButton').click();await page.locator('[data-menu-view="security"]').click();
   await expect(page.locator('#newUserForm')).toBeHidden();
 });

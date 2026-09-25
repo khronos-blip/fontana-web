@@ -3,7 +3,7 @@ const path = require('node:path');
 
 // Exercise the real production UI against an isolated, mutable API. No request
 // made by these tests can reach customer records or the public catalog.
-const origin = 'http://fontana.localhost:8767';
+const origin = process.env.FONTANA_ADMIN_TEST_ORIGIN || 'http://fontana.localhost:8767';
 const inventoryPath = '/v1/admin/inventory/';
 const catalogPath = '/v1/admin/catalog';
 const imagePath = '/v1/admin/images';
@@ -85,8 +85,12 @@ async function product(page, id) {
   return page.locator('#productForm');
 }
 async function closeDialog(page, id) {
-  await page.locator(`${id} [data-close-dialog]`).first().click();
-  await expect(page.locator(id)).not.toBeVisible();
+  const discard = dialog => dialog.accept();
+  page.on('dialog', discard);
+  try {
+    await page.locator(`${id} [data-close-dialog]`).first().click();
+    await expect(page.locator(id)).not.toBeVisible();
+  } finally { page.off('dialog', discard); }
 }
 async function releaseResponse(page, pathname, pending) {
   const response = page.waitForResponse(response => new URL(response.url()).pathname === pathname && response.request().method() !== 'OPTIONS');
@@ -447,6 +451,7 @@ test('Presentaciones: coma decimal válida y errores explícitos sin perder tama
   const writes = await panel(page);
   const form = await product(page, 'raviolis');
   const variants = await form.locator('[name="variants"]').inputValue();
+  await form.locator('.product-options-advanced summary').click();
   await form.locator('[name="sizes"]').fill('400 g | 4,50 | available\n800 g | 8.50 | available');
   await form.locator('[type="submit"]').click();
   await expect(page.locator('#productDialog')).not.toBeVisible();
@@ -454,6 +459,7 @@ test('Presentaciones: coma decimal válida y errores explícitos sin perder tama
   const validSizes = await form.locator('[name="sizes"]').inputValue();
   await expect(form.locator('[name="variants"]')).toHaveValue(variants);
   for (const invalid of ['400 g | | available\n800 g | 8.50', '400 g | -5 | available\n800 g | 8.50']) {
+    await form.locator('.product-options-advanced').evaluate(element => { element.open = true; });
     await form.locator('[name="sizes"]').fill(invalid);
     await form.locator('[type="submit"]').click();
     await expect(page.locator('#productDialog')).toBeVisible();

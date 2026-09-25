@@ -108,11 +108,11 @@ dialog>form>.dialog-actions .primary{min-width:160px}
 .flavor-row img{width:52px;height:52px}
 .flavor-copy{min-width:0}
 .flavor-title{min-width:0}
-.flavor-title h3{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.flavor-title .badge{margin-top:4px;padding:3px 6px;font-size:.48rem}
+.flavor-title h3{white-space:normal;overflow-wrap:anywhere;line-height:1.35}
+.flavor-title .badge{margin-top:4px;padding:4px 6px;font-size:.75rem;white-space:normal}
 .flavor-row p{margin-top:4px}
 .flavor-row .row-actions{align-self:center}
-.flavor-row .row-actions button{width:32px;height:32px}
+.flavor-row .row-actions button{width:44px;height:44px}
 .builder-actions .primary{min-width:220px}
 
 @media(max-width:1050px){
@@ -131,17 +131,37 @@ dialog>form>.dialog-actions .primary{min-width:160px}
   .builder-flavor-head .eyebrow{margin-bottom:3px;font-size:.55rem}
   .builder-flavor-head h2{margin-bottom:0;font-size:.92rem}
   .builder-flavor-head .ghost{min-height:36px;padding:0 10px;font-size:.62rem}
-  .flavor-admin-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:11px}
-  .flavor-row{grid-template-columns:38px minmax(0,1fr) 28px;gap:6px;min-height:66px;padding:6px;border-radius:11px}
-  .flavor-row img{width:38px;height:38px;border-radius:8px}
-  .flavor-title h3{font-size:.66rem;line-height:1.16;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
-  .flavor-title .badge{margin-top:3px;padding:2px 4px;font-size:.4rem}
+  .flavor-admin-list{grid-template-columns:1fr;gap:9px;margin-top:11px}
+  .flavor-row{grid-template-columns:52px minmax(0,1fr) 44px;gap:10px;min-height:110px;padding:10px;border-radius:11px}
+  .flavor-row img{width:52px;height:52px;border-radius:8px}
+  .flavor-title h3{font-size:.88rem;line-height:1.35;white-space:normal;display:block;overflow:visible;overflow-wrap:anywhere}
+  .flavor-title .badge{margin-top:5px;padding:4px 6px;font-size:.75rem;white-space:normal}
   .flavor-row p{display:none}
-  .flavor-row .row-actions{grid-column:3;grid-row:1;display:grid;gap:3px}
-  .flavor-row .row-actions button{width:28px;height:28px;grid-column:auto;grid-row:auto;border-radius:8px;font-size:.72rem}
+  .flavor-row .row-actions{grid-column:3;grid-row:1;display:grid;gap:7px}
+  .flavor-row .row-actions button{width:44px;height:44px;grid-column:auto;grid-row:auto;border-radius:8px;font-size:1rem}
   .builder-actions{margin-top:12px}
-  .builder-actions .primary{width:100%;min-width:0;min-height:40px;font-size:.7rem}
+  .builder-actions .primary{width:100%;min-width:0;min-height:44px;font-size:.8rem}
+  .builder-flavor-head .ghost{min-height:44px;font-size:.78rem}
+  .builder-state{font-size:.7rem;white-space:normal}
 }
+
+/* Historial consultable sin modificar movimientos y reservas con hora explícita. */
+.order-expiry{display:block;margin-top:7px;line-height:1.5;font-variant-numeric:tabular-nums}
+.sale-details{grid-column:1/-1;min-width:0;border-top:1px solid var(--line)}
+.sale-details>summary{min-height:44px;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--plum);font-size:.8rem;font-weight:800;list-style:none}
+.sale-details>summary::-webkit-details-marker{display:none}
+.sale-details>summary:before{content:"+";font-size:1rem}
+.sale-details[open]>summary:before{content:"−"}
+.sale-detail-body{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:4px 0 12px;min-width:0}
+.sale-detail-body>div{min-width:0}
+.sale-detail-body h4{margin:0 0 7px;color:var(--plum-dark);font-size:.82rem}
+.sale-detail-body p,.sale-detail-body li{margin:0 0 7px;color:var(--muted);font-size:.8rem;line-height:1.55;overflow-wrap:anywhere;white-space:normal}
+.sale-detail-body ul{margin:0;padding-left:18px}
+.sale-detail-balance{align-self:start;padding:12px;border-radius:12px;background:#f7edf7}
+.sale-detail-balance span,.sale-detail-balance b{display:block;overflow-wrap:anywhere}
+.sale-detail-balance span{font-size:.75rem;color:var(--muted)}
+.sale-detail-balance b{margin:3px 0 8px;color:var(--plum)}
+.customer-history-heading{margin:18px 0 10px;font-size:.85rem;color:var(--plum-dark)}
 
 /* CRM, cobros y contabilidad operativa */
 .product-thumb{width:58px;height:58px;display:block;flex:0 0 58px;border:1px solid rgba(110,35,111,.12);border-radius:13px;background:#f2e7f2;object-fit:cover;object-position:center}
@@ -174,6 +194,25 @@ dialog>form>.dialog-actions .primary{min-width:160px}
 .customer-contact{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}.customer-contact-item{min-width:0;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fff}.customer-contact-item span,.customer-contact-item b{display:block}.customer-contact-item span{color:var(--muted);font-size:.59rem}.customer-contact-item b{margin-top:3px;font-size:.7rem;line-height:1.4;overflow-wrap:anywhere}.customer-purchase small{display:block;line-height:1.45}.payment-line-grid textarea{margin-top:5px;padding:10px}
 .payment-entry{min-width:0;display:grid;gap:3px;max-width:100%}.payment-entry .badge{max-width:100%;white-space:normal}.payment-entry small{color:var(--muted);font-size:.58rem;overflow-wrap:anywhere}
 
+@media(max-width:620px){
+  .sale-detail-body{grid-template-columns:1fr;gap:10px}
+  #paymentForm .compact-form-grid,#paymentForm .payment-line-grid,#paymentForm .bcv-grid{grid-template-columns:1fr;gap:12px}
+  #paymentForm .payment-line{padding:14px 12px}
+  #paymentForm .payment-line:not(:only-child){padding-top:48px}
+  #paymentForm .remove-payment-line{width:44px;height:44px}
+  #paymentForm .payment-balance{grid-template-columns:1fr}
+  #paymentForm .payment-balance>div{padding:13px}
+  #paymentForm .payment-balance span,#paymentForm .payment-balance-note{font-size:.78rem;line-height:1.45}
+  #paymentForm .payment-balance b{font-size:1.15rem;margin-top:5px}
+  #paymentForm .form-grid label,#paymentForm .payment-line-grid label,#paymentForm .catalog-search,#paymentForm .section-help,#paymentForm .rate-status,#paymentForm label small{font-size:.78rem;line-height:1.45}
+  #paymentForm .catalog-item h4{font-size:.85rem}
+  #paymentForm .catalog-item p,#paymentForm .catalog-item-price{font-size:.75rem;white-space:normal}
+  #paymentForm .catalog-stepper{grid-template-columns:44px minmax(44px,1fr) 44px}
+  #paymentForm .catalog-stepper button{height:44px}
+  #paymentForm .section-heading .ghost{min-height:44px}
+  #paymentForm [name="total"],#paymentForm [name="paidAmount"]{font-size:1.15rem;font-weight:800;color:var(--plum-dark)}
+}
+
 @media(max-width:1050px){.sale-catalog-picker{grid-template-columns:repeat(2,minmax(0,1fr))}.payment-line-grid,.bcv-grid{grid-template-columns:1fr 1fr}.customer-profile-grid{grid-template-columns:1fr 1fr}.accounting-grid{grid-template-columns:1fr}.inventory-row{grid-template-columns:minmax(240px,1fr) 180px}}
 @media(max-width:900px){.inventory-row{grid-template-columns:minmax(0,1fr) 180px}.sale-row{grid-template-columns:66px 110px minmax(0,1fr) auto}.sale-total{grid-column:3;text-align:left}.sale-row>.row-actions{grid-column:4;grid-row:1/3}.customers-toolbar{grid-template-columns:1fr 220px}}
 @media(max-width:620px){
@@ -185,3 +224,38 @@ dialog>form>.dialog-actions .primary{min-width:160px}
   .accounting-notice{display:block}.accounting-notice b{display:block;margin-bottom:4px}.accounting-range{grid-template-columns:1fr 1fr;padding:11px}.accounting-range button,.accounting-range output{grid-column:1/-1;width:100%;justify-self:stretch;text-align:center}.accounting-stats{grid-template-columns:1fr 1fr}.accounting-grid .panel{padding:15px}.expense-row{grid-template-columns:minmax(0,1fr) auto}.expense-row>[data-void-expense]{grid-column:2}
   #paymentDialog{width:calc(100% - 10px);max-height:calc(100dvh - 10px);border-radius:18px}#paymentForm{max-height:calc(100dvh - 10px);padding:14px 11px 0}#paymentForm>.dialog-head{padding:0 2px 10px}#paymentForm>.dialog-head h2{font-size:1.35rem}#paymentForm>.dialog-head p{font-size:.65rem}.payment-dialog-body{gap:9px;padding:1px 2px 13px}.payment-section{padding:11px;border-radius:14px}.section-heading{align-items:flex-start;flex-direction:column;gap:7px}.section-heading .ghost{align-self:stretch}.catalog-search{width:100%}.sale-catalog-picker{grid-template-columns:1fr;max-height:260px}.catalog-item{grid-template-columns:48px minmax(0,1fr)}.catalog-item .product-thumb{width:48px;height:48px;flex-basis:48px}.compact-form-grid{grid-template-columns:1fr 1fr}.compact-form-grid .wide{grid-column:1/-1}.payment-line{padding:10px 38px 10px 10px}.payment-line-grid,.bcv-grid{grid-template-columns:1fr 1fr;gap:7px}.payment-line-grid .wide,.bcv-grid .wide{grid-column:1/-1}.payment-balance{grid-template-columns:1fr 1fr}.payment-balance>div:first-child{grid-column:1/-1}#paymentForm>.dialog-actions{margin:0 -11px;padding:10px 11px max(10px,env(safe-area-inset-bottom))}
 }
+
+/* Auditoría UX 2026-09-25: editor visual de producto y estado publicado. */
+.product-options-editor{min-width:0;margin:0;padding:14px;border:1px solid var(--line);border-radius:16px}
+.product-options-editor legend{padding:0 7px;color:var(--plum-dark);font-size:.85rem;font-weight:800}
+.product-options-editor>p,.product-options-advanced>p,.product-options-advanced>small,.product-inventory-link p{font-size:.8rem;line-height:1.45;color:var(--muted)}
+.product-options-editor [data-option-rows]{display:grid;gap:12px;margin-bottom:12px}
+.product-option-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(110px,1fr) auto;align-items:end;gap:10px;padding:12px;background:#fff;border:1px solid var(--line);border-radius:12px}
+.product-options-editor[data-options-editor="sizes"] .product-option-row{grid-template-columns:minmax(0,1.4fr) minmax(90px,.7fr) minmax(130px,1fr) auto}
+.product-option-row label{min-width:0;font-size:.8rem}
+.product-option-row input,.product-option-row select{min-height:44px}
+.product-option-row .ghost{min-height:44px}
+.product-options-advanced{padding:14px;border:1px dashed var(--line);border-radius:12px}
+.product-options-advanced summary{min-height:30px;color:var(--plum);font-weight:800;cursor:pointer}
+.product-options-advanced label{display:block;margin-top:12px}
+.product-inventory-link{padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.product-inventory-link p{margin:6px 0 12px}
+.product-row .product-store-state{margin-top:8px;font-size:.8rem;line-height:1.4;color:var(--plum-dark)}
+.product-store-state[data-store-mode="sold-out"]{color:#8f2929}
+.product-row .product-price-summary{margin-top:6px;font-weight:700;font-size:.8rem;line-height:1.4;color:var(--plum);overflow-wrap:anywhere}
+@media(max-width:620px){.product-option-row,.product-options-editor[data-options-editor="sizes"] .product-option-row{grid-template-columns:1fr}.product-option-row .ghost{justify-self:start}.product-options-editor{padding:11px}.product-options-advanced summary{min-height:44px}.product-inventory-link .ghost{width:100%}}
+
+/* Estados y ayudas operativas legibles, sin cambiar la estructura del panel. */
+.product-row .badge,.product-row p,.builder-state,.builder-settings>summary small,.builder-form label,.builder-form small,.flavor-row p{font-size:.75rem;line-height:1.4}
+.product-row .badge,.builder-state{white-space:normal;overflow-wrap:anywhere}
+.customer-summary p,.customer-kpis .badge,.customer-kpi span,.customer-contact-item span,.customer-purchase small{font-size:.75rem;line-height:1.45}
+#productForm .form-grid label,#productForm small,#productForm .dietary-fieldset>p,#flavorForm .form-grid label,#flavorForm small{font-size:.75rem;line-height:1.45}
+#paymentForm>.dialog-head p,#paymentForm .section-help,#paymentForm .catalog-item p,#paymentForm .catalog-item-price,#paymentForm .rate-status,#paymentForm .payment-line-grid label,#paymentForm .payment-balance span{font-size:.75rem;line-height:1.45}
+#paymentForm label,#paymentForm small{font-size:.75rem;line-height:1.45}
+.product-row .row-actions button,.sale-row .row-actions button{min-width:44px;min-height:44px;width:44px;height:44px}
+.content .compact,.credential-row button,.user-row button,.today-summary button,.text-link,.filter-summary button,.expense-row [data-void-expense],.dialog-head .icon-close{min-width:44px;min-height:44px}
+#paymentForm .catalog-stepper{grid-template-columns:44px minmax(44px,1fr) 44px}
+#paymentForm .catalog-stepper button{height:44px}
+#paymentForm .remove-payment-line{width:44px;height:44px}
+#paymentForm .compact{min-height:44px}
+@media(min-width:621px){#paymentForm .payment-line{padding-right:64px}}

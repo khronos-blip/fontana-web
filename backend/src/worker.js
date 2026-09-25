@@ -223,13 +223,21 @@ function deriveInventoryDefinitions(state) {
 async function syncInventoryDefinitions(env, state, actor = "system") {
   const definitions = deriveInventoryDefinitions(state);
   if (!definitions.length) return definitions;
+  // A renamed/added option is a new SKU, not evidence of physical stock.
+  // Snapshot product identities before any batch so every SKU of a genuinely
+  // new product can still receive its explicitly configured initial quantity.
+  const existingProducts = await env.DB.prepare("SELECT DISTINCT product_id AS productId FROM inventory_items WHERE kind = 'product'").all();
+  const existingProductIds = new Set((existingProducts.results || []).map(item => item.productId));
   const now = new Date().toISOString();
-  const statements = definitions.flatMap(definition => [
-    env.DB.prepare("INSERT OR IGNORE INTO inventory_items (sku, product_id, kind, label, option_summary, on_hand, reserved, track_stock, active, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)")
-      .bind(definition.sku, definition.productId, definition.kind, definition.label, definition.optionSummary, definition.sourceQuantity ?? 0, definition.sourceQuantity === null ? 0 : 1, actor, now),
-    env.DB.prepare("UPDATE inventory_items SET product_id = ?, kind = ?, label = ?, option_summary = ?, active = 1 WHERE sku = ?")
-      .bind(definition.productId, definition.kind, definition.label, definition.optionSummary, definition.sku)
-  ]);
+  const statements = definitions.flatMap(definition => {
+    const initialQuantity = definition.kind === "product" && existingProductIds.has(definition.productId) ? null : definition.sourceQuantity;
+    return [
+      env.DB.prepare("INSERT OR IGNORE INTO inventory_items (sku, product_id, kind, label, option_summary, on_hand, reserved, track_stock, active, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)")
+        .bind(definition.sku, definition.productId, definition.kind, definition.label, definition.optionSummary, initialQuantity ?? 0, initialQuantity === null ? 0 : 1, actor, now),
+      env.DB.prepare("UPDATE inventory_items SET product_id = ?, kind = ?, label = ?, option_summary = ?, active = 1 WHERE sku = ?")
+        .bind(definition.productId, definition.kind, definition.label, definition.optionSummary, definition.sku)
+    ];
+  });
   const activeSkus = new Set(definitions.map(item => item.sku));
   const existing = await env.DB.prepare("SELECT sku FROM inventory_items WHERE active = 1").all();
   for (const row of existing.results || []) if (!activeSkus.has(row.sku)) statements.push(env.DB.prepare("UPDATE inventory_items SET active = 0 WHERE sku = ? AND reserved = 0").bind(row.sku));
@@ -373,12 +381,14 @@ export function reservationCanBeReused(existing, body, value = new Date()) {
 
 export function reservationReplay(existing, body, value = new Date()) {
   if (!existing) return null;
-  if (!reservationCanBeReused(existing, body, value)) {
+  if (!reservationCanBeReused(existing, body, value)
+    || (Object.prototype.hasOwnProperty.call(body || {}, "expectedTotalCents") && body.expectedTotalCents !== Number(existing.totalCents))) {
     return {
       status: 409,
       payload: {
         error:"Esta solicitud ya fue utilizada o cambió. Vuelve al carrito e inténtalo de nuevo.",
-        code:"idempotency_conflict"
+        code:"idempotency_conflict",
+        activeReservation:existing.status === "reserved" && Number(existing.expiresAt) > Math.floor(value.getTime() / 1000)
       }
     };
   }
@@ -579,7 +589,10 @@ async function validateOrderStock(request, env) {
 
 async function reserveOrder(request, env) {
   await expireReservations(env);
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({error:"Solicitud de pedido inválida."},400);
+  const hasExpectedTotal = Object.prototype.hasOwnProperty.call(body, "expectedTotalCents");
+  if (hasExpectedTotal && (!Number.isSafeInteger(body.expectedTotalCents) || body.expectedTotalCents < 0)) return json({error:"El total confirmado del pedido no es válido."},400);
   const clientKey = String(body.clientKey || "");
   if (!/^[a-zA-Z0-9_-]{16,100}$/.test(clientKey)) return json({error:"No se pudo identificar la solicitud. Inténtalo de nuevo."},400);
   const reservationLookup = () => env.DB.prepare("SELECT id, order_code AS orderCode, status, expires_at AS expiresAt, total_cents AS totalCents, snapshot_json AS snapshotJson FROM stock_orders WHERE client_key = ?").bind(clientKey).first();
@@ -601,6 +614,7 @@ async function reserveOrder(request, env) {
         : "El carrito cambió o contiene una opción no disponible. Actualiza la página e inténtalo de nuevo.";
     return json({error:errorMessage,code:error.message},409);
   }
+  if (hasExpectedTotal && body.expectedTotalCents !== cart.totalCents) return json({error:"El precio cambió. Revisa el total actualizado antes de confirmar.",code:"pricing_changed"},409);
   const trackedDemands = cart.demands.filter(item => inventory.get(item.definition.sku)?.trackStock);
   const clientHash = await sha256(`${request.headers.get("CF-Connecting-IP") || "local"}:${request.headers.get("User-Agent") || ""}`);
   const active = await env.DB.prepare("SELECT COUNT(*) AS count FROM stock_orders WHERE client_hash = ? AND status = 'reserved' AND expires_at > ?").bind(clientHash,Math.floor(Date.now()/1000)).first();

@@ -225,6 +225,9 @@
   let stockQuantityMutationTail = Promise.resolve();
   let quantityMutationVersion = 0;
   let storefrontCatalogRefresh = null;
+  let reviewedCheckout = null;
+  let checkoutSubmitting = false;
+  let checkoutReserving = false;
   const optimizedAssetPaths = new Map([
     ["assets/pistacho-fontana-v4.png", "assets/pistacho-fontana-v4.webp"],
     ["assets/layer-cake-fontana-pro.png", "assets/layer-cake-fontana-pro.webp"]
@@ -236,7 +239,7 @@
   }
 
   const compactProductImageSizes = "(max-width:640px) calc(50vw - 18.5px),(max-width:959px) calc(50vw - 29px),380px";
-  const compactGalleryImageSizes = "(max-width:640px) calc(100vw - 26px),(max-width:959px) calc(100vw - 40px),460px";
+  const compactGalleryImageSizes = "(max-width:767px) calc(100vw - 26px),(max-width:959px) calc(40vw - 16px),460px";
   const decodedImagePreloads = new Map();
 
   function localImageKey(source) {
@@ -4031,9 +4034,12 @@
       const image = product.image
         ? responsiveImageMarkup(product.image, name)
         : `<div class="product-placeholder"><div><b>${escapeHtml(name)}</b><small>Foto por actualizar</small></div></div>`;
-      const sizePrices = availableSizes.map(size => Number(size.price)).filter(value => Number.isFinite(value));
+      const sizeHasPrice = size => size.price !== null && size.price !== "" && Number.isFinite(Number(size.price)) && Number(size.price) >= 0;
+      const orderSizes = (preorder ? sizes : availableSizes).filter(sizeHasPrice);
+      const hasOrderPrice = hasPrice && (!sizes.length || orderSizes.length > 0);
+      const sizePrices = orderSizes.map(size => Number(size.price));
       const minimumSizePrice = sizePrices.length ? Math.min(...sizePrices) : null;
-      const priceCopy = minimumSizePrice !== null ? `Desde ${money(minimumSizePrice)}` : hasPrice ? money(price) : "Cotizar";
+      const priceCopy = minimumSizePrice !== null ? `Desde ${money(minimumSizePrice)}` : sizes.length && !sizes.some(sizeHasPrice) ? "Cotizar" : hasPrice ? money(price) : "Cotizar";
       const classes = ["product", (soldOut && !preorder) || temporarilyUnavailable ? "product-sold-out" : "", temporarilyUnavailable ? "product-temporarily-unavailable" : "", preorder ? "product-preorder" : "", hasPrice ? "" : "product-unpriced"].filter(Boolean).join(" ");
       const cartImage = product.image || "assets/logo.png";
       const variantControl = variants.length ? `<div class="product-variants"><label for="variant-${escapeHtml(productId)}">${escapeHtml(product.variantLabel || "Elige el sabor")}</label><select class="product-variant" id="variant-${escapeHtml(productId)}" ${soldOut && !preorder ? "disabled" : ""}>${variants.map(variant => {
@@ -4045,12 +4051,13 @@
       const sizeControl = sizes.length ? `<div class="product-variants"><label for="size-${escapeHtml(productId)}">${escapeHtml(product.sizeLabel || "Elige la presentación")}</label><select class="product-size" id="size-${escapeHtml(productId)}" ${soldOut && !preorder ? "disabled" : ""}>${sizes.map(size => {
         const optionSold = size.status === "sold-out" || size.stockQuantity === 0;
         const optionPreorder = optionSold && preorderAllowed;
-        const unavailable = optionSold && !optionPreorder;
-        return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${Number(size.price)}" data-sold-out="${optionSold}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${money(Number(size.price))}${optionSold ? optionPreorder ? " · Pre-Order" : " · Agotado" : ""}</option>`;
+        const priced = sizeHasPrice(size);
+        const unavailable = (optionSold && !optionPreorder) || !priced;
+        return `<option value="${unavailable ? "" : escapeHtml(size.name)}" data-price="${priced ? Number(size.price) : ""}" data-sold-out="${optionSold}" ${unavailable ? "disabled" : ""}>${escapeHtml(size.name)} · ${priced ? money(Number(size.price)) : "Precio por confirmar"}${optionSold ? optionPreorder ? " · Pre-Order" : " · Agotado" : ""}</option>`;
       }).join("")}</select></div>` : "";
       const compactSelection = category === "salado" && (sizes.length || variants.length)
         ? `<button type="button" class="product-selection-summary" aria-label="Elegir presentación y opciones de ${escapeHtml(name)}"><span>Tu selección</span><strong>${escapeHtml([
-            sizes.find(size => size.status !== "sold-out" && size.stockQuantity !== 0)?.name || sizes[0]?.name,
+            orderSizes[0]?.name || sizes[0]?.name,
             variants.find(variant => variant.status !== "sold-out" && variant.stockQuantity !== 0)?.name || variants[0]?.name
           ].filter(Boolean).join(" · "))}</strong><em>Ver opciones</em></button>`
         : "";
@@ -4059,15 +4066,15 @@
       const quoteText = category === "bottega"
         ? `Hola Fontana sin gluten 💜 Quisiera consultar la disponibilidad de ${name}${hasPrice ? ` (${money(price)})` : ""}.`
         : `Hola Fontana sin gluten 💜 Quisiera consultar los sabores y el presupuesto para ${name}.`;
-      const quoteButton = (!hasPrice || (pendingCatalogPublication && !(soldOut && !preorder))) && whatsappNumber
-        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">${!hasPrice ? "Consultar por WhatsApp" : "Consultar disponibilidad"}</a>`
+      const quoteButton = (!hasOrderPrice || (pendingCatalogPublication && !(soldOut && !preorder))) && whatsappNumber
+        ? `<a class="product-quote" href="https://wa.me/${whatsappNumber}?text=${encodeURIComponent(quoteText)}" target="_blank" rel="noopener" aria-label="Consultar ${escapeHtml(name)} por WhatsApp">${!hasOrderPrice ? "Consultar por WhatsApp" : "Consultar disponibilidad"}</a>`
         : "";
       const availabilityCopy = preorder ? "PREORDENAR · ENTREGA EN 2 DÍAS" : soldOut ? "AGOTADO" : immediate ? "DISPONIBLE HOY" : "";
       // Keep the product's presentation visible in the footer. Availability is
       // already communicated by the status badge above the image, so it must
       // not replace useful data such as 355 ML, 400 G or 1,5 L.
       const footerCopy = product.weight || product.availabilityLabel || availabilityCopy || (category === "bottega" ? bottegaAvailabilityLabel : "");
-      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${immediate}" data-stock-state="${bottegaAvailability || "pending"}" data-catalog-managed="${catalogManaged}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${catalogManaged && hasPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Preordenar" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PREORDENAR" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
+      return `<article class="${classes}" data-category="${category}" data-id="${escapeHtml(id)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(name)}" data-price="${hasPrice ? price : ""}" data-image="${escapeHtml(cartImage)}" data-ingredients="${escapeHtml(ingredients)}" data-gluten-free="${dietary.glutenFree}" data-sugar-free="${dietary.sugarFree}" data-lactose-free="${dietary.lactoseFree}" data-egg-free="${dietary.eggFree}" data-promo="${Boolean(product.promo)}" data-immediate="${immediate}" data-stock-state="${bottegaAvailability || "pending"}" data-catalog-managed="${catalogManaged}" data-sold-out="${soldOut}" data-temporarily-unavailable="${temporarilyUnavailable}" data-preorder="${preorder}" data-preorder-allowed="${preorderAllowed}"><div class="product-media">${image}${badgeMarkup}</div><div class="product-body"><div class="product-top"><h3>${escapeHtml(name)}</h3><span class="price">${priceCopy}</span></div><p>${escapeHtml(description)}</p>${sizeControl}${variantControl}${compactSelection}<div class="product-footer"><span class="diet">${escapeHtml(String(temporarilyUnavailable ? "TEMPORALMENTE NO DISPONIBLE" : footerCopy || "DISPONIBLE"))}</span>${catalogManaged && hasOrderPrice && (!soldOut || preorder) && !temporarilyUnavailable ? `<button class="add" aria-label="${preorder ? "Preordenar" : "Agregar"} ${escapeHtml(name)}">${preorder ? "PREORDENAR" : "+"}</button>` : temporarilyUnavailable ? "" : quoteButton}</div></div></article>`;
     }).filter(Boolean).join("");
     if (!reconcile) {
       emptyState.insertAdjacentHTML("beforebegin", cards);
@@ -4195,6 +4202,7 @@
   }
 
   function closeCart() {
+    if (checkoutReserving) { say("Estamos confirmando la reserva. Espera un momento para no cambiar el pedido en curso."); return; }
     if (!drawer.classList.contains("open")) return;
     drawerStatus.classList.remove("show");
     drawer.classList.remove("open");
@@ -4241,7 +4249,10 @@
     const selectedChoices = [...identityChoices, stockCopy].filter(Boolean);
     const choiceSlug = identityChoices.join("-").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const id = choiceSlug ? `${card.dataset.id}-${choiceSlug}` : card.dataset.id;
-    const selectedPrice = sizeSelect ? Number(sizeSelect.selectedOptions[0]?.dataset.price) : Number(card.dataset.price);
+    const rawPrice = sizeSelect ? sizeSelect.selectedOptions[0]?.dataset.price : card.dataset.price;
+    if (rawPrice == null || rawPrice === "" || !Number.isFinite(Number(rawPrice)) || Number(rawPrice) < 0) return {error:"Este precio está por confirmar. Consulta a Fontana antes de agregarlo al pedido."};
+    if (sizeSelect && (!selectedSize || sizeSelect.selectedOptions[0]?.disabled)) return {error:"Elige una presentación disponible con precio confirmado."};
+    const selectedPrice = Number(rawPrice);
     return {
       id,
       preorder,
@@ -5009,6 +5020,7 @@
   }
 
   window.changeQty = (id, delta) => {
+    if (checkoutReserving) return;
     const item = cart.find(entry => entry.id === id) || productAddQueues.get(id)?.item;
     if (!item) return;
     const change = Math.trunc(Number(delta));
@@ -5059,15 +5071,58 @@
             ${item.choices ? `<small class="cart-choices">${escapeHtml(item.choices)}</small>` : ""}
             ${isElectricityBlockedCartItem(item) ? `<small class="cart-unavailable-copy">Temporalmente no disponible. Elimínalo para continuar.</small>` : ""}
             <div class="qty">
-              <button type="button" onclick="changeQty('${item.id}',-1)" aria-label="Restar">−</button>
+              <button type="button" onclick="changeQty('${item.id}',-1)" aria-label="Restar ${escapeHtml(item.name)}">−</button>
               <b>${quantity}</b>
-              <button type="button" onclick="changeQty('${item.id}',1)" aria-label="Sumar">+</button>
+              <button type="button" onclick="changeQty('${item.id}',1)" aria-label="Sumar ${escapeHtml(item.name)}">+</button>
             </div>
           </div>
-          <button type="button" class="remove" onclick="changeQty('${item.id}',-${quantity})" aria-label="Eliminar">×</button>
+          <button type="button" class="remove" onclick="changeQty('${item.id}',-${quantity})" aria-label="Eliminar ${escapeHtml(item.name)}">×</button>
         </div>`).join("")
       : `<div class="empty"><b>Tu pedido está vacío</b><span>Agrega una delicia del menú para comenzar.</span></div>`;
+    renderCheckoutSummary();
     syncProductQuantityControls();
+  }
+
+  function checkoutSnapshot() {
+    return cart.map(item => ({
+      id:item.id, name:item.name, price:item.price, qty:item.qty, choices:item.choices || "",
+      availability:item.inventory?.availability || "",
+      minimumBusinessDays:item.inventory?.minimumBusinessDays || 0
+    }));
+  }
+
+  function checkoutSnapshotTotal(items) {
+    return (items || []).reduce((total,item) => total + (Number(item.price) || 0) * Number(item.qty || 0), 0);
+  }
+
+  function renderCheckoutSummary() {
+    const snapshot = checkoutSnapshot();
+    $("#checkoutTotal").textContent = money(checkoutSnapshotTotal(snapshot));
+    $("#checkoutSummaryItems").innerHTML = snapshot.map(item => `<li><span>${item.qty} × ${escapeHtml(item.name)}${item.choices ? `<small>${escapeHtml(item.choices)}</small>` : ""}</span><b>${cartPriceCopy(item.price === null ? null : Number(item.price) * item.qty)}</b></li>`).join("");
+  }
+
+  function requestCheckoutReview() {
+    const current = checkoutSnapshot();
+    if (JSON.stringify(current) === JSON.stringify(reviewedCheckout)) return false;
+    $("#checkoutChangesText").textContent = `El pedido cambió. Total anterior: ${money(checkoutSnapshotTotal(reviewedCheckout))}. Total actual: ${money(checkoutSnapshotTotal(current))}. Revisa los productos, las opciones y la fecha antes de aceptar los cambios. No se ha enviado el pedido.`;
+    $("#checkoutChanges").hidden = false;
+    $("#checkoutSummary").open = true;
+    $("#acceptCheckoutChanges").focus();
+    return true;
+  }
+
+  function lockReservationControls() {
+    const controls = [...checkoutForm.querySelectorAll("input,select,textarea,button"), $("#backToCart"), $("#closeCart")];
+    const states = controls.map(element => ({element,disabled:element.disabled}));
+    checkoutReserving = true;
+    checkoutForm.setAttribute("aria-busy", "true");
+    states.forEach(({element}) => { element.disabled = true; });
+    return () => {
+      if (!checkoutReserving) return;
+      checkoutReserving = false;
+      checkoutForm.removeAttribute("aria-busy");
+      states.forEach(({element,disabled}) => { element.disabled = disabled; });
+    };
   }
 
   function isElectricityBlockedCartItem(item) {
@@ -5148,6 +5203,9 @@
     cartItems.hidden = true;
     cartFooter.hidden = true;
     checkoutForm.hidden = false;
+    reviewedCheckout = checkoutSnapshot();
+    $("#checkoutChanges").hidden = true;
+    renderCheckoutSummary();
     drawer.classList.remove("cart-view");
     drawer.classList.add("checkout-view");
     backToCart.hidden = false;
@@ -5171,10 +5229,19 @@
 
   function populateOptions() {
     const fulfillmentOptions = `
-      <option value="pickup">${config.pickupLabel || "Pickup"}</option>
-      <option value="delivery">${config.deliveryLabel || "Delivery"}</option>`;
+      <option value="pickup">Pickup</option>
+      <option value="delivery">Delivery</option>`;
     ["#fulfillment", "#immediateFulfillment", "#preparedFulfillment"].forEach(selector => {
-      $(selector).innerHTML = fulfillmentOptions;
+      const select = $(selector);
+      select.innerHTML = fulfillmentOptions;
+      const help = document.createElement("p");
+      help.id = `${select.id}Help`;
+      help.className = "schedule-note fulfillment-help";
+      select.after(help);
+      select.setAttribute("aria-describedby", help.id);
+      const updateHelp = () => { help.textContent = select.value === "delivery" ? config.deliveryLabel || "Delivery" : config.pickupLabel || "Pickup"; };
+      select.addEventListener("change", updateHelp);
+      updateHelp();
     });
     $("#paymentMethod").innerHTML = (config.paymentMethods || [])
       .map(method => `<option value="${method}">${method}</option>`)
@@ -5522,42 +5589,60 @@
 
   async function submitOrder(event) {
     event.preventDefault();
+    if (checkoutSubmitting) return;
     if (!validateCheckoutFields()) return;
     const formData = new FormData(checkoutForm);
     if (formData.get("hasAllergies") === "yes" && !formData.getAll("allergens").length && !String(formData.get("otherAllergy") || "").trim()) {
       showCheckoutErrors($("#otherAllergy"), "Especifica la condición, alergia o intolerancia: selecciona una opción o escríbela en el campo de otra condición.");
       return;
     }
-    await flushQuantityWork();
-    const refreshedCatalog = await refreshAdminStateAndCart();
-    if (!localMode && !refreshedCatalog.refreshed) {
-      say("No pudimos verificar los precios actuales. No se envió el pedido. Revisa tu conexión y vuelve a intentarlo.");
-      return;
-    }
-    if (cart.some(isElectricityBlockedCartItem)) {
-      say("Hay un producto que ya no está disponible. Vuelve al carrito y retíralo para continuar.");
-      return;
-    }
-    const stockValidation = await validateStock();
-    if (!stockValidation.ok) { say(`${stockValidation.error} Reduce el pedido para continuar.`); return; }
-    const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
-
-    if (config.previewMode || !whatsappNumber) {
-      const { message, orderId } = buildMessage(checkoutForm);
-      window.__copiedOrder = message;
-      try {
-        await navigator.clipboard.writeText(message);
-        say(`Pedido ${orderId} preparado y copiado ✓`);
-      } catch {
-        say(`Pedido ${orderId} preparado. Falta configurar WhatsApp.`);
-      }
-      return;
-    }
     const submit = checkoutForm.querySelector('[type="submit"]');
     const previousLabel = submit.textContent;
+    checkoutSubmitting = true;
     submit.disabled = true;
-    submit.textContent = "Reservando stock…";
+    submit.textContent = "Verificando pedido…";
+    let releaseReservationControls = () => {};
+    let reservationTimeout;
     try {
+      await flushQuantityWork();
+      const refreshedCatalog = await refreshAdminStateAndCart();
+      if (checkoutForm.hidden || !drawer.classList.contains("open")) return;
+      if (!localMode && !refreshedCatalog.refreshed) {
+        say("No pudimos verificar los precios actuales. No se envió el pedido. Revisa tu conexión y vuelve a intentarlo.");
+        return;
+      }
+      if (cart.some(isElectricityBlockedCartItem)) {
+        say("Hay un producto que ya no está disponible. Vuelve al carrito y retíralo para continuar.");
+        return;
+      }
+      if (!cart.length) { say("Tu pedido está vacío. Vuelve al menú para agregar productos."); return; }
+      if (requestCheckoutReview()) return;
+      // A catalogue refresh can also change the minimum preparation date.
+      if (!validateCheckoutFields()) return;
+      const submissionSnapshot = JSON.stringify({items:checkoutSnapshot(), data:[...new FormData(checkoutForm)]});
+      const stockValidation = await validateStock();
+      await flushQuantityWork();
+      if (checkoutForm.hidden || !drawer.classList.contains("open")) return;
+      if (submissionSnapshot !== JSON.stringify({items:checkoutSnapshot(), data:[...new FormData(checkoutForm)]})) {
+        if (!requestCheckoutReview()) say("Los datos del pedido cambiaron mientras verificábamos el stock. Revísalos y vuelve a enviar. No se ha reservado ningún producto.");
+        return;
+      }
+      if (!validateCheckoutFields()) return;
+      if (!stockValidation.ok) { say(`${stockValidation.error} Reduce el pedido para continuar.`); return; }
+      const whatsappNumber = String(config.whatsappNumber || "").replace(/\D/g, "");
+
+      if (config.previewMode || !whatsappNumber) {
+        const { message, orderId } = buildMessage(checkoutForm);
+        window.__copiedOrder = message;
+        try {
+          await navigator.clipboard.writeText(message);
+          say(`Pedido ${orderId} preparado y copiado ✓`);
+        } catch {
+          say(`Pedido ${orderId} preparado. Falta configurar WhatsApp.`);
+        }
+        return;
+      }
+      submit.textContent = "Reservando stock…";
       const data = new FormData(checkoutForm);
       const clientKey = checkoutForm.dataset.reservationKey || crypto.randomUUID();
       checkoutForm.dataset.reservationKey = clientKey;
@@ -5567,6 +5652,7 @@
       const payload = {
         clientKey,
         items: reservationItems(),
+        expectedTotalCents: cart.reduce((sum,item) => sum + Math.round(Number(item.price) * 100) * item.qty, 0),
         customer: {
           name:String(data.get("name") || ""), phone:String(data.get("phone") || ""),
           fulfillment:split ? `Pedido dividido: ${immediateFulfillment} + ${preparedFulfillment}` : fulfillmentLabel(data.get("fulfillment")),
@@ -5578,26 +5664,50 @@
           birthdayCandle:String(data.get("birthdayCandle") || ""), notes:String(data.get("notes") || "")
         }
       };
+      releaseReservationControls = lockReservationControls();
+      const reservationController = new AbortController();
+      reservationTimeout = setTimeout(() => reservationController.abort(), 20000);
       const response = await fetch(`${String(config.adminApiBase || "").replace(/\/$/, "")}/v1/orders/reserve`, {
-        method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+        method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload), signal:reservationController.signal
       });
-      const reservation = await response.json().catch(() => ({}));
+      const reservation = await response.json();
+      clearTimeout(reservationTimeout);
       if (!response.ok) {
+        if (reservation.code === "pricing_changed") {
+          releaseReservationControls();
+          await refreshAdminStateAndCart();
+          if (checkoutForm.hidden || !drawer.classList.contains("open")) return;
+          if (!requestCheckoutReview()) say(reservation.error || "El precio cambió. Vuelve al carrito y revisa el total antes de enviar.");
+          return;
+        }
         if (reservation.code === "temporarily_unavailable") throw new Error("La producción de un producto del carrito está temporalmente pausada. Retíralo para continuar; tu carrito se conserva.");
         if (reservation.code === "idempotency_conflict") {
+          if (reservation.activeReservation === true || (reservation.activeReservation !== false && checkoutForm.dataset.reservationUncertain === "true")) {
+            throw new Error("La reserva anterior sigue pendiente de resolver. No creamos otra: conserva los datos originales o consulta a Fontana antes de cambiar el pedido.");
+          }
           delete checkoutForm.dataset.reservationKey;
+          delete checkoutForm.dataset.reservationUncertain;
           throw new Error(reservation.error || "Actualiza los datos del pedido e inténtalo de nuevo.");
         }
         if (reservation.code === "requested_date_too_soon") throw new Error(reservation.error || "Actualiza la fecha del pedido e inténtalo de nuevo.");
         if (response.status === 409) throw new Error("Ese stock acaba de agotarse. Actualiza el menú para ver la disponibilidad.");
         throw new Error(reservation.error || "No pudimos reservar el stock. Inténtalo otra vez.");
       }
+      delete checkoutForm.dataset.reservationUncertain;
+      releaseReservationControls();
       const { message } = buildMessage(checkoutForm, reservation);
       window.__lastWhatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
       window.location.href = window.__lastWhatsappUrl;
     } catch (error) {
-      say(error.message || "No pudimos reservar el stock.");
+      const responseUncertain = checkoutReserving && ["AbortError","SyntaxError","TypeError"].includes(error.name);
+      if (responseUncertain) checkoutForm.dataset.reservationUncertain = "true";
+      say(responseUncertain
+        ? "No pudimos confirmar la respuesta de la reserva. Tu pedido se conserva; vuelve a intentar el mismo pedido para recuperar su estado sin duplicarlo."
+        : error.message || "No pudimos reservar el stock.");
     } finally {
+      clearTimeout(reservationTimeout);
+      releaseReservationControls();
+      checkoutSubmitting = false;
       submit.disabled = false;
       submit.textContent = previousLabel;
     }
@@ -5618,9 +5728,14 @@
 
   function filterProducts(filter) {
     const catalogItems = $$(".product, .fonkie-builder, .builder-panel");
+    const normalize = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    const query = normalize($("#catalogSearch")?.value);
     catalogItems.forEach(product => {
-      product.classList.toggle("hidden", !catalogItemMatchesFilter(product, filter));
+      const record = adminState?.products?.find(item => item.id === product.dataset.productId);
+      const name = record ? `${record.name} ${record.brand || ""}` : `${product.dataset.name || ""} ${product.querySelector("h3")?.textContent || ""}`;
+      product.classList.toggle("hidden", !catalogItemMatchesFilter(product, filter) || Boolean(query && !normalize(name).includes(query)));
     });
+    $$(".filter").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.filter === filter)));
     const visibleCount = catalogItems.filter(product => (
       !product.hidden && !product.classList.contains("hidden")
     )).length;
@@ -5633,10 +5748,14 @@
       immediate: ["Stock de hoy", "Los productos disponibles para entrega inmediata aparecerán aquí cada día."]
     };
     emptyState.hidden = visibleCount > 0;
-    if (!visibleCount && emptyCopy[filter]) {
+    if (!visibleCount && query) {
+      $("#emptyFilterTitle").textContent = "No encontramos ese producto";
+      $("#emptyFilterMessage").textContent = "Prueba otro nombre o selecciona Ver todo para buscar en todo el menú.";
+    } else if (!visibleCount && emptyCopy[filter]) {
       $("#emptyFilterTitle").textContent = emptyCopy[filter][0];
       $("#emptyFilterMessage").textContent = emptyCopy[filter][1];
     }
+    if ($("#catalogResults")) $("#catalogResults").textContent = `${visibleCount} ${visibleCount === 1 ? "resultado" : "resultados"} en el menú.`;
     syncCatalogGroups();
   }
 
@@ -5647,7 +5766,12 @@
   }
 
   function stabilizeCatalogImage(image) {
-    if (image.dataset.catalogImageStability === "true") return;
+    if (image.dataset.catalogImageStability === "true" && typeof image._fontanaSyncImageState === "function") {
+      // Hydration reuses image nodes but replaces the surrounding markup.
+      // Reconcile the current load/error state without adding more listeners.
+      image._fontanaSyncImageState?.();
+      return;
+    }
     image.dataset.catalogImageStability = "true";
     const frame = image.closest(".product-media, .fonkie-gallery-card, .builder-gallery-card");
     let revealEpoch = 0;
@@ -5669,6 +5793,8 @@
             if (epoch !== revealEpoch || !image.isConnected) return;
             image.classList.remove("catalog-image-pending");
             frame?.classList.remove("catalog-image-loading");
+            image.classList.remove("catalog-image-error");
+            frame?.querySelector(".catalog-image-fallback")?.remove();
           });
         });
       });
@@ -5678,11 +5804,27 @@
       frame?.classList.add("catalog-image-loading");
     }
     image.addEventListener("load", reveal);
-    image.addEventListener("error", () => {
-      image.classList.add("catalog-image-pending");
-      frame?.classList.add("catalog-image-loading");
-    });
-    if (image.complete && image.naturalWidth > 0) reveal();
+    const showError = () => {
+      revealEpoch += 1;
+      image.classList.remove("catalog-image-pending");
+      image.classList.add("catalog-image-error");
+      frame?.classList.remove("catalog-image-loading");
+      if (frame) {
+        let fallback = frame.querySelector(".catalog-image-fallback");
+        if (!fallback) {
+          fallback = document.createElement("div");
+          fallback.className = "catalog-image-fallback";
+          frame.append(fallback);
+        }
+        fallback.textContent = `${image.alt || "Fontana"} · Imagen no disponible`;
+      }
+    };
+    image.addEventListener("error", showError);
+    image._fontanaSyncImageState = () => {
+      if (image.complete && image.naturalWidth > 0) reveal();
+      else if (image.complete && image.currentSrc) showError();
+    };
+    image._fontanaSyncImageState();
   }
 
   function setupCatalogImageStability() {
@@ -5838,6 +5980,7 @@
     button._fontanaActivateFilter = () => activateCatalogFilter(button);
     button.addEventListener("click", button._fontanaActivateFilter);
   });
+  $("#catalogSearch").addEventListener("input", () => filterProducts($(".filter.active")?.dataset.filter || "all"));
 
   function setupMenuIntro() {
     const intro = $(".menu-intro");
@@ -6311,11 +6454,19 @@
   $("#closeCart").addEventListener("click", closeCart);
   $("#continueCheckout").addEventListener("click", showCheckoutStep);
   backToCart.addEventListener("click", () => {
+    if (checkoutReserving) return;
     showCartStep();
     ($("#continueCheckout").disabled ? $("#closeCart") : $("#continueCheckout")).focus({ preventScroll: true });
   });
   backdrop.addEventListener("click", closeCart);
   checkoutForm.addEventListener("submit", submitOrder);
+  $("#acceptCheckoutChanges").addEventListener("click", () => {
+    reviewedCheckout = checkoutSnapshot();
+    $("#checkoutChanges").hidden = true;
+    $("#checkoutSummary").open = false;
+    // Accepting updates never submits a reservation on its own.
+    checkoutForm.querySelector('[type="submit"]').focus();
+  });
   checkoutForm.addEventListener("input", event => {
     event.target.removeAttribute?.("aria-invalid");
     event.target.closest?.(".field,.checkout-option-panel,.allergy-panel")?.classList.remove("checkout-invalid");
@@ -6386,5 +6537,21 @@
     await replayPendingStorefrontActions();
   } finally {
     storefrontReady = true;
+  }
+  const linkedProductId = new URLSearchParams(location.search).get("producto");
+  if (linkedProductId && !$("#catalogSearch").value.trim() && !drawer.classList.contains("open") && !$(".product-expanded")) {
+    const linked = $$(".product, .fonkie-builder, .builder-panel").find(item => (item.dataset.productId || item.dataset.id) === linkedProductId);
+    if (linked && !linked.hidden) {
+      const filter = linked.dataset.category === "cakes" ? "foncake" : linked.dataset.category;
+      const button = $$(".filter").find(item => item.dataset.filter === filter);
+      if (button) await activateCatalogFilter(button);
+      linked.scrollIntoView({block:"center", behavior:"instant"});
+      if (linked.matches(".product")) linked.querySelector(".product-media")?.click();
+      else {
+        const heading = linked.querySelector("h3");
+        heading?.setAttribute("tabindex", "-1");
+        heading?.focus({preventScroll:true});
+      }
+    } else say("Ese producto ya no está disponible en el menú. Puedes explorar las demás opciones.");
   }
 })();

@@ -30,6 +30,43 @@ function productPrice(product) {
   return sizes.length ? Math.min(...(available.length ? available : sizes).map(s=>Number(s.price))) : product.price;
 }
 
+function publishedAvailability(product, option = null) {
+  const mode = product.availabilityMode;
+  if (product.temporarilyUnavailable === true) return { state: "paused", label: "Temporalmente no disponible", schema: "OutOfStock" };
+  if (mode === "sold-out") {
+    return { state: "sold-out", label: "Agotado", schema: "OutOfStock" };
+  }
+  if (mode === "preorder" || (!mode && product.status === "sold-out" && product.allowPreorder === true)) {
+    const days = Number(product.minimumBusinessDays);
+    const leadTime = Number.isInteger(days) && days > 0
+      ? `${days} ${days === 1 ? "día" : "días"} de preparación`
+      : "plazo a confirmar";
+    return { state: "preorder", label: `Preordenar · ${leadTime}`, schema: "PreOrder" };
+  }
+  if (product.status === "sold-out" || product.stockQuantity === 0 || option?.status === "sold-out" || option?.stockQuantity === 0) {
+    return { state: "sold-out", label: "Agotado", schema: "OutOfStock" };
+  }
+  const quantityConfigured = product.stockQuantity !== null && product.stockQuantity !== undefined
+    && product.stockQuantity !== "" && Number.isFinite(Number(product.stockQuantity));
+  if (product.category === "bottega" && product.stockTracked !== true && !quantityConfigured) {
+    return { state: "pending", label: "Disponibilidad por confirmar", schema: "" };
+  }
+  if ((product.category === "fonkies" || product.category === "fomb") && product.immediateBoxAvailable !== true) {
+    return { state: "pending", label: "Sabores sujetos a disponibilidad", schema: "" };
+  }
+  if (product.status === "available" || mode === "available") return { state: "available", label: "Disponible", schema: "InStock" };
+  return { state: "pending", label: "Disponibilidad por confirmar", schema: "" };
+}
+
+function availabilityMarkup(product) {
+  const availability = publishedAvailability(product);
+  return `<p class="product-availability" data-availability="${availability.state}"><span>Disponibilidad</span><strong>${escapeHtml(availability.label)}</strong></p>`;
+}
+
+function menuProductUrl(product) {
+  return `/?producto=${encodeURIComponent(product.id)}#menu`;
+}
+
 function schemaScript(value) {
   return `<script type="application/ld+json">${JSON.stringify(value).replace(/</g, "\\u003c")}</script>`;
 }
@@ -121,7 +158,7 @@ function footer() {
 
 function productCard(product) {
   const tags = dietaryTags(product);
-  return `<article class="product-card">${responsiveImage(product.image, { alt: product.name, sizes: "(max-width: 520px) 94vw, (max-width: 800px) 46vw, 350px" })}<div class="product-card-body"><h2>${escapeHtml(product.name)}</h2><p>${escapeHtml(product.description)}</p><div class="product-meta">${tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div><div class="price">${escapeHtml(money(productPrice(product)))}</div><a class="card-link" href="${productPath(product)}">Ver producto y sus ingredientes</a></div></article>`;
+  return `<article class="product-card">${responsiveImage(product.image, { alt: product.name, sizes: "(max-width: 520px) 94vw, (max-width: 800px) 46vw, 350px" })}<div class="product-card-body"><h2>${escapeHtml(product.name)}</h2><p>${escapeHtml(product.description)}</p><div class="product-meta">${tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>${availabilityMarkup(product)}<div class="price">${escapeHtml(money(productPrice(product)))}</div><a class="card-link" href="${productPath(product)}">Ver producto y sus ingredientes</a></div></article>`;
 }
 
 function categoryPage(category, products, seoStyleFile) {
@@ -150,30 +187,19 @@ function productPage(product, category, seoStyleFile) {
   const canonical = absoluteUrl(productPath(product));
   const tags = dietaryTags(product);
   const brandName = String(product.brand || "").trim() || (product.category === "bottega" ? "" : site.shortName);
-  const quantityConfigured = product.stockQuantity !== null
-    && product.stockQuantity !== ""
-    && Number.isFinite(Number(product.stockQuantity));
-  const stockTracked = product.stockTracked === true || quantityConfigured;
-  const offerAvailability = product.temporarilyUnavailable
-    ? "https://schema.org/OutOfStock"
-    : product.availabilityMode === "preorder"
-    ? "https://schema.org/PreOrder"
-    : product.status === "sold-out"
-      ? "https://schema.org/OutOfStock"
-    : product.category !== "bottega" || stockTracked
-      ? "https://schema.org/InStock"
-      : "";
+  const availability = publishedAvailability(product);
+  const offerAvailability = availability.schema ? `https://schema.org/${availability.schema}` : "";
   let offers = product.price !== null && product.price !== "" && Number.isFinite(Number(product.price)) ? {
     "@type": "Offer", url: canonical, priceCurrency: site.currency, price: Number(product.price),
     ...(offerAvailability ? { availability: offerAvailability } : {}),
     itemCondition: "https://schema.org/NewCondition", seller: { "@id": `${site.origin}/#business` }
   } : undefined;
   if (product.sizes?.length) {
-    offers = product.sizes.filter(s=>s.price !== null && s.price !== "" && Number.isFinite(Number(s.price))).map(size=>({
-      "@type":"Offer",name:size.name,url:canonical,priceCurrency:site.currency,price:Number(size.price),
-      availability:product.temporarilyUnavailable || size.status==="sold-out" || product.availabilityMode==="sold-out"
-        ? "https://schema.org/OutOfStock" : offerAvailability || "https://schema.org/InStock"
-    }));
+    offers = product.sizes.filter(s=>s.price !== null && s.price !== "" && Number.isFinite(Number(s.price))).map(size=>{
+      const sizeAvailability = publishedAvailability(product, size);
+      return { "@type":"Offer",name:size.name,url:canonical,priceCurrency:site.currency,price:Number(size.price),
+        ...(sizeAvailability.schema ? {availability:`https://schema.org/${sizeAvailability.schema}`} : {}) };
+    });
     if (!offers.length) offers=undefined;
   }
   const schemaProduct = {
@@ -197,7 +223,7 @@ function productPage(product, category, seoStyleFile) {
   };
   return `${commonHead({ title: `${product.name} | Fontana`, description: `${product.description} Pickup en Mañongo o delivery en Carabobo.`, canonical, image: product.image, schema, seoStyleFile })}
 <body class="category-${escapeHtml(category.id)}">${navigation()}${breadcrumbs([{ name: "Inicio", url: "/" }, { name: category.navName, url: `/${category.slug}/` }, { name: product.name, url: productPath(product) }])}
-<main id="contenido"><section class="section"><div class="container detail-grid"><div class="detail-photo">${responsiveImage(product.image, { alt: product.name, loading: "eager", fetchpriority: "high", sizes: "(max-width: 800px) 94vw, 510px" })}</div><div class="detail-copy"><span class="eyebrow">${escapeHtml(category.navName)} Fontana</span><h1>${escapeHtml(product.name)}</h1><p class="lede">${escapeHtml(product.description)}</p><div class="product-meta">${tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>${product.sizes?.length ? `<ul class="notice">${product.sizes.map(size=>`<li>${escapeHtml(size.name)} · ${escapeHtml(money(size.price))}${size.status === "sold-out" ? " · Agotado" : ""}</li>`).join("")}</ul>` : ""}<div class="detail-facts"><div class="fact"><small>Precio publicado</small><strong>${escapeHtml(money(productPrice(product)))}</strong></div><div class="fact"><small>Presentación</small><strong>${escapeHtml(product.weight || product.availabilityLabel || "Sujeta a confirmación")}</strong></div></div><div class="ingredients"><h2>Ingredientes publicados</h2><p>${escapeHtml(product.ingredients || "Los ingredientes se confirman directamente con Fontana según la personalización elegida.")}</p></div><p class="notice">Si tienes una condición, alergia o intolerancia, indícala al armar el pedido. Fontana revisará los ingredientes y las instrucciones antes de aceptarlo.</p><div class="hero-actions"><a class="button" href="/#menu">Armar pedido en la tienda</a><a class="button secondary" href="/${category.slug}/">Ver más ${escapeHtml(category.navName.toLowerCase())}</a></div></div></div></section>
+<main id="contenido"><section class="section"><div class="container detail-grid"><div class="detail-photo">${responsiveImage(product.image, { alt: product.name, loading: "eager", fetchpriority: "high", sizes: "(max-width: 800px) 94vw, 510px" })}</div><div class="detail-copy"><span class="eyebrow">${escapeHtml(category.navName)} Fontana</span><h1>${escapeHtml(product.name)}</h1><p class="lede">${escapeHtml(product.description)}</p><div class="product-meta">${tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>${availabilityMarkup(product)}${product.sizes?.length ? `<ul class="notice">${product.sizes.map(size=>`<li>${escapeHtml(size.name)} · ${escapeHtml(money(size.price))} · ${escapeHtml(publishedAvailability(product, size).label)}</li>`).join("")}</ul>` : ""}<div class="detail-facts"><div class="fact"><small>Precio publicado</small><strong>${escapeHtml(money(productPrice(product)))}</strong></div><div class="fact"><small>Presentación</small><strong>${escapeHtml(product.weight || "Presentación por confirmar")}</strong></div></div><div class="ingredients"><h2>Ingredientes publicados</h2><p>${escapeHtml(product.ingredients || "Los ingredientes se confirman directamente con Fontana según la personalización elegida.")}</p></div><p class="notice">Si tienes una condición, alergia o intolerancia, indícala al armar el pedido. Fontana revisará los ingredientes y las instrucciones antes de aceptarlo.</p><div class="hero-actions"><a class="button" href="${escapeHtml(menuProductUrl(product))}">${availability.state === "sold-out" || availability.state === "paused" ? "Ver disponibilidad en la tienda" : "Armar pedido en la tienda"}</a><a class="button secondary" href="/${category.slug}/">Ver más ${escapeHtml(category.navName.toLowerCase())}</a></div></div></div></section>
 <section class="section alt"><div class="container"><div class="section-heading"><span class="eyebrow">Entrega y confirmación</span><h2>Cómo pedir</h2></div><div class="help-grid"><article class="help-card"><h3>Pickup</h3><p>Retiro en Mañongo; los detalles se coordinan por WhatsApp.</p></article><article class="help-card"><h3>Delivery</h3><p>Disponible en Carabobo; el costo se confirma por WhatsApp.</p></article><article class="help-card"><h3>Pago</h3><p>El pedido queda pendiente hasta que Fontana confirme disponibilidad y pago.</p></article></div></div></section>
 <section class="section"><div class="container"><div class="section-heading"><span class="eyebrow">Explora Fontana</span><h2>Otras categorías</h2></div>${categoryNavigation(category.id)}</div></section></main>${footer()}</body></html>`;
 }

@@ -52,6 +52,10 @@ En producción, el panel guarda en D1 y los cambios se reflejan para todos los v
 
 Los Fonkies y Fomb tienen constructores propios en `index.html` y su cálculo está en `app.js`. Sus cantidades se gestionan exclusivamente en **Inventario**, por sabor y por unidad individual; la selección manual de disponibilidad se aplica a toda la caja y el inventario real de cada sabor sigue limitando las unidades. Los tiempos de preparación se configuran en `leadTimesByProduct` usando el `productId` correspondiente.
 
+El editor de productos ofrece filas visuales para variantes y presentaciones; el formato de texto anterior permanece como opción avanzada. **Cantidad inicial** solo se introduce al crear un producto. En productos existentes, el formulario muestra las cantidades de Inventario sin permitir reescribirlas desde el catálogo. Las opciones nuevas o renombradas de un producto existente empiezan sin cantidad confirmada ni control numérico: hay que registrar sus existencias reales en Inventario. La lista distingue configuración, estado efectivo y precios publicados de los cambios pendientes.
+
+«Stock de hoy» confirma la publicación de otros borradores y solo anuncia éxito después de guardar. Cerrar formularios modificados pide confirmar el descarte. Ventas permite expandir el detalle histórico completo; Clientes muestra todas las compras recibidas. Las reservas enseñan vencimiento en hora de Caracas y actualizan la cuenta visible sin sustituir al servidor como autoridad.
+
 ## Páginas públicas y SEO
 
 `npm run build` genera en `dist` la portada, páginas rastreables por categoría y una ficha independiente para cada producto visible. También crea un `sitemap.xml` actualizado con las imágenes y los datos estructurados de categorías y productos, sin inventar reseñas, disponibilidad o precios.
@@ -65,6 +69,8 @@ El build también publica una página 404 útil, información del pedido, privac
 - Los archivos públicos grandes salen versionados por contenido (`app.*.js`, `config.*.js` y `seo.*.css`) para permitir caché y mantener liviano el HTML inicial.
 
 Los cambios de código requieren build y despliegue; los cambios del catálogo administrativo se reflejan directamente en las fichas públicas. Si la API no puede verificar el catálogo, las fichas devuelven 503 temporal (sin reutilizar precios antiguos) y el menú avisa que los datos están sin verificar. El envío del pedido exige una nueva consulta satisfactoria. Las fichas con precio no confirmado omiten `Offer`.
+
+Las fichas muestran disponibilidad separada de la presentación y enlazan al producto mediante `/?producto=<id>#menu`, sin añadirlo automáticamente. La búsqueda del menú combina nombre/marca con la categoría elegida. El checkout mantiene resumen y total: cualquier cambio del pedido exige aceptación antes de reservar. Durante la petición de reserva se bloquean temporalmente los controles; si la respuesta no llega, se conserva la clave de reintento para recuperar la misma operación.
 
 ## Configuración operativa
 

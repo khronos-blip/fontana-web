@@ -30,7 +30,8 @@ test("el build publica JavaScript versionado sin inflar el HTML principal", asyn
   // The server-rendered pre-order labels are intentional first-paint content;
   // keep a narrow budget above the current complete catalogue.
   expect(Buffer.byteLength(html)).toBeLessThan(156_000);
-  expect(gzipSync(html).byteLength).toBeLessThan(32_100);
+  // Search, the accessible cart icon and the checkout review add <0.4 KiB gzip.
+  expect(gzipSync(html).byteLength).toBeLessThan(32_500);
   const files = await readdir(path.join(process.cwd(), "dist"));
   const appFile = files.find(file => /^app\.[a-f0-9]{12}\.js$/.test(file));
   const configFile = files.find(file => /^config\.[a-f0-9]{12}\.js$/.test(file));

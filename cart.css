@@ -58,3 +58,29 @@
 }
 .product-front .product-top{flex-wrap:wrap}
 .product-top h3{min-width:0;overflow-wrap:break-word}
+/* UX audit: recognizable controls, readable choices and explicit checkout review. */
+.visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.skip-menu{position:fixed;top:8px;left:8px;z-index:100;background:#c2de59;color:#301435;padding:12px 18px;border-radius:10px;transform:translateY(-180%);font-weight:700}
+.skip-menu:focus{transform:none}
+.cart-bag-icon{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hero .hero-scroll{width:auto;min-height:44px;height:auto;padding:9px 16px;border-radius:999px;display:flex;gap:10px;white-space:nowrap;font:700 13px 'DM Sans',sans-serif}
+.catalog-search{display:grid;gap:7px;max-width:440px;margin:18px 0 26px;color:#f8f1f5}
+.catalog-search label{font-size:13px;font-weight:700}.catalog-search input{min-width:0;width:100%;min-height:46px;border:1px solid rgba(248,241,245,.45);border-radius:14px;padding:10px 14px;background:rgba(248,241,245,.08);color:#fff;font:inherit;font-size:16px}
+.catalog-search input::placeholder{color:rgba(248,241,245,.72)}
+.filter-scroll-hint{display:none}
+.catalog-image-error{opacity:0!important}.catalog-image-fallback{position:absolute;inset:22% 10%;display:grid;place-content:center;text-align:center;color:#59275f;font-size:14px;font-weight:700;line-height:1.5;padding:12px;pointer-events:none}
+.checkout-summary-bar{position:sticky;top:-24px;z-index:3;margin:-24px -2px 20px;padding:12px 2px;background:#603565;border-bottom:1px solid rgba(255,255,255,.28);color:#fff;max-height:55vh;max-height:55dvh;overflow:auto;overscroll-behavior:contain}
+.checkout-summary-bar summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;cursor:pointer;font-size:13px}.checkout-summary-bar summary:after{content:'+';font-size:20px}.checkout-summary-bar details[open] summary:after{content:'−'}.checkout-summary-bar summary strong{margin-left:auto;white-space:nowrap;font-size:16px}
+.checkout-summary-bar ul{padding:0;list-style:none;margin:8px 0;max-height:180px;overflow:auto}.checkout-summary-bar li{display:flex;justify-content:space-between;align-items:start;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.16);font-size:13px}.checkout-summary-bar li span{min-width:0;overflow-wrap:anywhere}.checkout-summary-bar li b{white-space:nowrap}.checkout-summary-bar small{display:block;color:#ead9ed;font-size:12px;line-height:1.5}
+.checkout-changes{border-left:3px solid #c2de59;padding:10px 12px;background:rgba(194,222,89,.13);font-size:13px;line-height:1.5;max-height:38vh;overflow:auto}.checkout-changes p{margin:0 0 10px}.checkout-changes button{min-height:44px;border:0;border-radius:10px;padding:10px 14px;background:#c2de59;color:#2f1832;font-weight:800;width:100%}
+.checkout-form .fulfillment-help{font-size:12px;line-height:1.5;color:#ead9ed;margin:0}
+.menu-section .fonkie-flavors,.menu-section .fomb-flavors{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.menu-section .fonkie-flavor,.menu-section .fomb-flavor{min-height:64px;padding:9px;gap:10px}
+.menu-section .fonkie-flavor-name{font-size:13px;line-height:1.35}
+.menu-section .fonkie-stepper{grid-template-columns:44px 24px 44px}.menu-section .fonkie-stepper button{width:44px;height:44px;font-size:17px}.menu-section .fonkie-stepper output{font-size:14px}
+.cart-view .qty button{width:44px;height:44px}.cart-view .remove{width:40px;height:40px}.cart-view .cart-item{grid-template-columns:60px minmax(0,1fr) 40px}
+@media(min-width:900px){.checkout-summary-bar{top:-26px;margin-top:-26px}}
+@media(max-width:1100px){.menu-section .fonkie-flavors,.menu-section .fomb-flavors{grid-template-columns:1fr}.menu-section .fonkie-flavors .fonkie-flavor:last-child:nth-child(odd){width:100%;grid-column:auto}}
+@media(max-width:767px){.menu-section .fonkie-builder-grid,.menu-section .builder-grid{grid-template-columns:1fr}.menu-section .fonkie-flavors,.menu-section .fomb-flavors{grid-template-columns:1fr}.menu-section .fonkie-flavors .fonkie-flavor:last-child:nth-child(odd){width:100%;grid-column:auto}}
+@media(max-width:700px){.checkout-summary-bar{top:-18px;margin-top:-18px}.checkout-summary-bar summary{font-size:12px;gap:8px}.checkout-summary-bar summary strong{font-size:15px}}
+@media(max-width:640px){.filter-scroll-hint{display:block;margin:-12px 0 18px;color:#e4cbe7;font-size:12px}.catalog-search{margin:0 0 24px}.cart-view .cart-item{grid-template-columns:48px minmax(0,1fr) 40px;gap:8px}.cart-view .cart-item img{width:48px;height:48px}}

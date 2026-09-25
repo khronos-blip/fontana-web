@@ -682,8 +682,6 @@
     }
 
     /* Ajustes solicitados por la clienta: catálogo lila, dos columnas y marca limpia. */
-    .hamburger-icon{width:23px;display:grid;gap:4px}
-    .hamburger-icon span{display:block;height:2px;border-radius:999px;background:currentColor}
     .whatsapp-icon{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
     .nav .icon-btn{background:transparent;border-color:transparent;box-shadow:none}
     .product{background:var(--lilac);border-color:rgba(110,35,111,.18)}
@@ -940,6 +938,7 @@
   </style>
 </head>
 <body>
+  <a class="skip-menu" href="#menu">Saltar al menú</a>
   <div class="topbar">DELIVERY EN TODO CARABOBO + PICKUP EN MAÑONGO · 9:30 AM — 6:00 PM</div>
   <nav class="nav" id="nav">
     <div class="container nav-inner">
@@ -949,7 +948,7 @@
         <a class="btn btn-primary" href="#menu">Ver delicias</a>
         <div class="nav-action-icons">
           <a class="icon-btn whatsapp-chat" id="whatsappChatLink" href="https://wa.me/584244350800" target="_blank" rel="noopener" aria-label="Hablar con Fontana por WhatsApp"><svg class="whatsapp-icon" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 6.5a13.5 13.5 0 0 0-11.7 20.2l-1.8 6.8 7-1.8A13.5 13.5 0 1 0 20 6.5Z"/><path d="M15 13.3c.4-.9.8-.9 1.3-.9h.5c.4 0 .7.1.9.7l1.2 3c.2.4.1.8-.1 1l-1 1.2c-.2.3-.3.5-.1.9 1 2 2.6 3.5 4.7 4.5.3.1.6.1.8-.2l1.3-1.5c.3-.3.6-.4 1-.2l3 1.4c.5.2.7.4.7.8 0 .3-.2 2.2-1.5 3.4-1.2 1.2-3 1.4-4.1 1.1-1-.3-4.4-1.5-7.4-4.2-2.4-2.2-4-5-4.5-6.2-.4-1.2 0-2.8.7-4 .5-.7 1-1 1.6-.8Z"/></svg></a>
-          <button class="icon-btn" id="cartButton" aria-label="Abrir pedido"><span class="hamburger-icon" aria-hidden="true"><span></span><span></span><span></span></span><span class="cart-count" id="cartCount">0</span></button>
+          <button class="icon-btn" id="cartButton" aria-label="Abrir pedido"><svg class="cart-bag-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 10h18l2 18H5L7 10Z"/><path d="M11 12V8a5 5 0 0 1 10 0v4"/></svg><span class="cart-count" id="cartCount">0</span></button>
         </div>
       </div>
     </div>
@@ -990,10 +989,10 @@
           </div>
         </div>
       </div>
-      <a class="hero-scroll" href="#menu" aria-label="Explorar el menú">↓</a>
+      <a class="hero-scroll" href="#menu" aria-label="Explorar el menú">Ver menú <span aria-hidden="true">↓</span></a>
     </header>
 
-    <section class="menu-section" id="menu">
+    <section class="menu-section" id="menu" tabindex="-1">
       <div class="container">
         <div class="section-head">
           <div class="menu-intro"><span class="eyebrow">El menú</span><h2>Elige tu antojo</h2></div>
@@ -1004,6 +1003,8 @@
           </div>
           <div class="filters" role="group" aria-label="Filtrar productos"><button class="filter active" data-filter="all">Ver todo</button><button class="filter dynamic-filter" data-filter="promo">Promo del día</button><button class="filter dynamic-filter" data-filter="immediate">Stock de hoy</button><button class="filter" data-filter="fonkies">Fonkies · Galletas</button><button class="filter" data-filter="fomb">Fomb · Bombones</button><button class="filter" data-filter="foncake">Foncake · Tortas completas</button><button class="filter" data-filter="salado">Salado</button><button class="filter dynamic-filter" data-filter="beverages">Bebida</button><button class="filter dynamic-filter" data-filter="bottega">Bottega</button></div>
         </div>
+        <p class="filter-scroll-hint">Desliza las categorías para ver más <span aria-hidden="true">→</span></p>
+        <div class="catalog-search"><label for="catalogSearch">Buscar en el menú</label><input id="catalogSearch" type="search" placeholder="Producto o marca" autocomplete="off" aria-controls="products"><span class="visually-hidden" id="catalogResults" role="status" aria-live="polite"></span></div>
         <div class="products" id="products">
           <article class="product product-preorder" data-category="cakes" data-id="pistacho" data-product-id="pistacho" data-name="Torta de Pistacho y Frambuesa" data-price="59" data-image="assets/pistachio-raspberry-fontana-v2.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de coco (10 %), monkfruit, aceite de coco, huevo, leche sin lactosa, pistacho, frambuesa, semillas de amapola, alulosa y chocolate blanco vegano sin azúcar" data-availability-mode="preorder" data-sold-out="true" data-preorder="true" data-preorder-allowed="true" data-stock-state="preorder"><div class="product-media"><img src="assets/pistachio-raspberry-fontana-v2.jpg" alt="Torta de pistacho y frambuesa" loading="lazy" decoding="async"><div class="product-tags"><span class="product-tag status-preorder">PREORDENAR · 2 DÍAS</span></div></div><div class="product-body"><div class="product-top"><h3>Torta de Pistacho &amp; Frambuesa</h3><span class="price">REF&nbsp;59,00</span></div><p>Harina de almendra, frambuesa, pistacho y glaseado vegano.</p><div class="product-footer"><span class="diet">25 CM · 1 KG</span><button class="add" aria-label="Preordenar Torta de Pistacho y Frambuesa">PREORDENAR</button></div></div></article>
           <article class="product product-preorder" data-category="cakes" data-id="naranja" data-product-id="naranja" data-name="Torta de Manjar de Naranja" data-price="47" data-image="assets/manjar-naranja.jpg" data-safety="Sin gluten · Sin lactosa · Sin azúcar" data-ingredients="Harina de almendra, harina de yuca (10 %), monkfruit, aceite de coco, huevo, naranja, semillas de amapola y alulosa" data-availability-mode="preorder" data-sold-out="true" data-preorder="true" data-preorder-allowed="true" data-stock-state="preorder"><div class="product-media"><img src="assets/manjar-naranja.jpg" alt="Torta de manjar de naranja" loading="lazy" decoding="async"><div class="product-tags"><span class="product-tag status-preorder">PREORDENAR · 2 DÍAS</span></div></div><div class="product-body"><div class="product-top"><h3>Torta de Manjar de Naranja</h3><span class="price">REF&nbsp;47,00</span></div><p>Naranja, harina de almendra, semillas de amapola y alulosa.</p><div class="product-footer"><span class="diet">APROX. 1 KG</span><button class="add" aria-label="Preordenar Torta de Manjar de Naranja">PREORDENAR</button></div></div></article>
@@ -1137,6 +1138,10 @@
     <div class="drawer-status" id="drawerStatus" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="drawer-foot" id="cartFooter"><div class="total"><span>Total estimado</span><span id="cartTotal">REF&nbsp;0,00</span></div><button class="btn btn-green" id="continueCheckout" type="button">Continuar pedido</button><small>El pago se confirma directamente con Fontana.</small></div>
     <form class="checkout-form" id="checkoutForm" novalidate hidden>
+      <div class="checkout-summary-bar">
+        <details id="checkoutSummary"><summary><span>Resumen del pedido</span><strong id="checkoutTotal">REF&nbsp;0,00</strong></summary><ul id="checkoutSummaryItems"></ul><small>Delivery y solicitudes adicionales sujetos a confirmación de Fontana.</small></details>
+        <div class="checkout-changes" id="checkoutChanges" role="alert" hidden><p id="checkoutChangesText"></p><button id="acceptCheckoutChanges" type="button">Aceptar cambios y revisar</button></div>
+      </div>
       <p class="checkout-intro">Completa tus datos. Prepararemos el pedido para enviarlo directamente al WhatsApp de Fontana.</p>
       <div class="checkout-validation" id="checkoutValidation" role="alert" hidden></div>
       <div class="form-grid">

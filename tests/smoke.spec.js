@@ -65,6 +65,43 @@ async function openFlavorChoice(page, builderSelector) {
   await expect(panel).toHaveAttribute("open", "");
 }
 
+async function expectFlavorSelectorReadable(grid) {
+  const rows = await grid.locator(".fonkie-flavor,.fomb-flavor").evaluateAll(elements => elements.map(element => {
+    const name = element.querySelector(".fonkie-flavor-name");
+    const stepper = element.querySelector(".fonkie-stepper");
+    const rowBox = element.getBoundingClientRect();
+    const nameBox = name.getBoundingClientRect();
+    const stepperBox = stepper.getBoundingClientRect();
+    const inside = box => box.left >= rowBox.left - 1 && box.right <= rowBox.right + 1
+      && box.top >= rowBox.top - 1 && box.bottom <= rowBox.bottom + 1;
+    return {
+      fontSize: Number.parseFloat(getComputedStyle(name).fontSize),
+      textWidth: nameBox.width,
+      rowFits: element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1,
+      childrenInside: inside(nameBox) && inside(stepperBox),
+      nameBeforeStepper: nameBox.right <= stepperBox.left + 1,
+      buttons: [...stepper.querySelectorAll("button")].map(button => {
+        const box = button.getBoundingClientRect();
+        return { width: box.width, height: box.height, inside: inside(box) };
+      })
+    };
+  }));
+  expect(rows.length).toBeGreaterThan(0);
+  for (const row of rows) {
+    expect(row.fontSize).toBeGreaterThanOrEqual(13);
+    expect(row.textWidth).toBeGreaterThanOrEqual(100);
+    expect(row.rowFits).toBe(true);
+    expect(row.childrenInside).toBe(true);
+    expect(row.nameBeforeStepper).toBe(true);
+    expect(row.buttons).toHaveLength(2);
+    for (const button of row.buttons) {
+      expect(button.width).toBeGreaterThanOrEqual(44);
+      expect(button.height).toBeGreaterThanOrEqual(44);
+      expect(button.inside).toBe(true);
+    }
+  }
+}
+
 async function openProductCard(page, selector) {
   const card = typeof selector === "string" ? page.locator(selector) : selector;
   const expanded = page.locator(".product-expanded");
@@ -4222,7 +4259,7 @@ test("Fonkies respeta el inventario y muestra el máximo sin tapar el carrito", 
   await page.locator("#addFonkieBox").click();
   await expect(page.locator("#cartCount")).toHaveText("1");
   await page.locator("#cartButton").click();
-  await page.locator('.cart-item .qty button[aria-label="Sumar"]').click();
+  await page.locator('.cart-item .qty button[aria-label^="Sumar "]').click();
   await expect(page.locator(".cart-item .qty b")).toHaveText("1");
   await expect(page.locator("#drawerStatus.show")).toContainText("Llegaste al máximo disponible de Caja de 6 Fonkies");
 
@@ -4291,7 +4328,7 @@ test("Fonkies respeta el inventario y muestra el máximo sin tapar el carrito", 
   await page.locator("#closeCart").click();
   await page.setViewportSize({ width:1366, height:900 });
   await page.locator("#cartButton").click();
-  await page.locator('.cart-item .qty button[aria-label="Sumar"]').click();
+  await page.locator('.cart-item .qty button[aria-label^="Sumar "]').click();
   await expect(page.locator("#drawerStatus.show")).toContainText("Llegaste al máximo disponible de Caja de 6 Fonkies");
   await checkCompactCart("1366x900");
 });
@@ -5497,45 +5534,46 @@ test("los selectores de Fonkies y Fomb son compactos en escritorio y pueden pleg
   expect(collapsedPanel.height).toBeLessThanOrEqual(45);
   await panel.locator("summary").click();
   const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
-  expect(columns).toBe(3);
-  const fonkieBox = await page.locator(".fonkie-flavors").boundingBox();
-  expect(fonkieBox.height).toBeLessThanOrEqual(205);
+  expect(columns).toBe(2);
+  await expectFlavorSelectorReadable(page.locator(".fonkie-flavors"));
   await panel.locator("summary").click();
   await expect(page.locator(".fonkie-flavors")).toBeHidden();
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   await expect(page.locator(".fomb-flavors")).toBeHidden();
   await openFlavorChoice(page, ".fomb-builder");
   const fombColumns = await page.locator(".fomb-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
-  expect(fombColumns).toBe(4);
-  const fombBox = await page.locator(".fomb-flavors").boundingBox();
-  expect(fombBox.height).toBeLessThanOrEqual(70);
+  expect(fombColumns).toBe(2);
+  await expectFlavorSelectorReadable(page.locator(".fomb-flavors"));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("el selector móvil de Fonkies distribuye los sabores en dos columnas", async ({ page }) => {
+test("el selector móvil de Fonkies distribuye los sabores en una columna legible", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openPreview(page);
   await page.getByRole("button", { name: "Fonkies · Galletas" }).click();
   await openFlavorChoice(page, ".fonkie-builder");
   const columns = await page.locator(".fonkie-flavors").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length);
-  expect(columns).toBe(2);
+  expect(columns).toBe(1);
   const lastFlavor = page.locator(".fonkie-flavor").last();
-  await expect(lastFlavor).toHaveCSS("grid-column-start", "1");
-  await expect(lastFlavor).toHaveCSS("grid-column-end", "-1");
+  await expect(lastFlavor).toHaveCSS("grid-column-start", "auto");
+  await expect(lastFlavor).toHaveCSS("grid-column-end", "auto");
   const firstBox = await page.locator(".fonkie-flavor").first().boundingBox();
   const lastBox = await lastFlavor.boundingBox();
   expect(Math.abs(firstBox.width - lastBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(firstBox.x - lastBox.x)).toBeLessThanOrEqual(1);
   // Long labels may wrap differently with classic scrollbars. Preserve all text
   // and controls rather than impose an OS-specific fixed row height.
   expect(await page.locator(".fonkie-flavor").evaluateAll(items => items.every(item =>
     item.scrollWidth <= item.clientWidth + 1 && item.scrollHeight <= item.clientHeight + 1
   ))).toBe(true);
-  await expect(lastFlavor).toHaveCSS("justify-self", "center");
+  await expectFlavorSelectorReadable(page.locator(".fonkie-flavors"));
   await expect(page.locator('.fonkie-flavor[data-flavor="Chispa de Chocolate Blanco"] [data-delta="1"]')).toBeVisible();
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   await openFlavorChoice(page, ".fomb-builder");
   expect(await page.locator(".fomb-flavor").evaluateAll(items => items.every(item =>
     item.scrollWidth <= item.clientWidth + 1 && item.scrollHeight <= item.clientHeight + 1
   ))).toBe(true);
+  await expectFlavorSelectorReadable(page.locator(".fomb-flavors"));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -7818,8 +7856,8 @@ test("un sabor agotado conserva nombre, consulta y controles claros sin romper l
 
   await page.emulateMedia({reducedMotion:"reduce"});
   for (const viewport of [
-    { width: 390, height: 844, columns: 2, layout: "stacked" },
-    { width: 1366, height: 900, columns: 3, layout: "stacked" }
+    { width: 390, height: 844, columns: 1, layout: "stacked" },
+    { width: 1366, height: 900, columns: 2, layout: "stacked" }
   ]) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/");
@@ -7892,12 +7930,20 @@ test("un sabor agotado conserva nombre, consulta y controles claros sin romper l
         expectedColumns,
         sameVisualRow: Math.abs(boxes.row.top - boxes.available.top) <= 1,
         equalWidths: Math.abs(boxes.row.width - boxes.available.width) <= 1,
-        ordered: boxes.row.right <= boxes.available.left + 1,
+        ordered: expectedColumns === 1
+          ? boxes.row.bottom <= boxes.available.top + 1
+          : boxes.row.right <= boxes.available.left + 1,
+        rowsDoNotOverlap: overlapArea(boxes.row, boxes.available) <= 1,
         rowFits: element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1,
         childrenInside: [boxes.nameHost, boxes.badge, boxes.consult, boxes.stepper].every(box => inside(box, boxes.row)),
         nameBeforeStepper: boxes.nameHost.right <= boxes.stepper.left + 1,
         nameVisible: nameLineBoxes.length > 0 && nameLineBoxes.every(box => box.width > 1 && box.height > 1)
           && nameStyle.visibility === "visible" && nameStyle.opacity === "1",
+        nameFontSize: Number.parseFloat(nameStyle.fontSize),
+        buttonsTouchable: [...stepperElement.querySelectorAll("button")].every(button => {
+          const box = button.getBoundingClientRect();
+          return box.width >= 44 && box.height >= 44 && inside(box, boxes.row);
+        }),
         noTextOverlap: nameLineBoxes.every(box => overlapArea(box, boxes.badge) <= 1
           && overlapArea(box, boxes.consult) <= 1)
           && overlapArea(boxes.badge, boxes.consult) <= 1,
@@ -7915,13 +7961,16 @@ test("un sabor agotado conserva nombre, consulta y controles claros sin romper l
       };
     }, viewport.columns);
     expect(compactLayout.columns).toBe(compactLayout.expectedColumns);
-    expect(compactLayout.sameVisualRow).toBe(true);
+    expect(compactLayout.sameVisualRow).toBe(viewport.columns > 1);
     expect(compactLayout.equalWidths).toBe(true);
     expect(compactLayout.ordered).toBe(true);
+    expect(compactLayout.rowsDoNotOverlap).toBe(true);
     expect(compactLayout.rowFits).toBe(true);
     expect(compactLayout.childrenInside).toBe(true);
     expect(compactLayout.nameBeforeStepper).toBe(true);
     expect(compactLayout.nameVisible).toBe(true);
+    expect(compactLayout.nameFontSize).toBeGreaterThanOrEqual(13);
+    expect(compactLayout.buttonsTouchable).toBe(true);
     expect(compactLayout.noTextOverlap).toBe(true);
     expect(compactLayout.nameBackgroundAlpha).toBeLessThan(.2);
     expect(compactLayout.rowReadable).toBe(true);
@@ -8274,7 +8323,7 @@ test("el panel administrador lista y conserva los 11 Bottega con precio, marca y
   await page.locator("#categoryFilter").selectOption("bottega");
   const rows = page.locator("#productList .product-row");
   await expect(rows).toHaveCount(expectedBottegaProducts.length);
-  await expect(rows.locator(".badges")).toContainText(Array(expectedBottegaProducts.length).fill("REF 10,00"));
+  await expect(rows.locator(".product-price-summary")).toContainText(Array(expectedBottegaProducts.length).fill("REF 10,00"));
   await page.getByRole("button", { name:"Guardar cambios" }).click();
 
   const storedProducts = await page.evaluate(() => {
@@ -8470,7 +8519,8 @@ test("Bottega se muestra como fallback pendiente sin crear pedidos inválidos mi
   await page.locator("#categoryFilter").selectOption("bottega");
   const pendingRows = page.locator("#productList .product-row");
   await expect(pendingRows).toHaveCount(expectedBottegaProducts.length);
-  await expect(pendingRows.locator(".badges")).toContainText(Array(expectedBottegaProducts.length).fill("REF 10,00"));
+  await expect(pendingRows.locator(".product-price-summary")).toContainText(Array(expectedBottegaProducts.length).fill("REF 10,00"));
+  await expect(pendingRows.locator('[data-store-mode]')).toContainText(Array(expectedBottegaProducts.length).fill('No publicado'));
 });
 
 test("Bottega publicada por la API respeta el stock real disponible o en cero", async ({ page }) => {
@@ -8589,9 +8639,14 @@ test("el panel controla los sellos visibles de cada producto", async ({ page }, 
 test("el panel publica disponible hoy, preordenar y agotado sin romper el carrito", async ({ page }) => {
   await page.goto("/admin/");
   await page.getByRole("button", { name: "Entrar al panel" }).click();
+  await page.getByRole("button", { name: "Inventario", exact: true }).click();
+  const stockRow = page.locator('[data-sku="product:ballerine:base:base"]');
+  await stockRow.locator('[data-stock-value]').fill('0');
+  await stockRow.locator('[data-track-stock]').check();
+  await stockRow.locator('[data-save-stock]').click();
   await page.getByRole("button", { name: "Productos", exact: true }).click();
   await page.locator('[data-product-id="ballerine"] [data-edit="ballerine"]').click();
-  await page.locator('#productForm [name="stockQuantity"]').fill("0");
+  await expect(page.locator('#productForm [name="stockQuantity"]')).toBeDisabled();
   await page.locator('#productForm [name="availabilityMode"]').selectOption("preorder");
   await page.locator('#productForm [name="isNew"]').check();
   await page.locator('#productForm [name="customLabels"]').fill("EDICIÓN ESPECIAL");
@@ -8981,21 +9036,42 @@ test("el panel administra sabores especiales en tarjetas compactas y conserva el
   await page.getByRole("button", { name: "Entrar al panel" }).click();
   await page.getByRole("button", { name: "Fonkies", exact: true }).click();
   await expect(page.locator("#fonkiesEditor .builder-settings")).not.toHaveAttribute("open", "");
-  const compactLayout = await page.locator("#fonkiesEditor").evaluate(editor => {
+  const readFlavorLayout = () => page.locator("#fonkiesEditor").evaluate(editor => {
     const cards = [...editor.querySelectorAll(".flavor-row")];
     const columns = getComputedStyle(editor.querySelector(".flavor-admin-list")).gridTemplateColumns.split(" ").length;
     return {
       columns,
-      tallestCard: Math.max(...cards.map(card => card.getBoundingClientRect().height)),
+      shortestCard: Math.min(...cards.map(card => card.getBoundingClientRect().height)),
+      readableCards: cards.every(card => {
+        const rect = card.getBoundingClientRect();
+        const copy = card.querySelector(".flavor-copy").getBoundingClientRect();
+        const name = card.querySelector("h3");
+        const actions = card.querySelector(".row-actions").getBoundingClientRect();
+        const inside = box => box.left >= rect.left - 1 && box.right <= rect.right + 1
+          && box.top >= rect.top - 1 && box.bottom <= rect.bottom + 1;
+        return card.scrollWidth <= card.clientWidth + 1 && card.scrollHeight <= card.clientHeight + 1
+          && Number.parseFloat(getComputedStyle(name).fontSize) >= 13
+          && name.scrollWidth <= name.clientWidth + 1 && name.scrollHeight <= name.clientHeight + 1
+          && inside(copy) && inside(actions) && copy.right <= actions.left + 1
+          && [...card.querySelectorAll(".row-actions button")].every(button => {
+            const box = button.getBoundingClientRect();
+            return box.width >= 44 && box.height >= 44 && inside(box);
+          });
+      }),
       fitsViewport: document.documentElement.scrollWidth <= window.innerWidth
     };
   });
-  expect(compactLayout.columns).toBe(2);
-  expect(compactLayout.tallestCard).toBeLessThanOrEqual(86);
+  const compactLayout = await readFlavorLayout();
+  expect(compactLayout.columns).toBe(1);
+  expect(compactLayout.shortestCard).toBeGreaterThanOrEqual(110);
+  expect(compactLayout.readableCards).toBe(true);
   expect(compactLayout.fitsViewport).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("fonkies-admin-compacto-movil.png"), fullPage: false });
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect.poll(() => page.locator("#fonkiesEditor .flavor-admin-list").evaluate(list => getComputedStyle(list).gridTemplateColumns.split(" ").length)).toBe(3);
+  const desktopLayout = await readFlavorLayout();
+  expect(desktopLayout.readableCards).toBe(true);
+  expect(desktopLayout.fitsViewport).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("fonkies-admin-compacto-escritorio.png"), fullPage: false });
   await page.locator("#fonkiesEditor .builder-settings summary").click();
   await page.locator('#fonkiesEditor [data-builder-field="singlePrice"]').fill("16");
@@ -9409,7 +9485,7 @@ test("el bloque negro fue eliminado y el footer centra la marca", async ({ page 
   await expect(page.locator(".hero-logo")).toBeVisible();
   await expect(page.locator(".nav .brand-seal")).toHaveCount(1);
   await expect(page.locator(".nav .brand-symbol, .nav .brand-wordmark")).toHaveCount(0);
-  await expect(page.locator("#cartButton .hamburger-icon")).toBeVisible();
+  await expect(page.locator("#cartButton .cart-bag-icon")).toBeVisible();
   await page.locator("img").evaluateAll(images => images.forEach(image => {
     image.loading = "eager";
   }));
