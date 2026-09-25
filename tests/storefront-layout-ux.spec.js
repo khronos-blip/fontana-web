@@ -12,5 +12,8 @@ for(const width of [320,390,768,1440])test(`Sabores a ${width}px: nombres legibl
   }));
   expect(metrics.length).toBeGreaterThan(0);
   expect(metrics.every(m=>m.textWidth>=100&&m.fontSize>=13&&m.buttonWidth>=44&&m.buttonHeight>=44&&m.overflow<=1)).toBe(true);
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width);
+  // Native scrollbars occupy layout width on Linux; compare the usable viewport.
+  const viewport=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,client:document.documentElement.clientWidth}));
+  expect(viewport.client).toBeGreaterThan(0);
+  expect(viewport.scroll).toBeLessThanOrEqual(viewport.client+1);
 });

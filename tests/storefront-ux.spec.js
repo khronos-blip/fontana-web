@@ -129,7 +129,10 @@ test('controles móviles de sabores y carrito son legibles y contextualizados',a
   expect(sizes.length).toBeGreaterThan(0);expect(sizes.every(r=>r.w>=44&&r.h>=44)).toBeTruthy();
   await page.locator('#cartButton').click();
   await expect(page.locator('.cart-item button[aria-label="Sumar Torta de prueba"]')).toBeVisible();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(320);
+  // Native scrollbars occupy layout width on Linux; compare the usable viewport.
+  const viewport=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,client:document.documentElement.clientWidth}));
+  expect(viewport.client).toBeGreaterThan(0);
+  expect(viewport.scroll).toBeLessThanOrEqual(viewport.client+1);
 });
 
 test('reserva protegida: bloquea edición y navegación hasta responder y desbloquea al fallar',async({page},testInfo)=>{
