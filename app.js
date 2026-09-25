@@ -5728,12 +5728,28 @@
 
   function filterProducts(filter) {
     const catalogItems = $$(".product, .fonkie-builder, .builder-panel");
-    const normalize = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    const normalize = value => String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/&/g, " y ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .replace(/\s+/g, " ");
     const query = normalize($("#catalogSearch")?.value);
+    const queryTerms = query.split(" ").filter(Boolean);
     catalogItems.forEach(product => {
       const record = adminState?.products?.find(item => item.id === product.dataset.productId);
-      const name = record ? `${record.name} ${record.brand || ""}` : `${product.dataset.name || ""} ${product.querySelector("h3")?.textContent || ""}`;
-      product.classList.toggle("hidden", !catalogItemMatchesFilter(product, filter) || Boolean(query && !normalize(name).includes(query)));
+      const searchableText = normalize([
+        record?.name,
+        record?.brand,
+        product.dataset.name,
+        product.dataset.productId,
+        product.querySelector("h3")?.textContent,
+        product.textContent
+      ].filter(Boolean).join(" "));
+      const matchesSearch = !query || searchableText.includes(query) || queryTerms.every(term => searchableText.includes(term));
+      product.classList.toggle("hidden", !catalogItemMatchesFilter(product, filter) || !matchesSearch);
     });
     $$(".filter").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.filter === filter)));
     const visibleCount = catalogItems.filter(product => (
@@ -5980,7 +5996,17 @@
     button._fontanaActivateFilter = () => activateCatalogFilter(button);
     button.addEventListener("click", button._fontanaActivateFilter);
   });
-  $("#catalogSearch").addEventListener("input", () => filterProducts($(".filter.active")?.dataset.filter || "all"));
+  $("#catalogSearch").addEventListener("input", event => {
+    const hasQuery = Boolean(event.currentTarget.value.trim());
+    let activeFilter = $(".filter.active");
+    if (hasQuery && activeFilter?.dataset.filter !== "all") {
+      activeFilter.classList.remove("active");
+      const allFilter = $('.filter[data-filter="all"]');
+      allFilter?.classList.add("active");
+      activeFilter = allFilter;
+    }
+    filterProducts(activeFilter?.dataset.filter || "all");
+  });
 
   function setupMenuIntro() {
     const intro = $(".menu-intro");

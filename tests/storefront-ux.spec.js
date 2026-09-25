@@ -89,14 +89,23 @@ for(const action of ['edit-contact','back-to-cart'])test(`no reserva si el usuar
   if(action==='edit-contact')await expect(page.locator('#drawerStatus')).toContainText('Los datos del pedido cambiaron');
 });
 
-test('búsqueda respeta categoría, marca y estados ARIA y permite recuperarse sin resultados',async({page},testInfo)=>{
-  const f=await fixture(page,testInfo);await page.goto(f.origin);
-  await page.locator('#catalogSearch').fill('marca de prueba');
+test('búsqueda filtra mientras se escribe en todo el menú, por nombre o marca, y permite recuperarse',async({page},testInfo)=>{
+  const f=await fixture(page,testInfo);
+  f.product.name='Torta de Pistacho & Frambuesa';
+  await page.goto(f.origin);
+  await page.locator('[data-filter="foncake"]').click();
+  await expect(page.locator('[data-product-id="raviolis"]')).toBeHidden();
+  await page.locator('#catalogSearch').fill('ravi');
   await expect(page.locator('[data-product-id="raviolis"]')).toBeVisible();
   await expect(page.locator('[data-product-id="pistacho"]')).toBeHidden();
-  await page.locator('[data-filter="foncake"]').click();
-  await expect(page.locator('[data-filter="foncake"]')).toHaveAttribute('aria-pressed','true');
-  await expect(page.locator('[data-filter="all"]')).toHaveAttribute('aria-pressed','false');
+  await expect(page.locator('[data-filter="all"]')).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('[data-filter="foncake"]')).toHaveAttribute('aria-pressed','false');
+  await page.locator('#catalogSearch').fill('marca prueba');
+  await expect(page.locator('[data-product-id="raviolis"]')).toBeVisible();
+  await page.locator('#catalogSearch').fill('pistacho frambuesa');
+  await expect(page.locator('[data-product-id="pistacho"]')).toBeVisible();
+  await expect(page.locator('[data-product-id="raviolis"]')).toBeHidden();
+  await page.locator('#catalogSearch').fill('producto inexistente');
   await expect(page.locator('#emptyFilterTitle')).toHaveText('No encontramos ese producto');
   await page.locator('#catalogSearch').fill('');
   await expect(page.locator('[data-product-id="pistacho"]')).toBeVisible();
