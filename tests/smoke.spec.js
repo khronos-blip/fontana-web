@@ -432,6 +432,7 @@ async function fillCheckout(page, { allergies = false, birthdayCandle = false } 
 function createBuilderAvailabilityState() {
   return {
     version: 2,
+    operations: { verified: true, electricityEnabled: true },
     settings: { productionWithElectricity: true, stockTodayOpen: true },
     products: [],
     builders: {

@@ -2,6 +2,38 @@ const { test, expect } = require('@playwright/test');
 
 const payload = { state: { products: [], builders: {}, settings: {}, operations: { verified: true, electricityEnabled: true } } };
 
+test('checkout no considera verificada una actualización incompleta', async ({ page }) => {
+  let verified = true;
+  await page.route('https://api.fontanasingluten.com/v1/**', route => {
+    if (!route.request().url().endsWith('/catalog')) return route.fulfill({ json:{ ok:true } });
+    return route.fulfill({ json:{ state:{ ...payload.state,
+      operations:{ verified, electricityEnabled:true },
+      products:[{ id:'audit-cake', name:'Torta de prueba', category:'cakes', price:10,
+        status:'available', availabilityMode:'available', image:'assets/manjar-naranja.jpg' }]
+    } } });
+  });
+  await page.goto('http://fontana.localhost:8767/');
+  await page.locator('[data-product-id="audit-cake"] .add').click();
+  await page.locator('#cartButton').click();
+  verified = false;
+  await page.locator('#continueCheckout').click();
+  await expect(page.locator('#catalogVerification')).toBeVisible();
+  await expect(page.locator('html')).toHaveClass(/catalog-unverified/);
+});
+
+for (const operations of [{ verified:false }, undefined]) {
+  test(`catálogo incompleto no oculta el aviso (${JSON.stringify(operations)})`, async ({ page }) => {
+    let requests = 0;
+    await page.route('**/v1/catalog', route => {
+      requests++;
+      return route.fulfill({ json:{ state:{ ...payload.state, operations } } });
+    });
+    await page.goto('http://fontana.localhost:8767/');
+    await expect(page.locator('#catalogVerification')).toBeVisible();
+    expect(requests).toBe(2);
+  });
+}
+
 test('primera visita acepta un catálogo que tarda más de dos segundos', async ({ page }) => {
   let requests = 0;
   await page.route('**/v1/catalog', async route => {

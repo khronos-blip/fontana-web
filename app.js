@@ -597,7 +597,7 @@
   async function readInitialAdminState() {
     const timeoutMs = Number(config.initialCatalogApiTimeoutMs || 5000);
     const state = await readAdminState(timeoutMs);
-    if (state || localMode) return state;
+    if ((state && adminStateVerified) || localMode) return state;
     // Cold mobile connections may fail the first request. Retry once before
     // declaring the visible fallback unverified; checkout still revalidates.
     await new Promise(resolve => setTimeout(resolve, 300));
@@ -605,6 +605,7 @@
   }
 
   async function readAdminState(timeoutMs = Number(config.catalogApiTimeoutMs || 5000)) {
+    adminStateVerified = false;
     try {
       const stored = JSON.parse(localStorage.getItem(adminStorageKey) || "null");
       if (localMode) { adminStateVerified = true; return stored && Array.isArray(stored.products) ? stored : null; }
@@ -819,7 +820,7 @@
         return [];
       }
       const reconciled = reconcileCartEntries(stored);
-      if (reconciled.changed) localStorage.setItem(storageKey, JSON.stringify(reconciled.cart));
+      if (reconciled.changed) persistCart(reconciled.cart);
       return reconciled.cart;
     } catch {
       return [];
@@ -4224,8 +4225,24 @@
     document.body.classList.remove("locked");
   }
 
+  function persistCart(items) {
+    let failed = false;
+    try { localStorage.setItem(storageKey, JSON.stringify(items)); }
+    catch { failed = true; }
+    let notice = $("#cartStorageNotice");
+    if (failed && !notice) {
+      notice = document.createElement("p");
+      notice.id = "cartStorageNotice";
+      notice.className = "notice";
+      notice.setAttribute("role", "status");
+      notice.textContent = "Tu navegador no permite guardar el carrito. Puedes continuar aquí, pero al recargar o cerrar la página podrías perder la selección.";
+      cartItems.before(notice);
+    }
+    if (notice) notice.hidden = !failed;
+  }
+
   function save() {
-    localStorage.setItem(storageKey, JSON.stringify(cart));
+    persistCart(cart);
     renderCart();
   }
 
@@ -5152,7 +5169,7 @@
     if (storefrontCatalogRefresh) return storefrontCatalogRefresh;
     storefrontCatalogRefresh = (async () => {
       const latestState = await readAdminState();
-      if (!latestState || !Array.isArray(latestState.products)) {
+      if (!latestState || !Array.isArray(latestState.products) || (!localMode && !adminStateVerified)) {
         showCatalogVerification(false);
         return { refreshed:false, changed:false };
       }
@@ -5173,7 +5190,7 @@
         cart = reconciled.cart;
         if (reconciled.changed) {
           quantityMutationVersion += 1;
-          localStorage.setItem(storageKey, JSON.stringify(cart));
+          persistCart(cart);
         }
         renderCart();
         if (reconciled.changed && !checkoutForm.hidden) setupRequestedDate();
@@ -5950,7 +5967,7 @@
   setupCatalogGroups();
 
   adminState = await adminStatePromise;
-  showCatalogVerification(Boolean(adminState));
+  showCatalogVerification(Boolean(adminState) && adminStateVerified);
   const catalogHydrationScrollAnchor = captureCatalogHydrationScrollAnchor();
   const catalogHydrationHeight = catalogHydrationScrollAnchor ? holdCatalogHydrationHeight() : null;
   let hydrationInputController = null;

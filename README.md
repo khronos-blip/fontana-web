@@ -40,6 +40,8 @@ En producción, el panel guarda en D1 y los cambios se reflejan para todos los v
 
 La primera carga espera hasta cinco segundos por consulta y reintenta una vez si falla, sin exigir recargar la página. Solo después de ambos fallos muestra el aviso de catálogo no verificado; el envío del pedido conserva su validación independiente.
 
+Una respuesta sin el indicador operativo `verified: true` tampoco confirma el catálogo ni permite completar la validación del pedido. Si el navegador impide guardar el carrito, la selección continúa en memoria y el carrito avisa de que puede perderse al recargar. Recordar el último usuario del panel es opcional: un bloqueo de almacenamiento no impide autenticarse con el servidor.
+
 1. Editar el producto dentro de `dynamicCatalog`.
 2. Para productos con varias presentaciones, añadir `sizes` con `name`, `price` y `status`; el carrito y WhatsApp tomarán automáticamente la presentación, el precio y el relleno elegidos.
 3. Usar `status: "available"` para publicarlo o `status: "sold-out"` para mostrarlo agotado.
