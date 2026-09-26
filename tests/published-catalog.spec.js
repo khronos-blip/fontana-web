@@ -3,6 +3,21 @@ const {execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url');
 const path=require('node:path');
 
+test('recuperación same-origin solo sirve catálogo público verificado y no reenvía credenciales',()=>{
+  const moduleUrl=pathToFileURL(path.resolve('functions/[[path]].js')).href;
+  const result=JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',`
+    import {onRequest} from ${JSON.stringify(moduleUrl)};
+    let valid=true, forwarded;
+    globalThis.fetch=async(url,options)=>{forwarded=options.headers||null;return Response.json({state:{products:[],operations:{verified:valid}}})};
+    const get=method=>onRequest({request:new Request("https://fontanasingluten.com/api/catalog",{method,headers:{Cookie:"private",Authorization:"private"}})});
+    const good=await get("GET"),body=await good.json();
+    const head=await get("HEAD");
+    valid=false;const bad=await get("GET"),post=await get("POST");
+    console.log(JSON.stringify({good:good.status,verified:body.state.operations.verified,cache:good.headers.get("cache-control"),forwarded,head:await head.text(),bad:bad.status,post:post.status}));
+  `],{encoding:'utf8',env:{...process.env,NODE_NO_WARNINGS:'1'}}));
+  expect(result).toEqual({good:200,verified:true,cache:'no-store',forwarded:null,head:'',bad:503,post:405});
+});
+
 test('API pagina historial, ventas, pedidos y gastos sin omitir el siguiente bloque',()=>{
   const moduleUrl=pathToFileURL(path.resolve('backend/src/worker.js')).href;
   const result=JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',`

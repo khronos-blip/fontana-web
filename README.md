@@ -38,9 +38,9 @@ En producción, el panel guarda en D1 y los cambios se reflejan para todos los v
 
 `config.js` conserva el catálogo inicial para desarrollo y recuperación explícita. No es la fuente de verdad comercial después de publicar desde el panel. Si falla la API, el menú identifica esa copia como no verificada y no confirma pedidos con precios antiguos:
 
-La primera carga espera hasta cinco segundos por consulta y reintenta una vez si falla, sin exigir recargar la página. Solo después de ambos fallos muestra el aviso de catálogo no verificado; el envío del pedido conserva su validación independiente.
+La primera carga espera hasta cinco segundos por consulta. Si la conexión directa a la API falla, prueba `/api/catalog` en el mismo dominio antes del último reintento directo, sin exigir recargar la página. La ruta de recuperación consulta datos públicos vigentes desde Cloudflare y no reenvía cookies ni credenciales. Solo cuando no consigue verificar el catálogo muestra el aviso; el envío del pedido conserva su validación independiente y también utiliza la ruta de recuperación.
 
-Una respuesta sin el indicador operativo `verified: true` tampoco confirma el catálogo ni permite completar la validación del pedido. Si el navegador impide guardar el carrito, la selección continúa en memoria y el carrito avisa de que puede perderse al recargar. Recordar el último usuario del panel es opcional: un bloqueo de almacenamiento no impide autenticarse con el servidor.
+Una respuesta sin el indicador operativo `verified: true` tampoco confirma el catálogo ni permite completar la validación del pedido. Si falla localStorage, el carrito se guarda automáticamente en sessionStorage y sobrevive a recargas de esa pestaña, sin aviso de error. Solo si ambos están bloqueados continúa en memoria y avisa de que puede perderse al recargar. Recordar el último usuario del panel es opcional: un bloqueo de almacenamiento no impide autenticarse con el servidor.
 
 1. Editar el producto dentro de `dynamicCatalog`.
 2. Para productos con varias presentaciones, añadir `sizes` con `name`, `price` y `status`; el carrito y WhatsApp tomarán automáticamente la presentación, el precio y el relleno elegidos.

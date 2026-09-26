@@ -2,6 +2,15 @@ const { test, expect } = require('@playwright/test');
 
 const payload = { state: { products: [], builders: {}, settings: {}, operations: { verified: true, electricityEnabled: true } } };
 
+test('recupera catálogo por el mismo dominio sin aviso ni recarga', async ({ page }) => {
+  await page.route('**/v1/catalog', route => route.abort());
+  await page.route('**/api/catalog', route => route.fulfill({ json:payload }));
+  await page.goto('http://fontana.localhost:8767/');
+  await expect(page.locator('#catalogVerification')).toBeAttached();
+  await expect(page.locator('#catalogVerification')).toBeHidden();
+  await expect(page.locator('html')).not.toHaveClass(/catalog-unverified/);
+});
+
 test('checkout no considera verificada una actualización incompleta', async ({ page }) => {
   let verified = true;
   await page.route('https://api.fontanasingluten.com/v1/**', route => {

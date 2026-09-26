@@ -161,7 +161,7 @@ await writeFile(`${outputDirectory}/admin/admin.${adminScriptVersion}.js`, admin
 await writeFile(`${outputDirectory}/admin/admin.${adminStyleVersion}.css`, adminStyleContents);
 await writeFile(`${outputDirectory}/${seoStyleFile}`, seoStyleContents);
 await writeFile(`${outputDirectory}/seo.css`, seoStyleContents);
-await writeFile(`${outputDirectory}/_routes.json`, JSON.stringify({version:1,include:["/productos/*","/sitemap.xml",...categoryPages.map(c=>`/${c.slug}*`)],exclude:[]}));
+await writeFile(`${outputDirectory}/_routes.json`, JSON.stringify({version:1,include:["/api/catalog","/productos/*","/sitemap.xml",...categoryPages.map(c=>`/${c.slug}*`)],exclude:[]}));
 await writeFile(`${outputDirectory}/${cartStyleFile}`, cartStyleContents);
 
 let html = sourceHtml

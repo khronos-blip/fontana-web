@@ -598,13 +598,15 @@
     const timeoutMs = Number(config.initialCatalogApiTimeoutMs || 5000);
     const state = await readAdminState(timeoutMs);
     if ((state && adminStateVerified) || localMode) return state;
+    const recovered = await readAdminState(timeoutMs, true);
+    if (recovered && adminStateVerified) return recovered;
     // Cold mobile connections may fail the first request. Retry once before
     // declaring the visible fallback unverified; checkout still revalidates.
     await new Promise(resolve => setTimeout(resolve, 300));
     return readAdminState(timeoutMs);
   }
 
-  async function readAdminState(timeoutMs = Number(config.catalogApiTimeoutMs || 5000)) {
+  async function readAdminState(timeoutMs = Number(config.catalogApiTimeoutMs || 5000), sameOrigin = false) {
     adminStateVerified = false;
     try {
       const stored = JSON.parse(localStorage.getItem(adminStorageKey) || "null");
@@ -615,7 +617,7 @@
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(`${apiBase}/v1/catalog`, {signal:controller.signal,cache:"no-store"});
+      const response = await fetch(sameOrigin ? "/api/catalog" : `${apiBase}/v1/catalog`, {signal:controller.signal,cache:"no-store"});
       if (!response.ok) return null;
       const payload = await response.json();
       if (payload?.state && Array.isArray(payload.state.products) && payload.state.operations?.verified === true) adminStateVerified = true;
@@ -810,13 +812,19 @@
 
   function readCart() {
     try {
-      const stored = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      // Session storage is the recovery copy when persistent storage is full
+      // or denied. Prefer it so an older persistent cart cannot replace it.
+      let raw = null;
+      try { raw = sessionStorage.getItem(storageKey); } catch {}
+      if (raw === null) { try { raw = localStorage.getItem(storageKey); } catch {} }
+      const stored = JSON.parse(raw || "[]");
       if (!Array.isArray(stored)) return [];
       // Los carritos anteriores al inventario central no contienen SKU ni
       // opciones estructuradas. Empezar uno nuevo evita descontar una
       // presentación o un sabor equivocado.
       if (stored.length && !stored.every(item => item?.inventory?.kind)) {
-        localStorage.removeItem(storageKey);
+        try { localStorage.removeItem(storageKey); } catch {}
+        try { sessionStorage.removeItem(storageKey); } catch {}
         return [];
       }
       const reconciled = reconcileCartEntries(stored);
@@ -4226,9 +4234,15 @@
   }
 
   function persistCart(items) {
-    let failed = false;
-    try { localStorage.setItem(storageKey, JSON.stringify(items)); }
-    catch { failed = true; }
+    const snapshot = JSON.stringify(items);
+    let failed = true;
+    try {
+      localStorage.setItem(storageKey, snapshot);
+      failed = false;
+      try { sessionStorage.removeItem(storageKey); } catch {}
+    } catch {
+      try { sessionStorage.setItem(storageKey, snapshot); failed = false; } catch {}
+    }
     let notice = $("#cartStorageNotice");
     if (failed && !notice) {
       notice = document.createElement("p");
@@ -5168,7 +5182,8 @@
   async function refreshAdminStateAndCart() {
     if (storefrontCatalogRefresh) return storefrontCatalogRefresh;
     storefrontCatalogRefresh = (async () => {
-      const latestState = await readAdminState();
+      let latestState = await readAdminState();
+      if (!localMode && (!latestState || !adminStateVerified)) latestState = await readAdminState(undefined, true);
       if (!latestState || !Array.isArray(latestState.products) || (!localMode && !adminStateVerified)) {
         showCatalogVerification(false);
         return { refreshed:false, changed:false };

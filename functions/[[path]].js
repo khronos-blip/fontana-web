@@ -23,6 +23,21 @@ export function publishedProducts(state) {
 
 export async function onRequest(context) {
   const url = new URL(context.request.url);
+  if (url.pathname === "/api/catalog") {
+    if (!["GET", "HEAD"].includes(context.request.method)) return new Response(null, {status:405, headers:{Allow:"GET, HEAD"}});
+    const headers = {"Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store", "X-Content-Type-Options":"nosniff"};
+    try {
+      // Same-origin recovery for browsers unable to reach the API subdomain.
+      // Public data only: never forward cookies or authorization headers.
+      const response = await fetch(catalogUrl, {signal:AbortSignal.timeout(4000), cache:"no-store"});
+      if (!response.ok) throw new Error("catalog_unavailable");
+      const payload = await response.json();
+      if (!Array.isArray(payload.state?.products) || payload.state.operations?.verified !== true) throw new Error("catalog_unverified");
+      return new Response(context.request.method === "HEAD" ? null : JSON.stringify(payload), {headers});
+    } catch {
+      return new Response(context.request.method === "HEAD" ? null : JSON.stringify({error:"catalog_unavailable"}), {status:503, headers});
+    }
+  }
   const category = categoryPages.find(c => url.pathname === `/${c.slug}/` || url.pathname === `/${c.slug}`);
   const match = url.pathname.match(/^\/productos\/([a-z0-9-]+)\/?$/);
   if (!category && !match && url.pathname !== "/sitemap.xml") return context.next();
