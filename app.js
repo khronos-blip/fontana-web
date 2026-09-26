@@ -200,7 +200,7 @@
   // Start the request immediately, but do not leave the browser with the much
   // shorter hand-written fallback catalogue while it is in flight. The full
   // local snapshot is laid out below before we await this promise.
-  const adminStatePromise = readAdminState(Number(config.initialCatalogApiTimeoutMs || 2000));
+  const adminStatePromise = readInitialAdminState();
   let adminState = null;
   // A missing catalogue response means that production state is unknown, not
   // that electricity was explicitly disabled. Every quantity mutation is
@@ -592,6 +592,16 @@
     };
     restoreInlineValue(document.documentElement, anchor.overflowAnchor.html);
     restoreInlineValue(document.body, anchor.overflowAnchor.body);
+  }
+
+  async function readInitialAdminState() {
+    const timeoutMs = Number(config.initialCatalogApiTimeoutMs || 5000);
+    const state = await readAdminState(timeoutMs);
+    if (state || localMode) return state;
+    // Cold mobile connections may fail the first request. Retry once before
+    // declaring the visible fallback unverified; checkout still revalidates.
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return readAdminState(timeoutMs);
   }
 
   async function readAdminState(timeoutMs = Number(config.catalogApiTimeoutMs || 5000)) {

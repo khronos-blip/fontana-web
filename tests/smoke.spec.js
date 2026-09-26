@@ -1252,6 +1252,7 @@ test("el fallback de Fomb suma el carrito con clave y la selección sin clave al
     .reduce((sum, check) => sum + Number(check.quantity || 0), 0);
 
   await page.goto("http://fontana.localhost:8767/");
+  await expect(page.locator(".product").first()).toHaveClass(/product-flip-ready/);
   await page.getByRole("button", { name: "Fomb · Bombones" }).click();
   await openFlavorChoice(page, ".fomb-builder");
   const row = page.locator('.fomb-flavor[data-flavor="Pistacho"]');
@@ -1329,7 +1330,7 @@ test("cuatro clics tempranos de Fonkies se reproducen después de hidratar el ca
   expect(browserErrors).toEqual([]);
 });
 
-test("el menú queda interactivo si el catálogo remoto supera el margen inicial", async ({ page }) => {
+test("el menú queda interactivo al recibir el catálogo lento dentro del nuevo margen inicial", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.route("https://api.fontanasingluten.com/v1/catalog", async route => {
     await new Promise(resolve => setTimeout(resolve, 3_500));
@@ -1350,8 +1351,9 @@ test("el menú queda interactivo si el catálogo remoto supera el margen inicial
   const startedAt = Date.now();
   await page.goto("http://fontana.localhost:8767/");
   const product = page.locator(".product").first();
-  await expect(product).toHaveClass(/product-flip-ready/, { timeout: 3_200 });
-  expect(Date.now() - startedAt).toBeLessThan(3_400);
+  await expect(product).toHaveClass(/product-flip-ready/, { timeout: 5_200 });
+  expect(Date.now() - startedAt).toBeLessThan(5_400);
+  await expect(page.locator("#catalogVerification")).toBeHidden();
 
   await product.locator(".product-media").click();
   await expect(product).toHaveClass(/product-flipped/);

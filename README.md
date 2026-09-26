@@ -38,6 +38,8 @@ En producción, el panel guarda en D1 y los cambios se reflejan para todos los v
 
 `config.js` conserva el catálogo inicial para desarrollo y recuperación explícita. No es la fuente de verdad comercial después de publicar desde el panel. Si falla la API, el menú identifica esa copia como no verificada y no confirma pedidos con precios antiguos:
 
+La primera carga espera hasta cinco segundos por consulta y reintenta una vez si falla, sin exigir recargar la página. Solo después de ambos fallos muestra el aviso de catálogo no verificado; el envío del pedido conserva su validación independiente.
+
 1. Editar el producto dentro de `dynamicCatalog`.
 2. Para productos con varias presentaciones, añadir `sizes` con `name`, `price` y `status`; el carrito y WhatsApp tomarán automáticamente la presentación, el precio y el relleno elegidos.
 3. Usar `status: "available"` para publicarlo o `status: "sold-out"` para mostrarlo agotado.

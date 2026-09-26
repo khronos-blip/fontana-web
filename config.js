@@ -14,7 +14,7 @@ window.FONTANA_CONFIG = {
   adminApiBase: "https://api.fontanasingluten.com",
   // Si la API tarda, el catálogo inicial se identifica como no verificado.
   // Cada cantidad se valida y el envío exige refrescar precios contra D1.
-  initialCatalogApiTimeoutMs: 2000,
+  initialCatalogApiTimeoutMs: 5000,
   catalogApiTimeoutMs: 5000,
   stockValidationTimeoutMs: 6000,
   pickupLabel: "Pickup en Mañongo (detalles por WhatsApp)",
