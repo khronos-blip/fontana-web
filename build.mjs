@@ -137,7 +137,8 @@ const products = [...staticProducts, ...builderProducts, ...configuredProducts]
   .filter(product => product?.image)
   .forEach(product => catalogImagePaths.add(String(product.image).replace(/^\//, "")));
 const homepageImages = [...sourceHtml.matchAll(/src="(assets\/[^"]+\.(?:jpe?g|png|webp))"/gi)].map(match => match[1]);
-await prepareResponsiveImages([...products.map(product => product.image), ...homepageImages, site.logo, site.defaultImage]);
+const galleryImages = Object.values(configContext.window.FONTANA_CONFIG?.productGalleryImages || {}).flat();
+await prepareResponsiveImages([...products.map(product => product.image), ...galleryImages, ...homepageImages, site.logo, site.defaultImage]);
 await sharp(String(site.defaultImage).replace(/^\//, ""))
   .resize(1200, 630, { fit: "cover", position: "attention" })
   .jpeg({ quality: 98, chromaSubsampling: "4:4:4" })

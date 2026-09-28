@@ -2347,7 +2347,7 @@
           front.setAttribute("aria-hidden", "false");
           back.setAttribute("aria-hidden", "true");
           media.setAttribute("aria-expanded", "false");
-          if (compactImageState?.image?.isConnected) {
+          if (compactImageState?.image?.isConnected && !card.dataset.photoGallery) {
             const compactImage = compactImageState.image;
             compactImage.setAttribute("src", compactImageState.src || fullImageSource(compactImage));
             if (compactImageState.srcset) compactImage.setAttribute("srcset", compactImageState.srcset);
@@ -2387,11 +2387,13 @@
       };
 
       media.addEventListener("click", event => {
+        if (event.target.closest("button")) return;
         event.stopPropagation();
         if (card.classList.contains("product-expanded")) close();
         else open(media);
       });
       media.addEventListener("keydown", event => {
+        if (event.target.closest("button")) return;
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         if (card.classList.contains("product-expanded")) close();
@@ -2419,6 +2421,102 @@
       requestAnimationFrame(resize);
     });
     scheduleProductCardHeightSync();
+  }
+
+  function setupProductImageGalleries() {
+    const styles = document.createElement("style");
+    styles.textContent = `.product-photo-controls{position:absolute;inset:auto 8px 9px;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:4px;pointer-events:none}.product-photo-controls button{pointer-events:auto;min-width:32px;min-height:36px;border:1px solid #ffffff80;border-radius:50%;background:#481b50d9;color:white;font-size:20px;cursor:pointer}.product-photo-caption{padding:5px 7px;border-radius:14px;background:#481b50df;color:white;text-align:center;font-size:10px;line-height:1.3}.product-photo-caption small{display:block;font-size:9px}.product-photo-controls button:focus-visible{outline:3px solid #bfd950;outline-offset:2px}.product[data-photo-gallery] .product-media{touch-action:pan-y}.product-expanded .product-photo-controls{inset:auto 12px 12px}.product-expanded .product-photo-controls button{min-width:44px;min-height:44px}.product-expanded .product-photo-caption{font-size:12px}`;
+    document.head.append(styles);
+    $$(".product").forEach(card => {
+      const extra = config.productGalleryImages?.[card.dataset.productId];
+      if (!Array.isArray(extra) || !extra.length) return;
+      const media = $(".product-media", card);
+      const image = $("img", media);
+      if (!image) return;
+      image.draggable = false;
+      const images = [...new Set([fullImageSource(image), ...extra])];
+      if (images.length < 2) return;
+      card.dataset.photoGallery = "true";
+      card.dataset.photoIndex = "0";
+      media.setAttribute("role", "group");
+      const controls = document.createElement("div");
+      controls.className = "product-photo-controls";
+      controls.innerHTML = '<button type="button" data-photo-step="-1" aria-label="Foto anterior">‹</button><span class="product-photo-caption" aria-live="polite"></span><button type="button" data-photo-step="1" aria-label="Foto siguiente">›</button>';
+      media.append(controls);
+      let index = 0, busy = false, start = null, suppressClickUntil = 0;
+      const updateCaption = () => $$(".product-photo-caption", card).forEach(caption => {
+        caption.textContent = images.map((_, i) => i === index ? "●" : "○").join(" ") + `  ${index + 1}/${images.length}`;
+        const hint = document.createElement("small");
+        hint.textContent = "Desliza · Ver diseños";
+        caption.append(hint);
+      });
+      const change = async direction => {
+        if (busy || card.classList.contains("product-expanded-animating") || card.classList.contains("product-expanded-closing")) return;
+        busy = true;
+        const next = (index + direction + images.length) % images.length;
+        let motion;
+        try {
+          const preload = new Image();
+          preload.src = images[next];
+          let loadTimer;
+          try {
+            await Promise.race([preload.decode(), new Promise((_, reject) => {
+              loadTimer = setTimeout(() => reject(new Error("Photo load timed out")), 8000);
+            })]);
+          } finally { clearTimeout(loadTimer); }
+          const animate = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+          if (animate) {
+            motion = image.animate([{transform:"perspective(1500px) rotateY(0deg)",opacity:1},{transform:`perspective(1500px) rotateY(${-direction * 88}deg)`,opacity:0}],{duration:180,easing:"ease-in",fill:"forwards"});
+            await motion.finished;
+          }
+          index = next;
+          card.dataset.photoIndex = String(index);
+          $$(".product-media img", card).forEach(current => {
+            current.src = images[index];
+            current.dataset.fullSrc = images[index];
+            current.removeAttribute("srcset");
+            current.removeAttribute("sizes");
+            current.alt = `${card.dataset.name} · Diseño ${index + 1}`;
+          });
+          updateCaption();
+          motion?.cancel();
+          if (animate) {
+            motion = image.animate([{transform:`perspective(1500px) rotateY(${direction * 88}deg)`,opacity:0},{transform:"perspective(1500px) rotateY(0deg)",opacity:1}],{duration:180,easing:"ease-out"});
+            await motion.finished;
+          }
+        } catch { /* Keep the current photograph if the next one cannot load. */ }
+        finally { motion?.cancel(); busy = false; }
+      };
+      controls.addEventListener("click", event => {
+        const button = event.target.closest("[data-photo-step]");
+        if (!button) return;
+        event.stopPropagation();
+        change(Number(button.dataset.photoStep));
+      });
+      media.addEventListener("keydown", event => {
+        if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+        event.preventDefault(); event.stopPropagation();
+        change(event.key === "ArrowRight" ? 1 : -1);
+      });
+      media.addEventListener("pointerdown", event => {
+        if (event.target.closest("button") || !event.isPrimary) return;
+        start = {x:event.clientX,y:event.clientY};
+      });
+      media.addEventListener("pointerup", event => {
+        if (!start) return;
+        const dx = event.clientX - start.x, dy = event.clientY - start.y;
+        start = null;
+        if (Math.abs(dx) < 35 || Math.abs(dx) < Math.abs(dy)) return;
+        suppressClickUntil = performance.now() + 400;
+        change(dx < 0 ? 1 : -1);
+      });
+      media.addEventListener("pointercancel", () => { start = null; });
+      media.addEventListener("click", event => {
+        if (performance.now() >= suppressClickUntil) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+      }, true);
+      updateCaption();
+    });
   }
 
   function setupInfiniteFlavorGalleries() {
@@ -6569,6 +6667,7 @@
   setupWhatsappChatLink();
   enhanceProductSafety();
   setupProductCardFlips();
+  setupProductImageGalleries();
   setupFonkieBuilder();
   setupFombBuilder();
   setupInfiniteFlavorGalleries();

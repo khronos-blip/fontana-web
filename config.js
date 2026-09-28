@@ -5,6 +5,10 @@
  */
 window.FONTANA_CONFIG = {
   businessName: "Fontana sin gluten",
+  // Additional visual examples; the admin-controlled primary image stays first.
+  productGalleryImages: {
+    "layer-cake": ["assets/layer-cake-crema-fontana.jpg"]
+  },
   whatsappNumber: "584244350800",
   orderPrefix: "FNT",
   currency: "USD",
