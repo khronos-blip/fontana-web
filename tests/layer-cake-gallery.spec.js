@@ -10,9 +10,11 @@ for (const width of [390, 1366]) {
     await page.goto('/');
     const card = page.locator('.product[data-product-id="layer-cake"]');
     await expect(card).toHaveAttribute('data-photo-index', '0');
+    await expect(card.locator('.product-photo-caption')).toHaveText('1/2');
     await card.scrollIntoViewIfNeeded();
     await card.getByRole('button', { name: 'Foto siguiente' }).click();
     await expect(card).toHaveAttribute('data-photo-index', '1');
+    await expect(card.locator('.product-photo-caption')).toHaveText('2/2');
     await expect(card).not.toHaveClass(/product-expanded/);
     await page.waitForTimeout(250);
     await card.locator('.product-media img').click();

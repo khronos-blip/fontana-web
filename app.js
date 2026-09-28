@@ -2445,10 +2445,8 @@
       media.append(controls);
       let index = 0, busy = false, start = null, suppressClickUntil = 0;
       const updateCaption = () => $$(".product-photo-caption", card).forEach(caption => {
-        caption.textContent = images.map((_, i) => i === index ? "●" : "○").join(" ") + `  ${index + 1}/${images.length}`;
-        const hint = document.createElement("small");
-        hint.textContent = "Desliza · Ver diseños";
-        caption.append(hint);
+        caption.textContent = `${index + 1}/${images.length}`;
+        caption.setAttribute("aria-label", `Foto ${index + 1} de ${images.length}`);
       });
       const change = async direction => {
         if (busy || card.classList.contains("product-expanded-animating") || card.classList.contains("product-expanded-closing")) return;
