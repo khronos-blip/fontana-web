@@ -93,12 +93,15 @@ async function temporaryWorker(callback) {
   let logs = "";
   try {
     execFileSync(wrangler, ["d1", "migrations", "apply", "fontana-catalog", "--local", ...common], { cwd: repository, env: environment, stdio: "pipe" });
-    const port = await new Promise((resolve, reject) => {
+    const availablePort = () => new Promise((resolve, reject) => {
       const server = net.createServer();
       server.once("error", reject);
       server.listen(0, "127.0.0.1", () => { const { port } = server.address(); server.close(error => error ? reject(error) : resolve(port)); });
     });
-    child = spawn(wrangler, ["dev", "--local", ...common, "--port", String(port), "--var", "SETUP_TOKEN:guard-integration-setup"], { cwd: repository, env: environment, stdio: ["ignore", "pipe", "pipe"] });
+    const port = await availablePort();
+    let inspectorPort = await availablePort();
+    while (inspectorPort === port) inspectorPort = await availablePort();
+    child = spawn(wrangler, ["dev", "--local", ...common, "--port", String(port), "--inspector-port", String(inspectorPort), "--var", "SETUP_TOKEN:guard-integration-setup"], { cwd: repository, env: environment, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.on("data", chunk => { logs += chunk; });
     child.stderr.on("data", chunk => { logs += chunk; });
     const base = `http://127.0.0.1:${port}`;

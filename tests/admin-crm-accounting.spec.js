@@ -51,7 +51,9 @@ async function withTemporaryWorker(callback) {
   try {
     execFileSync(wrangler,["d1","migrations","apply","fontana-catalog","--local",...common],{cwd:repository,env:{...process.env,CI:"1"},stdio:"pipe"});
     const port=await unusedLocalPort();
-    child=spawn(wrangler,["dev","--local",...common,"--port",String(port),"--var","SETUP_TOKEN:crm-integration-setup","--var","ALLOWED_ORIGINS:http://127.0.0.1:8767"],{
+    let inspectorPort=await unusedLocalPort();
+    while(inspectorPort===port)inspectorPort=await unusedLocalPort();
+    child=spawn(wrangler,["dev","--local",...common,"--port",String(port),"--inspector-port",String(inspectorPort),"--var","SETUP_TOKEN:crm-integration-setup","--var","ALLOWED_ORIGINS:http://127.0.0.1:8767"],{
       cwd:repository,
       env:{...process.env,CI:"1",NO_COLOR:"1"},
       stdio:["ignore","pipe","pipe"]
@@ -600,6 +602,7 @@ test("Admin conserva reintentos, rango, identidad, notas y versiones de mutació
   const secondExpenseKey=await expenseForm.locator("[name=idempotencyKey]").inputValue();
   expect(secondExpenseKey).not.toBe(firstExpenseKey);
   await expenseForm.locator("[data-close-dialog]").first().click();
+  await expect(page.locator("#expenseDialog")).not.toHaveAttribute("open", "");
 
   const expenseRow=page.locator(`[data-expense-id="${existingExpense.id}"]`);
   await expenseRow.locator("[data-void-expense]").click();

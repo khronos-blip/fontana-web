@@ -6076,6 +6076,21 @@
   enhanceProductSafety();
   setupCatalogImageStability();
   setupCatalogGroups();
+  const handleCatalogSearchInput = event => {
+    const hasQuery = Boolean(event.currentTarget.value.trim());
+    let activeFilter = $(".filter.active");
+    if (hasQuery && activeFilter?.dataset.filter !== "all") {
+      activeFilter.classList.remove("active");
+      const allFilter = $('.filter[data-filter="all"]');
+      allFilter?.classList.add("active");
+      activeFilter = allFilter;
+    }
+    filterProducts(activeFilter?.dataset.filter || "all");
+  };
+  // The field is visible before the remote catalogue finishes loading. Wire
+  // it immediately so text entered on a first visit is never accepted without
+  // updating the visible results. Hydration reapplies the same query below.
+  $("#catalogSearch").addEventListener("input", handleCatalogSearchInput);
 
   adminState = await adminStatePromise;
   showCatalogVerification(Boolean(adminState) && adminStateVerified);
@@ -6134,18 +6149,6 @@
     button._fontanaActivateFilter = () => activateCatalogFilter(button);
     button.addEventListener("click", button._fontanaActivateFilter);
   });
-  $("#catalogSearch").addEventListener("input", event => {
-    const hasQuery = Boolean(event.currentTarget.value.trim());
-    let activeFilter = $(".filter.active");
-    if (hasQuery && activeFilter?.dataset.filter !== "all") {
-      activeFilter.classList.remove("active");
-      const allFilter = $('.filter[data-filter="all"]');
-      allFilter?.classList.add("active");
-      activeFilter = allFilter;
-    }
-    filterProducts(activeFilter?.dataset.filter || "all");
-  });
-
   function setupMenuIntro() {
     const intro = $(".menu-intro");
     const section = intro?.closest(".menu-section");

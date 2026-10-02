@@ -56,6 +56,22 @@ test('primera visita acepta un catálogo que tarda más de dos segundos', async 
   expect(requests).toBe(1);
 });
 
+test('el buscador responde aunque la clienta escriba antes de terminar de verificar el catálogo', async ({ page }) => {
+  let releaseCatalog;
+  const catalogGate = new Promise(resolve => { releaseCatalog = resolve; });
+  await page.route('**/v1/catalog', async route => {
+    await catalogGate;
+    await route.fulfill({ json:payload });
+  });
+  await page.goto('http://fontana.localhost:8767/', { waitUntil:'domcontentloaded' });
+  await page.locator('#catalogSearch').fill('ravi');
+  await expect(page.locator('[data-product-id="raviolis"]')).toBeVisible();
+  await expect(page.locator('[data-product-id="pistacho"]')).toBeHidden();
+  releaseCatalog();
+  await expect(page.locator('#catalogVerification')).toBeHidden();
+  await expect(page.locator('#catalogSearch')).toHaveValue('ravi');
+});
+
 test('recupera un fallo transitorio sin recargar ni mostrar precios sin verificar', async ({ page }) => {
   let requests = 0;
   await page.route('**/v1/catalog', async route => {

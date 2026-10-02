@@ -6822,6 +6822,11 @@ test("las reseñas reales avanzan automáticamente hacia la izquierda", async ({
   await expect(carousel).toHaveAttribute("aria-label", "Reseñas de clientes");
   await expect(track.locator(".quote")).toHaveCount(7);
   await expect(page.locator(".testimonial-dot")).toHaveCount(6);
+  const reviewTargets = await page.locator(".testimonial-dot").evaluateAll(dots => dots.map(dot => {
+    const box = dot.getBoundingClientRect();
+    return {width:box.width,height:box.height};
+  }));
+  expect(reviewTargets.every(target => target.width >= 24 && target.height >= 24)).toBe(true);
   await expect(track.locator(".review-source")).toHaveCount(7);
   await expect(page.locator(".testimonials .demo-note")).toHaveCount(0);
   await expect(track.locator("blockquote").nth(1)).toContainText("¡Qué delicia todo!");

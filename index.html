@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="es-VE">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#6e236f">
-  <meta name="apple-mobile-web-app-title" content="Fontana">
-  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#6e236f">
+<meta name="apple-mobile-web-app-title" content="Fontana">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta name="google-site-verification" content="P8eJAN1O83e_F3FfoQuvlA60BWmrvrYRkxTK9jUVHJo">
   <meta name="description" content="Tortas, Fonkies, bombones y opciones saladas sin gluten en Carabobo. Pickup en Mañongo, delivery y pedidos directos por WhatsApp.">
   <link rel="canonical" href="https://fontanasingluten.com/">
@@ -764,9 +764,10 @@
     .testimonials-track{display:flex;align-items:stretch;will-change:transform;transition:transform .72s cubic-bezier(.22,.75,.24,1)}
     .testimonials-track.no-transition{transition:none}
     .testimonials-track>.quote{flex:0 0 100%;min-width:0;min-height:290px;display:flex;flex-direction:column;justify-content:center;padding:30px}
-    .testimonial-dots{display:flex;justify-content:center;gap:8px;margin-top:14px}
-    .testimonial-dot{width:8px;height:8px;padding:0;border:0;border-radius:999px;background:rgba(248,241,245,.28);transition:width .25s ease,background .25s ease}
-    .testimonial-dot.active{width:26px;background:var(--acid)}
+    .testimonial-dots{display:flex;place-content:center}
+    .testimonial-dot{width:32px;height:24px;border:0;background:#0000;display:grid;place-items:center}
+    .testimonial-dot:before{content:'';width:8px;height:8px;border-radius:9px;background:#f8f1f547;transition:.25s}
+    .testimonial-dot.active:before{width:26px;background:#b8cd69}
     .review-source{display:flex;align-items:center;gap:9px;margin-top:2px;color:var(--plum-dark);font-size:.72rem;font-weight:800;letter-spacing:.02em}
     .review-invitation{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:24px 0 0;padding:18px 20px;border:1px solid rgba(110,35,111,.24);border-radius:18px;background:var(--lilac)}.review-invitation p{margin:0;color:var(--plum-dark)}.review-invitation .btn{flex:0 0 auto;background:var(--plum);color:#fff;border-color:var(--plum)}.review-invitation .btn:hover{background:var(--plum-dark);color:#fff;border-color:var(--plum-dark)}
     .review-source span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--plum-dark);color:var(--acid);font-size:.75rem}
