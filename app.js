@@ -6076,7 +6076,25 @@
   enhanceProductSafety();
   setupCatalogImageStability();
   setupCatalogGroups();
+  const catalogSearch = $("#catalogSearch");
+  const searchField = document.createElement("div");
+  searchField.className = "catalog-search-field";
+  catalogSearch.before(searchField);
+  searchField.append(catalogSearch);
+  const clearSearch = document.createElement("button");
+  clearSearch.type = "button";
+  clearSearch.className = "catalog-search-clear";
+  clearSearch.setAttribute("aria-label", "Borrar búsqueda");
+  clearSearch.textContent = "×";
+  clearSearch.hidden = !catalogSearch.value;
+  searchField.append(clearSearch);
+  clearSearch.addEventListener("click", () => {
+    catalogSearch.value = "";
+    catalogSearch.dispatchEvent(new Event("input", { bubbles: true }));
+    catalogSearch.focus({ preventScroll: true });
+  });
   const handleCatalogSearchInput = event => {
+    clearSearch.hidden = !event.currentTarget.value;
     const hasQuery = Boolean(event.currentTarget.value.trim());
     let activeFilter = $(".filter.active");
     if (hasQuery && activeFilter?.dataset.filter !== "all") {
@@ -6090,7 +6108,7 @@
   // The field is visible before the remote catalogue finishes loading. Wire
   // it immediately so text entered on a first visit is never accepted without
   // updating the visible results. Hydration reapplies the same query below.
-  $("#catalogSearch").addEventListener("input", handleCatalogSearchInput);
+  catalogSearch.addEventListener("input", handleCatalogSearchInput);
 
   adminState = await adminStatePromise;
   showCatalogVerification(Boolean(adminState) && adminStateVerified);
