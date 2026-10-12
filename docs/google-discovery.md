@@ -40,3 +40,13 @@ Enviar el sitemap es una señal para Google, no una garantía de aparición inme
 - No ofrecer descuentos a cambio de una calificación positiva.
 - Publicar testimonios en la web solo con autorización y sin inventar identidad, fecha o puntuación.
 - Responder de forma breve y útil tanto las reseñas positivas como las críticas.
+
+## Política confirmada y avisos no críticos (12 de octubre de 2026)
+
+La política confirmada para Venezuela es no aceptar devoluciones. `seo-render.mjs` publica `MerchantReturnNotPermitted` en cada oferta (incluidas las presentaciones) y texto equivalente en las fichas y en `/informacion-del-pedido/`.
+
+Delivery: Valencia norte y sur, tarifa según zona confirmada por WhatsApp. Los productos disponibles hoy se coordinan según stock; las preórdenes conservan los 2 días de anticipación publicados. No se convierte este plazo de preparación en un tiempo de transporte garantizado.
+
+Se omite `shippingDetails` intencionadamente: no hay una tarifa numérica o máxima confirmada, y Google no admite las subdivisiones de Venezuela para delimitar estas zonas. No introducir costo cero, cobertura nacional ni tiempos de transporte ficticios para ocultar un aviso. Referencia: https://developers.google.com/search/docs/appearance/structured-data/merchant-listing#shipping
+
+No añadir `review` ni `aggregateRating` sin reseñas reales, visibles y correspondientes al producto; las reseñas generales de la marca no equivalen a valoraciones de cada referencia. Los avisos opcionales pendientes no significan que la corrección de devoluciones haya fallado. Search Console debe volver a rastrear las fichas; la publicación no confirma por sí sola su validación en Google.

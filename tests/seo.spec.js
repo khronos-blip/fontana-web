@@ -188,3 +188,30 @@ test("la portada conserva el H1 accesible sin mostrar una frase bajo el logo", a
   await expect(page.getByRole("link", { name: "Tortas", exact: true })).toHaveAttribute("href", "/tortas-sin-gluten-carabobo/");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("política confirmada en ofertas simples y presentaciones sin inventar envío ni reseñas", async () => {
+  const { productPage, informationPage } = await import("../seo-render.mjs");
+  const { categoryPages } = await import("../seo-data.mjs");
+  const category = categoryPages[0];
+  const base = {id:"policy-test",name:"Producto",description:"Prueba",image:"assets/manjar-naranja.jpg",category:category.id,price:10,status:"available"};
+  for (const item of [base, {...base, sizes:[{name:"Pequeña",price:10,status:"available"},{name:"Grande",price:20,status:"available"}]}]) {
+    const html = productPage(item, category);
+    const schema = JSON.parse(html.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)[1]);
+    const product = schema['@graph'].find(node => node['@type'] === 'Product');
+    for (const offer of [].concat(product.offers)) {
+      expect(offer.hasMerchantReturnPolicy.applicableCountry).toBe('VE');
+      expect(offer.hasMerchantReturnPolicy.returnPolicyCategory).toBe('https://schema.org/MerchantReturnNotPermitted');
+      expect(offer.hasMerchantReturnPolicy.merchantReturnLink).toBe('https://fontanasingluten.com/informacion-del-pedido/');
+      expect(offer.shippingDetails).toBeUndefined();
+    }
+    expect(product.review).toBeUndefined();
+    expect(product.aggregateRating).toBeUndefined();
+    expect(html).toContain('No se aceptan devoluciones.');
+    expect(html).toContain('Delivery en Valencia norte y sur.');
+  }
+  const html = informationPage();
+  expect(html).toContain('No se aceptan devoluciones.');
+  expect(html).toContain('La tarifa depende de la zona');
+  expect(html).toContain('Las preórdenes requieren 2 días de anticipación');
+  expect(html).toContain('para el mismo día según stock');
+});
