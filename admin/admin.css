@@ -259,3 +259,11 @@ dialog>form>.dialog-actions .primary{min-width:160px}
 #paymentForm .remove-payment-line{width:44px;height:44px}
 #paymentForm .compact{min-height:44px}
 @media(min-width:621px){#paymentForm .payment-line{padding-right:64px}}
+
+.mixed-fomb-flavors { min-width:0; margin:10px 0; padding:10px; border:1px solid var(--border, #ded3df); border-radius:10px; }
+.mixed-fomb-flavors label { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:6px 0; }
+.mixed-fomb-flavors input { width:72px; min-height:44px; }
+.mixed-fomb-flavors p { font-size:12px; }
+.mixed-fomb-card { grid-column:1/-1; }
+.catalog-item .mixed-fomb-flavors p { white-space:normal; overflow:visible; text-overflow:clip; }
+.mixed-fomb-flavors legend { font-size:.8rem; font-weight:700; }

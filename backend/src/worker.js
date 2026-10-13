@@ -1721,6 +1721,24 @@ async function normalizeManualSaleItems(env,rawItems,referenceCurrency,session) 
       imageUrl=snapshotImageUrl(builderFlavor?.flavor?.image||builderFlavor?.builder?.image);
       optionSummary=definition.optionSummary||optionSummary;
     }
+    if (raw.builderBox) {
+      const boxQuantity = Number(raw.builderBox.quantity);
+      const builder = state.builders?.fomb;
+      const size = builder?.sizes?.find(size=>Number(size.quantity)===boxQuantity);
+      const totalUnits = inventoryUnits.reduce((sum,unit)=>sum+Number(unit.quantity),0);
+      const keys = new Set();
+      const parts = [];
+      if(raw.builderBox.kind!=="fomb" || !size || !Number.isInteger(boxQuantity) || boxQuantity<1 || totalUnits!==boxQuantity*quantity || skipInventory) return {error:"La caja de Fomb mixtos debe coincidir con una presentación y su cantidad exacta de bombones."};
+      for (const unit of inventoryUnits) {
+        const flavor = builder.flavors?.find(flavor=>`builder:fomb:${flavor.inventoryKey}`===unit.sku);
+        if(!flavor || keys.has(unit.sku) || Number(unit.quantity)%quantity!==0) return {error:"La composición de Fomb mixtos contiene un sabor o cantidad inválida."};
+        keys.add(unit.sku);parts.push(`${Number(unit.quantity)/quantity} ${flavor.name}`);
+      }
+      const price=Number(size.price);
+      if(size.price===null || size.price==="" || !Number.isFinite(price) || price<0) return {error:"La caja de Fomb mixtos no tiene precio confirmado."};
+      canonicalPrice=Math.round(price*100);name="Fomb mixtos";optionSummary=`Caja de ${boxQuantity} · ${parts.join(" + ")}`;
+      imageUrl=snapshotImageUrl(builder.image || builder.flavors?.[0]?.image);
+    }
     let unitPriceCents=canonicalPrice??requestedPrice;
     if (canonicalPrice!==null&&requestedPrice!==canonicalPrice) {
       const reason=cleanText(raw.priceOverrideReason,500);

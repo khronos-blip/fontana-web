@@ -239,6 +239,7 @@
   let accountingRange = {from:"",to:""};
   let accountingRequest = 0;
   let paymentCatalogSelection = new Map();
+  let mixedFombComposition = new Map();
   let paymentDialogMode = "manual";
   let activeOrderForPayment = null;
   const exchangeRateCache = new Map();
@@ -1180,6 +1181,16 @@
       const unitPriceRefCents=Math.round(Number(size.price || 0)*100);
       rows.push({key:`fomb:${flavor.inventoryKey}:${boxQuantity}`,sku:`builder:fomb:${flavor.inventoryKey}`,name:"Fomb",optionSummary:`Caja de ${boxQuantity} · ${flavor.name}`,image:flavor.image,unitPriceRefCents,inventoryUnits:boxQuantity,priceOverrideReason:`Precio automático del constructor Fomb: caja de ${boxQuantity} unidades del sabor ${flavor.name}, REF ${formatMinorAmount(unitPriceRefCents,2)} según la configuración vigente.`});
     }));
+    if (fomb?.visible !== false) (fomb?.sizes || []).forEach(size => {
+      const boxQuantity = Number(size.quantity), key = `fomb:mixed:${boxQuantity}`;
+      const flavors = (fomb.flavors || []).filter(flavor => flavor.inventoryKey);
+      const composition = mixedFombComposition.get(key) || {};
+      const units = flavors.map(flavor => ({sku:`builder:fomb:${flavor.inventoryKey}`,quantity:Number(composition[flavor.inventoryKey] || 0),name:flavor.name})).filter(unit => unit.quantity > 0);
+      const totalUnits = units.reduce((sum,unit) => sum + unit.quantity,0);
+      if (!Number.isInteger(boxQuantity) || boxQuantity < 1 || size.price === null || size.price === "" || !Number.isFinite(Number(size.price))) return;
+      rows.push({key,name:"Fomb mixtos",optionSummary:`Caja de ${boxQuantity} · ${units.map(unit=>`${unit.quantity} ${unit.name}`).join(" + ") || "Elige los sabores"}`,image:fomb.image || flavors[0]?.image,
+        unitPriceRefCents:Math.round(Number(size.price)*100),builderBox:{kind:"fomb",quantity:boxQuantity},mixedFlavors:flavors,composition,totalUnits,boxQuantity,inventoryUnits:units});
+    });
     return rows;
   }
 
@@ -1194,7 +1205,8 @@
     const rows = paymentCatalogItems().filter(item => !query || `${item.name} ${item.optionSummary}`.toLowerCase().includes(query));
     container.innerHTML = rows.length ? rows.map(item => {
       const quantity = Number(paymentCatalogSelection.get(item.key) || 0);
-      return `<article class="catalog-item ${quantity ? "has-quantity" : ""}" data-catalog-key="${escapeHtml(item.key)}">${productThumb(item,item.name)}<div class="catalog-item-copy"><h4>${escapeHtml(item.name)}</h4><p>${escapeHtml(item.optionSummary || "")}</p><span class="catalog-item-price">${escapeHtml(centsMoney(item.unitPriceRefCents))}</span><div class="catalog-stepper"><button type="button" data-catalog-delta="-1" aria-label="Restar ${escapeHtml(item.name)}" ${quantity<1?"disabled":""}>−</button><output aria-label="${quantity} unidades seleccionadas">${quantity}</output><button type="button" data-catalog-delta="1" aria-label="Sumar ${escapeHtml(item.name)}">+</button></div></div></article>`;
+      const mixedControls = item.mixedFlavors ? `<fieldset class="mixed-fomb-flavors"><legend>Sabores por caja · ${item.totalUnits}/${item.boxQuantity} bombones</legend>${item.mixedFlavors.map(flavor=>`<label>${escapeHtml(flavor.name)} <input type="number" min="0" max="${item.boxQuantity}" step="1" value="${Number(item.composition[flavor.inventoryKey]||0)}" data-mixed-flavor="${escapeHtml(flavor.inventoryKey)}" aria-label="Bombones de ${escapeHtml(flavor.name)} por caja"></label>`).join("")}<p>${item.totalUnits===item.boxQuantity?"Caja completa. Indica cuántas cajas vendiste.":"Completa la cantidad exacta de bombones antes de añadir la caja."}</p></fieldset>` : "";
+      return `<article class="catalog-item ${item.mixedFlavors ? "mixed-fomb-card" : ""} ${quantity ? "has-quantity" : ""}" data-catalog-key="${escapeHtml(item.key)}">${productThumb(item,item.name)}<div class="catalog-item-copy"><h4>${escapeHtml(item.name)}</h4><p>${escapeHtml(item.optionSummary || "")}</p><span class="catalog-item-price">${escapeHtml(centsMoney(item.unitPriceRefCents))}</span>${mixedControls}<div class="catalog-stepper"><button type="button" data-catalog-delta="-1" aria-label="Restar ${escapeHtml(item.name)}" ${quantity<1?"disabled":""}>−</button><output aria-label="${quantity} ${item.mixedFlavors?"cajas":"unidades"} seleccionadas">${quantity}</output><button type="button" data-catalog-delta="1" aria-label="Sumar ${escapeHtml(item.name)}" ${item.mixedFlavors && item.totalUnits!==item.boxQuantity?"disabled":""}>+</button></div></div></article>`;
     }).join("") : '<div class="empty-list">No hay productos que coincidan.</div>';
   }
 
@@ -1213,7 +1225,7 @@
     if (paymentDialogMode !== "manual") return updatePaymentBalance();
     const total = computedSaleTotalCents();
     const input = $("#paymentForm").elements.total;
-    if (total || !input.value) input.value = (total/100).toFixed(2);
+    input.value = (total/100).toFixed(2);
     updatePaymentBalance();
   }
 
@@ -1373,6 +1385,7 @@
     $("#soldAtLabelText").textContent = "Fecha de venta";
     $("#savePaymentButton").textContent = "Confirmar pago y venta";
     paymentCatalogSelection = new Map();
+    mixedFombComposition = new Map();
     activeOrderForPayment = null;
     $("#paymentLines").innerHTML = "";
     $("#orderPaymentItems").innerHTML = "";
@@ -2485,7 +2498,9 @@
     if(form.elements.status.value==="confirmed"&&!payments.length)throw new Error("Una venta confirmada debe incluir al menos un cobro. Usa Pendiente de cobro si todavía no pagó.");
     const paidRefCents=payments.reduce((sum,payment)=>sum+Number(payment.referenceAmountCents||0),0);
     const custom=String(form.elements.customItems.value||"").trim();
-    const items=selectedSaleItems().map(item=>({productId:item.productId||undefined,sku:item.sku||undefined,name:item.name,optionSummary:item.optionSummary,imageUrl:item.image||undefined,quantity:item.quantity,inventoryUnits:item.sku?[{sku:item.sku,quantity:Number(item.inventoryUnits||1)*Number(item.quantity||1)}]:[],unitPriceRefCents:item.unitPriceRefCents,priceOverrideReason:item.priceOverrideReason||undefined}));
+    const selectedItems=selectedSaleItems();
+    if(selectedItems.some(item=>item.mixedFlavors && item.totalUnits!==item.boxQuantity)) throw new Error("Completa los sabores de cada caja de Fomb mixtos.");
+    const items=selectedItems.map(item=>({productId:item.productId||undefined,sku:item.sku||undefined,name:item.name,optionSummary:item.optionSummary,imageUrl:item.image||undefined,quantity:item.quantity,builderBox:item.builderBox||undefined,inventoryUnits:Array.isArray(item.inventoryUnits)?item.inventoryUnits.map(unit=>({sku:unit.sku,quantity:unit.quantity*item.quantity})):item.sku?[{sku:item.sku,quantity:Number(item.inventoryUnits||1)*Number(item.quantity||1)}]:[],unitPriceRefCents:item.unitPriceRefCents,priceOverrideReason:item.priceOverrideReason||undefined}));
     const selectedTotal=items.reduce((sum,item)=>sum+(item.unitPriceRefCents*item.quantity),0);
     if (paymentDialogMode==="manual" && !items.length && !custom) throw new Error("Selecciona al menos un producto del catálogo.");
     if (totalRefCents<selectedTotal) throw new Error("El total no puede ser menor que los productos seleccionados.");
@@ -2508,9 +2523,20 @@
   $("#newSaleButton").addEventListener("click", () => openPaymentDialog());
 
   $("#saleCatalogSearch").addEventListener("input",renderSaleCatalogPicker);
+  $("#saleCatalogPicker").addEventListener("change",event=>{
+    const input=event.target.closest("[data-mixed-flavor]");if(!input)return;
+    const key=input.closest("[data-catalog-key]").dataset.catalogKey,item=catalogItemByKey(key),value=Number(input.value);
+    if(!item?.mixedFlavors)return;
+    const composition={...(mixedFombComposition.get(key)||{})};
+    composition[input.dataset.mixedFlavor]=Number.isInteger(value)&&value>=0&&value<=item.boxQuantity?value:0;
+    mixedFombComposition.set(key,composition);
+    if(catalogItemByKey(key).totalUnits!==item.boxQuantity)paymentCatalogSelection.delete(key);
+    renderSaleCatalogPicker();syncCatalogTotal();
+  });
   $("#saleCatalogPicker").addEventListener("click",event=>{
     const button=event.target.closest("[data-catalog-delta]");if(!button)return;
     const card=button.closest("[data-catalog-key]"),key=card.dataset.catalogKey,delta=Number(button.dataset.catalogDelta||0);
+    if(delta>0){const item=catalogItemByKey(key);if(item?.mixedFlavors && item.totalUnits!==item.boxQuantity)return;}
     paymentCatalogSelection.set(key,Math.max(0,Number(paymentCatalogSelection.get(key)||0)+delta));
     if(!paymentCatalogSelection.get(key))paymentCatalogSelection.delete(key);
     renderSaleCatalogPicker();syncCatalogTotal();

@@ -1671,3 +1671,27 @@ test("Worker+D1 serializa abonos, anulaciones y decisiones concurrentes sin dupl
     expect(query("SELECT MIN(balance) AS minimum FROM (SELECT account_id,SUM(debit_functional_cents-credit_functional_cents) AS balance FROM journal_lines WHERE account_id='asset-receivable-usd' GROUP BY account_id)")).toEqual([{minimum:0}]);
   });
 });
+
+test('Worker+D1 Fomb mixtos valida composición, precio, stock e idempotencia',async()=>{
+  test.setTimeout(120000);
+  await withTemporaryWorker(async({baseUrl,query})=>{
+    await apiJson(baseUrl,'/v1/setup',{headers:{Authorization:'Bearer crm-integration-setup'},body:{username:'mixed-owner',password:'test-password-12345',displayName:'Prueba'}});
+    const login=await apiJson(baseUrl,'/v1/auth/login',{body:{username:'mixed-owner',password:'test-password-12345'}});
+    const cookie=login.response.headers.get('set-cookie').split(';')[0];
+    const flavors=[{name:'Pistacho prueba',inventoryKey:'mixed-p',image:'assets/fomb-pistachio-fontana-pro.jpg',status:'available'},{name:'Ferrero prueba',inventoryKey:'mixed-f',image:'assets/fomb-ferrero-fontana-pro.jpg',status:'available'}];
+    let result=await apiJson(baseUrl,'/v1/admin/catalog',{cookie,method:'PUT',body:{state:{version:2,settings:{},products:[],builders:{fomb:{visible:true,status:'available',sizes:[{quantity:4,price:15}],flavors}}},expectedRevision:0}});
+    expect(result.response.status,result.payload.error).toBe(200);
+    for(const flavor of flavors){result=await apiJson(baseUrl,`/v1/admin/inventory/${encodeURIComponent('builder:fomb:'+flavor.inventoryKey)}`,{cookie,method:'PUT',body:{onHand:10,trackStock:true,note:'Prueba aislada'}});expect(result.response.status,result.payload.error).toBe(200);}
+    const item={name:'Fomb mixtos',quantity:2,builderBox:{kind:'fomb',quantity:4},unitPriceRefCents:1500,inventoryUnits:[{sku:'builder:fomb:mixed-p',quantity:4},{sku:'builder:fomb:mixed-f',quantity:4}]};
+    const payload={idempotencyKey:'mixed-test-sale-1',soldAt:'2026-10-13',referenceCurrency:'USD',totalRefCents:3000,status:'confirmed',customer:{name:'Cliente prueba',phone:'04121112233'},payments:[{currency:'USD',amountMinor:3000,method:'Efectivo'}],items:[item]};
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:{...payload,idempotencyKey:'mixed-invalid-composition-1',items:[{...item,inventoryUnits:[{sku:'builder:fomb:mixed-p',quantity:3}]}]}});
+    expect(result.response.status).toBe(400);
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:{...payload,idempotencyKey:'mixed-invalid-price-1',items:[{...item,unitPriceRefCents:1400}],totalRefCents:2800,payments:[{currency:'USD',amountMinor:2800,method:'Efectivo'}]}});expect(result.response.status).toBe(400);
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:payload});expect(result.response.status,result.payload.error).toBe(201);
+    const saleId=result.payload.saleId;
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:payload});expect(result.response.status,result.payload.error).toBeLessThan(300);
+    expect(query("SELECT on_hand AS onHand FROM inventory_items WHERE sku LIKE 'builder:fomb:mixed-%' ORDER BY sku")).toEqual([{onHand:6},{onHand:6}]);
+    expect(query(`SELECT item_name_snapshot AS name,option_summary_snapshot AS detail FROM sale_items WHERE sale_id='${saleId}'`)).toEqual([{name:'Fomb mixtos',detail:'Caja de 4 · 2 Pistacho prueba + 2 Ferrero prueba'}]);
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:{...payload,idempotencyKey:'mixed-no-stock-quantity-1',items:[{...item,quantity:4,inventoryUnits:item.inventoryUnits.map(u=>({...u,quantity:8}))}],totalRefCents:6000,payments:[{currency:'USD',amountMinor:6000,method:'Efectivo'}]}});expect(result.response.status).toBe(409);expect(result.payload.code).toBe('stock_conflict');
+  });
+});

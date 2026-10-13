@@ -99,3 +99,9 @@ El catálogo usa revisiones para impedir que dos dispositivos sobrescriban silen
 Los ajustes de inventario del panel envían `expectedUpdatedAt`, `expectedOnHand` y `expectedTrackStock`. El Worker comprueba esas condiciones y aplica el cambio junto con su movimiento y auditoría en una transacción; un conflicto devuelve `409` / `stale_state`. Los clientes antiguos pueden omitir las condiciones, pero conservan la comprobación atómica contra cambios durante la petición. Las cantidades deben ser enteros de 0 a 100000; un campo vacío no equivale a cero.
 
 El catálogo rechaza importes negativos, vacíos o no finitos y estructuras inválidas antes de persistir. Un precio cero explícito se conserva; `null` en productos o presentaciones significa precio por confirmar. Las correcciones de código que no cambian el esquema no necesitan migraciones, recrear usuarios ni volver a publicar el catálogo comercial.
+
+## Ventas manuales de Fomb mixtos
+
+En Ventas → Registrar venta, cada presentación publicada ofrece una tarjeta **Fomb mixtos**. Indica los bombones de cada sabor por caja hasta completar la presentación, luego el número de cajas con esa composición. El precio se toma de la presentación vigente; no se suma el precio de varias cajas mon sabor. La caja se registra como una línea y descuenta las unidades individuales de cada sabor. Si la composición queda incompleta, se retira la selección para evitar una venta incorrecta.
+
+El payload lleva `builderBox: { kind: "fomb", quantity: <bombones por caja> }` e `inventoryUnits` con las cantidades totales por SKU. El servidor valida presentación, distribución por caja, sabores, precio y existencias, y conserva el detalle mixto en el historial. Se mantiene la idempotencia existente: reintentar no duplica venta ni descuentos. No requiere migración D1. Las pruebas usan API simulada o Worker + D1 temporales, nunca ventas reales.

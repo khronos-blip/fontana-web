@@ -157,3 +157,32 @@ test('El editor visual mantiene controles legibles y sin desbordamientos en móv
     await page.screenshot({path:testInfo.outputPath(`editor-opciones-${width}.png`)});await page.locator('#productDialog [data-close-dialog]').first().click();
   }
 });
+
+test('Fomb mixtos reparte sabores, calcula cajas y envía inventario por sabor',async({page})=>{
+  const catalog={version:2,settings:{},products:[],builders:{fomb:{visible:true,status:'available',sizes:[{quantity:4,price:15}],flavors:[{name:'Pistacho prueba',inventoryKey:'pistacho-test',image:'assets/fomb-pistachio-fontana-pro.jpg'},{name:'Ferrero prueba',inventoryKey:'ferrero-test',image:'assets/fomb-ferrero-fontana-pro.jpg'}]}}};
+  const writes=await panel(page,{catalog});
+  await page.locator('[data-view="sales"]').click();await page.locator('#newSaleButton').click();
+  const card=page.locator('[data-catalog-key="fomb:mixed:4"]');
+  await expect(card).toBeVisible();await expect(card.locator('[data-catalog-delta="1"]')).toBeDisabled();
+  await card.locator('[data-mixed-flavor="pistacho-test"]').fill('2');await card.locator('[data-mixed-flavor="pistacho-test"]').press('Tab');
+  await card.locator('[data-mixed-flavor="ferrero-test"]').fill('2');await card.locator('[data-mixed-flavor="ferrero-test"]').press('Tab');
+  await expect(card.locator('[data-catalog-delta="1"]')).toBeEnabled();
+  await card.locator('[data-catalog-delta="1"]').click();await card.locator('[data-catalog-delta="1"]').click();
+  await expect(page.locator('#paymentForm [name="total"]')).toHaveValue('30.00');
+  await card.locator('[data-mixed-flavor="ferrero-test"]').fill('1');await card.locator('[data-mixed-flavor="ferrero-test"]').press('Tab');
+  await expect(page.locator('#paymentForm [name="total"]')).toHaveValue('0.00');
+  await card.locator('[data-mixed-flavor="ferrero-test"]').fill('2');await card.locator('[data-mixed-flavor="ferrero-test"]').press('Tab');
+  await card.locator('[data-catalog-delta="1"]').click();await card.locator('[data-catalog-delta="1"]').click();
+  await page.locator('#saleCatalogSearch').fill('Fomb mixtos');
+  await page.locator('#saleCatalogPicker').evaluate(el=>el.scrollTop=0);
+  await page.screenshot({path:'/tmp/fontana-fomb-mixtos-mobile.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.setViewportSize({width:1440,height:1000});
+  await page.screenshot({path:'/tmp/fontana-fomb-mixtos-desktop.png'});
+  await page.locator('#paymentForm [name="status"]').selectOption('pending');
+  await page.locator('#savePaymentButton').click();
+  await expect.poll(()=>writes.filter(w=>w.path==='/v1/admin/sales').length).toBe(1);
+  const body=writes.find(w=>w.path==='/v1/admin/sales').body;
+  expect(body.totalRefCents).toBe(3000);
+  expect(body.items[0]).toMatchObject({name:'Fomb mixtos',quantity:2,builderBox:{kind:'fomb',quantity:4},unitPriceRefCents:1500,inventoryUnits:[{sku:'builder:fomb:pistacho-test',quantity:4},{sku:'builder:fomb:ferrero-test',quantity:4}]});
+});
