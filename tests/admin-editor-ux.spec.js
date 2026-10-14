@@ -186,3 +186,39 @@ test('Fomb mixtos reparte sabores, calcula cajas y envía inventario por sabor',
   expect(body.totalRefCents).toBe(3000);
   expect(body.items[0]).toMatchObject({name:'Fomb mixtos',quantity:2,builderBox:{kind:'fomb',quantity:4},unitPriceRefCents:1500,inventoryUnits:[{sku:'builder:fomb:pistacho-test',quantity:4},{sku:'builder:fomb:ferrero-test',quantity:4}]});
 });
+
+
+test('Fonkies mixtas permite galletas extra, conserva precios y envía cada sabor por caja',async({page},testInfo)=>{
+  const catalog={version:2,settings:{},products:[],builders:{fonkies:{visible:true,status:'available',minimumQuantity:4,singlePrice:15,mixedPrice:17,extraPrice:3.5,flavors:[{name:'Chocolate prueba',inventoryKey:'cookie-c',image:'assets/fonkie-dark-chocolate-chips-fontana-pro.jpg'},{name:'Pistacho prueba',inventoryKey:'cookie-p',image:'assets/fonkie-dark-chocolate-chips-fontana-pro.jpg'}]}}};
+  const writes=await panel(page,{catalog});
+  await page.locator('[data-view="sales"]').click();await page.locator('#newSaleButton').click();
+  await page.locator('#saleCatalogSearch').fill('Fonkies mixtas');
+  const card=page.locator('[data-catalog-key="fonkies:mixed"]');
+  const setFlavor=async(key,n)=>{await card.locator(`[data-mixed-flavor="${key}"]`).fill(String(n));await card.locator(`[data-mixed-flavor="${key}"]`).press('Tab');};
+  await expect(card.locator('[data-catalog-delta="1"]')).toBeDisabled();
+  await setFlavor('cookie-c',2);await setFlavor('cookie-p',2);
+  await card.locator('[data-catalog-delta="1"]').click();
+  await expect(page.locator('#paymentForm [name="total"]')).toHaveValue('17.00');
+  await setFlavor('cookie-p',1);
+  await expect(card.locator('[data-catalog-delta="1"]')).toBeDisabled();
+  await expect(page.locator('#paymentForm [name="total"]')).toHaveValue('0.00');
+  await setFlavor('cookie-c',6);await setFlavor('cookie-p',0);
+  await card.locator('[data-catalog-delta="1"]').click();
+  await expect(page.locator('#paymentForm [name="total"]')).toHaveValue('22.00');
+  await setFlavor('cookie-c',3);await setFlavor('cookie-p',3);
+  await card.locator('[data-catalog-delta="1"]').click();await card.locator('[data-catalog-delta="1"]').click();
+  await expect(page.locator('#paymentForm [name="total"]')).toHaveValue('48.00');
+  for(const width of [390,1440]){
+    await page.setViewportSize({width,height:width===390?844:1000});
+    await page.locator('#saleCatalogPicker').evaluate(el=>el.scrollTop=0);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath(`fonkies-mixtas-${width}.png`)});
+  }
+  await page.locator('#paymentForm [name="status"]').selectOption('pending');
+  await page.locator('#savePaymentButton').click();
+  await expect.poll(()=>writes.filter(w=>w.path==='/v1/admin/sales').length).toBe(1);
+  const body=writes.find(w=>w.path==='/v1/admin/sales').body;
+  expect(body.totalRefCents).toBe(4800);
+  expect(body.items[0]).toMatchObject({name:'Fonkies mixtas',quantity:2,builderBox:{kind:'fonkies',quantity:6},unitPriceRefCents:2400,inventoryUnits:[{sku:'builder:fonkies:cookie-c',quantity:6},{sku:'builder:fonkies:cookie-p',quantity:6}]});
+  expect(body.items[0].priceOverrideReason).toBeUndefined();
+});

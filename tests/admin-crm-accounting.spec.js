@@ -1695,3 +1695,35 @@ test('Worker+D1 Fomb mixtos valida composición, precio, stock e idempotencia',a
     result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:{...payload,idempotencyKey:'mixed-no-stock-quantity-1',items:[{...item,quantity:4,inventoryUnits:item.inventoryUnits.map(u=>({...u,quantity:8}))}],totalRefCents:6000,payments:[{currency:'USD',amountMinor:6000,method:'Efectivo'}]}});expect(result.response.status).toBe(409);expect(result.payload.code).toBe('stock_conflict');
   });
 });
+
+
+test('Worker+D1 Fonkies mixtas valida mínimo, extras, precio, sabores, stock e idempotencia',async()=>{
+  test.setTimeout(120000);
+  await withTemporaryWorker(async({baseUrl,query})=>{
+    await apiJson(baseUrl,'/v1/setup',{headers:{Authorization:'Bearer crm-integration-setup'},body:{username:'cookie-owner',password:'test-password-12345',displayName:'Prueba'}});
+    const login=await apiJson(baseUrl,'/v1/auth/login',{body:{username:'cookie-owner',password:'test-password-12345'}});
+    const cookie=login.response.headers.get('set-cookie').split(';')[0];
+    const flavors=[{name:'Chocolate prueba',inventoryKey:'cookie-c',status:'available'},{name:'Pistacho prueba',inventoryKey:'cookie-p',status:'available'}];
+    let result=await apiJson(baseUrl,'/v1/admin/catalog',{cookie,method:'PUT',body:{state:{version:2,settings:{},products:[],builders:{fonkies:{visible:true,status:'available',minimumQuantity:4,singlePrice:15,mixedPrice:17,extraPrice:3.5,flavors}}},expectedRevision:0}});
+    expect(result.response.status,result.payload.error).toBe(200);
+    for(const flavor of flavors){result=await apiJson(baseUrl,`/v1/admin/inventory/${encodeURIComponent('builder:fonkies:'+flavor.inventoryKey)}`,{cookie,method:'PUT',body:{onHand:20,trackStock:true,note:'Prueba aislada'}});expect(result.response.status,result.payload.error).toBe(200);}
+    const item={name:'Fonkies mixtas',quantity:2,builderBox:{kind:'fonkies',quantity:6},unitPriceRefCents:2400,inventoryUnits:[{sku:'builder:fonkies:cookie-c',quantity:6},{sku:'builder:fonkies:cookie-p',quantity:6}]};
+    const payload={idempotencyKey:'cookies-mixed-sale-1',soldAt:'2026-10-15',referenceCurrency:'USD',totalRefCents:4800,status:'confirmed',customer:{name:'Cliente prueba',phone:'04121112233'},payments:[{currency:'USD',amountMinor:4800,method:'Efectivo'}],items:[item]};
+    const reject=async(id,change)=>{const response=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:{...payload,idempotencyKey:id,items:[{...item,...change}]}});expect(response.response.status,response.payload.error).toBe(400);};
+    await reject('cookies-below-minimum-1',{builderBox:{kind:'fonkies',quantity:3},inventoryUnits:[{sku:'builder:fonkies:cookie-c',quantity:4},{sku:'builder:fonkies:cookie-p',quantity:2}]});
+    await reject('cookies-incomplete-box-1',{inventoryUnits:[{sku:'builder:fonkies:cookie-c',quantity:6},{sku:'builder:fonkies:cookie-p',quantity:4}]});
+    await reject('cookies-fractional-box-1',{inventoryUnits:[{sku:'builder:fonkies:cookie-c',quantity:5},{sku:'builder:fonkies:cookie-p',quantity:7}]});
+    await reject('cookies-duplicate-flavor-1',{inventoryUnits:[{sku:'builder:fonkies:cookie-c',quantity:6},{sku:'builder:fonkies:cookie-c',quantity:6}]});
+    await reject('cookies-foreign-flavor-1',{inventoryUnits:[{sku:'builder:fonkies:not-a-cookie',quantity:12}]});
+    await reject('cookies-invalid-price-1',{unitPriceRefCents:1700});
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:payload});expect(result.response.status,result.payload.error).toBe(201);
+    const saleId=result.payload.saleId;
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:payload});expect(result.response.status,result.payload.error).toBeLessThan(300);
+    expect(query("SELECT on_hand AS onHand FROM inventory_items WHERE sku LIKE 'builder:fonkies:cookie-%' ORDER BY sku")).toEqual([{onHand:14},{onHand:14}]);
+    expect(query(`SELECT item_name_snapshot AS name,option_summary_snapshot AS detail FROM sale_items WHERE sale_id='${saleId}'`)).toEqual([{name:'Fonkies mixtas',detail:'Caja de 6 · 3 Chocolate prueba + 3 Pistacho prueba'}]);
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:{...payload,idempotencyKey:'cookies-no-stock-sale-1',items:[{...item,quantity:6,inventoryUnits:item.inventoryUnits.map(u=>({...u,quantity:18}))}],totalRefCents:14400,payments:[{currency:'USD',amountMinor:14400,method:'Efectivo'}]}});expect(result.response.status).toBe(409);expect(result.payload.code).toBe('stock_conflict');
+    const single={...item,quantity:1,unitPriceRefCents:2200,inventoryUnits:[{sku:'builder:fonkies:cookie-c',quantity:6}]};
+    result=await apiJson(baseUrl,'/v1/admin/sales',{cookie,body:{...payload,idempotencyKey:'cookies-single-extras-sale-1',items:[single],totalRefCents:2200,payments:[{currency:'USD',amountMinor:2200,method:'Efectivo'}]}});expect(result.response.status,result.payload.error).toBe(201);
+    expect(query("SELECT on_hand AS onHand FROM inventory_items WHERE sku='builder:fonkies:cookie-c'")).toEqual([{onHand:8}]);
+  });
+});

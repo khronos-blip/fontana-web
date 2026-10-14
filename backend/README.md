@@ -105,3 +105,9 @@ El catálogo rechaza importes negativos, vacíos o no finitos y estructuras inv�
 En Ventas → Registrar venta, cada presentación publicada ofrece una tarjeta **Fomb mixtos**. Indica los bombones de cada sabor por caja hasta completar la presentación, luego el número de cajas con esa composición. El precio se toma de la presentación vigente; no se suma el precio de varias cajas mon sabor. La caja se registra como una línea y descuenta las unidades individuales de cada sabor. Si la composición queda incompleta, se retira la selección para evitar una venta incorrecta.
 
 El payload lleva `builderBox: { kind: "fomb", quantity: <bombones por caja> }` e `inventoryUnits` con las cantidades totales por SKU. El servidor valida presentación, distribución por caja, sabores, precio y existencias, y conserva el detalle mixto en el historial. Se mantiene la idempotencia existente: reintentar no duplica venta ni descuentos. No requiere migración D1. Las pruebas usan API simulada o Worker + D1 temporales, nunca ventas reales.
+
+## Ventas manuales de Fonkies mixtas
+
+En Ventas → Registrar venta, **Fonkies mixtas** permite indicar las galletas de cada sabor por caja y luego el número de cajas iguales. Exige el mínimo configurado y admite galletas adicionales. Usa el precio de caja de un sabor o mixta según la composición, más el precio extra por cada unidad sobre el mínimo, igual que la tienda.
+
+El payload usa `builderBox: { kind: "fonkies", quantity: <galletas por caja> }` e `inventoryUnits` con las cantidades totales por sabor. El Worker valida el mínimo, reparto por caja, sabores, precio e inventario; los reintentos no duplican descuentos. Las pruebas usan servicios temporales y no registran ventas reales. No requiere migración D1.

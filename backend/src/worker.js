@@ -1722,21 +1722,27 @@ async function normalizeManualSaleItems(env,rawItems,referenceCurrency,session) 
       optionSummary=definition.optionSummary||optionSummary;
     }
     if (raw.builderBox) {
+      const kind = raw.builderBox.kind;
       const boxQuantity = Number(raw.builderBox.quantity);
-      const builder = state.builders?.fomb;
-      const size = builder?.sizes?.find(size=>Number(size.quantity)===boxQuantity);
+      const builder = state.builders?.[kind];
+      const size = kind === "fomb" ? builder?.sizes?.find(size=>Number(size.quantity)===boxQuantity) : null;
+      const minimum = Math.max(1,Number(builder?.minimumQuantity ?? 4));
       const totalUnits = inventoryUnits.reduce((sum,unit)=>sum+Number(unit.quantity),0);
       const keys = new Set();
       const parts = [];
-      if(raw.builderBox.kind!=="fomb" || !size || !Number.isInteger(boxQuantity) || boxQuantity<1 || totalUnits!==boxQuantity*quantity || skipInventory) return {error:"La caja de Fomb mixtos debe coincidir con una presentación y su cantidad exacta de bombones."};
+      if(!["fomb","fonkies"].includes(kind) || !builder || !Number.isSafeInteger(boxQuantity) || boxQuantity<1 || totalUnits!==boxQuantity*quantity || skipInventory
+        || (kind==="fomb" ? !size : boxQuantity<minimum)) return {error:"La caja mixta debe coincidir con su presentación y cantidad de unidades; Fonkies requiere el mínimo configurado."};
       for (const unit of inventoryUnits) {
-        const flavor = builder.flavors?.find(flavor=>`builder:fomb:${flavor.inventoryKey}`===unit.sku);
-        if(!flavor || keys.has(unit.sku) || Number(unit.quantity)%quantity!==0) return {error:"La composición de Fomb mixtos contiene un sabor o cantidad inválida."};
+        const flavor = builder.flavors?.find(flavor=>`builder:${kind}:${flavor.inventoryKey}`===unit.sku);
+        if(!flavor || keys.has(unit.sku) || Number(unit.quantity)%quantity!==0) return {error:"La composición de la caja mixta contiene un sabor o cantidad inválida."};
         keys.add(unit.sku);parts.push(`${Number(unit.quantity)/quantity} ${flavor.name}`);
       }
-      const price=Number(size.price);
-      if(size.price===null || size.price==="" || !Number.isFinite(price) || price<0) return {error:"La caja de Fomb mixtos no tiene precio confirmado."};
-      canonicalPrice=Math.round(price*100);name="Fomb mixtos";optionSummary=`Caja de ${boxQuantity} · ${parts.join(" + ")}`;
+      const basePrice = kind === "fomb" ? size.price : keys.size === 1 ? builder.singlePrice : builder.mixedPrice;
+      const extraCount = kind === "fonkies" ? Math.max(0,boxQuantity-minimum) : 0;
+      if(basePrice===null || basePrice==="" || !Number.isFinite(Number(basePrice)) || Number(basePrice)<0
+        || (extraCount && (builder.extraPrice===null || builder.extraPrice==="" || !Number.isFinite(Number(builder.extraPrice)) || Number(builder.extraPrice)<0))) return {error:"La caja mixta no tiene precio confirmado."};
+      const price=Number(basePrice)+(extraCount ? extraCount*Number(builder.extraPrice) : 0);
+      canonicalPrice=Math.round(price*100);name=kind==="fomb"?"Fomb mixtos":"Fonkies mixtas";optionSummary=`Caja de ${boxQuantity} · ${parts.join(" + ")}`;
       imageUrl=snapshotImageUrl(builder.image || builder.flavors?.[0]?.image);
     }
     let unitPriceCents=canonicalPrice??requestedPrice;
