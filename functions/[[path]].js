@@ -52,7 +52,7 @@ export async function onRequest(context) {
     headers["X-Fontana-Catalog-Revision"] = String(payload.revision);
     let html,status=200;
     if (url.pathname === "/sitemap.xml") {
-      const paths = ["/","/informacion-del-pedido/","/privacidad/",...categoryPages.map(c=>`/${c.slug}/`),...products.map(productPath)];
+      const paths = ["/","/informacion-del-pedido/","/privacidad/",...categoryPages.filter(c=>!c.emptyMessage || products.some(p=>p.category===c.id)).map(c=>`/${c.slug}/`),...products.map(productPath)];
       html = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
         [...new Set(paths)].map(path=>`<url><loc>${escapeHtml(absoluteUrl(path))}</loc></url>`).join("") + "</urlset>";
       headers["Content-Type"] = "application/xml; charset=utf-8";

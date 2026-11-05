@@ -4108,7 +4108,7 @@
     const emptyState = $("#emptyFilterState");
     if (!container || !emptyState) return;
     if (!products.length && !reconcile) return;
-    const allowedCategories = new Set(["cakes", "snacks", "salado", "beverages", "bottega"]);
+    const allowedCategories = new Set(["cakes", "snacks", "marquesas", "salado", "beverages", "bottega"]);
     const cards = products.map((product, index) => {
       const category = allowedCategories.has(product.category) ? product.category : "snacks";
       const catalogManaged = product.catalogManaged !== false;
@@ -4225,11 +4225,12 @@
     const container = $("#products");
     if (!container) return;
     const productOrder = new Map(orderedProducts.map((product, index) => [product, index]));
-    const categories = ["cakes", "fonkies", "fomb", "salado", "beverages", "bottega", "snacks"];
+    const categories = ["cakes", "fonkies", "fomb", "marquesas", "salado", "beverages", "bottega", "snacks"];
     const categoryLabels = {
       cakes: "Tortas",
       fonkies: "Fonkies",
       fomb: "Bombones",
+      marquesas: "Marquesas",
       salado: "Salados",
       beverages: "Bebidas",
       bottega: "Bottega",
@@ -5857,6 +5858,7 @@
       || (filter === "foncake" && category === "cakes")
       || (filter === "fonkies" && category === "fonkies")
       || (filter === "fomb" && category === "fomb")
+      || (filter === "marquesas" && category === "marquesas")
       || (filter === "salado" && category === "salado")
       || (filter === "beverages" && category === "beverages")
       || (filter === "bottega" && category === "bottega")
@@ -5897,6 +5899,7 @@
     const emptyCopy = {
       all: ["Menú en actualización", "Fontana publicará aquí los productos disponibles."],
       promo: ["Promo del día", "Las promociones activas aparecerán aquí cuando Fontana las publique."],
+      marquesas: ["Marquesas", "Las marquesas aparecerán aquí cuando Fontana las publique."],
       beverages: ["Bebidas", "Las bebidas confirmadas aparecerán aquí cuando se incorporen al menú."],
       bottega: ["Bottega", "Los productos de Bottega aparecerán aquí cuando se incorporen al catálogo."],
       immediate: ["Stock de hoy", "Los productos disponibles para entrega inmediata aparecerán aquí cada día."]

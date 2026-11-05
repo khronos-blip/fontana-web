@@ -222,3 +222,41 @@ test('Fonkies mixtas permite galletas extra, conserva precios y envía cada sabo
   expect(body.items[0]).toMatchObject({name:'Fonkies mixtas',quantity:2,builderBox:{kind:'fonkies',quantity:6},unitPriceRefCents:2400,inventoryUnits:[{sku:'builder:fonkies:cookie-c',quantity:6},{sku:'builder:fonkies:cookie-p',quantity:6}]});
   expect(body.items[0].priceOverrideReason).toBeUndefined();
 });
+
+test('Marquesas se publica desde el panel y aparece después de Fomb en el menú', async ({page}, testInfo) => {
+  const writes = await panel(page);
+  await page.locator('[data-panel="dashboard"] [data-action="new-product"]').click();
+  const form = page.locator('#productForm');
+  await form.locator('[name="name"]').fill('Marquesa de prueba');
+  await form.locator('[name="id"]').fill('marquesa-de-prueba');
+  await form.locator('[name="category"]').selectOption('marquesas');
+  await form.locator('[type="submit"]').click();
+  await expect(page.locator('#productDialog')).toBeHidden();
+  const catalog = writes.at(-1).body.state;
+  expect(catalog.products.find(product => product.name === 'Marquesa de prueba')).toMatchObject({category:'marquesas',price:null});
+
+  await page.unroute('https://api.fontanasingluten.com/v1/**');
+  let products = catalog.products.filter(product => product.category !== 'marquesas');
+  await page.route('https://api.fontanasingluten.com/v1/catalog', route => route.fulfill({
+    json:{state:{...catalog,products,operations:{verified:true,electricityEnabled:true}}},
+    headers:{'access-control-allow-origin':'*'}
+  }));
+  await page.goto(origin+'/');
+  const filter = page.getByRole('button',{name:'Marquesas',exact:true});
+  await expect(page.locator('.filter[data-filter="fomb"] + [data-filter="marquesas"]')).toBeVisible();
+  await filter.click();
+  await expect(page.locator('#emptyFilterMessage')).toHaveText('Las marquesas aparecerán aquí cuando Fontana las publique.');
+
+  products = catalog.products;
+  for (const width of [390,1440]) {
+    await page.setViewportSize({width,height:900});
+    await page.goto(origin+'/');
+    const group = page.locator('[data-catalog-group="fomb"] + [data-catalog-group="marquesas"]');
+    await expect(group.getByRole('heading',{name:'Marquesa de prueba',exact:true}).first()).toBeVisible();
+    await filter.click();
+    await expect(filter).toHaveAttribute('aria-pressed','true');
+    await expect(page.locator('.catalog-group:not([hidden])')).toHaveCount(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath(`marquesas-${width}.png`)});
+  }
+});

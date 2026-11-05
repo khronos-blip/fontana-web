@@ -45,6 +45,17 @@ export const categoryPages = [
     detail: "Los sabores sin stock se ofrecen como Pre-Order cuando la producción está disponible, siempre sujeto a confirmación por WhatsApp."
   },
   {
+    id: "marquesas",
+    slug: "marquesas",
+    navName: "Marquesas",
+    title: "Marquesas de Fontana Sin Gluten",
+    description: "Consulta la sección de marquesas de Fontana y las presentaciones publicadas en el menú.",
+    eyebrow: "Postres Fontana",
+    emptyMessage: "Las marquesas aparecerán aquí cuando Fontana las publique.",
+    intro: "Explora las marquesas de Fontana y consulta las presentaciones e ingredientes de cada opción publicada.",
+    detail: "Consulta los ingredientes y la disponibilidad de cada presentación publicada."
+  },
+  {
     id: "salado",
     slug: "salados-sin-gluten-carabobo",
     navName: "Salados",

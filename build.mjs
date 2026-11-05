@@ -172,7 +172,9 @@ let html = sourceHtml
   .replaceAll("https://fontanasingluten.com/assets/pistachio-raspberry-fontana-v2.jpg", `${site.origin}${site.defaultSocialImage}`)
   .replace('<meta property="og:image:width" content="1448">', '<meta property="og:image:width" content="1200">')
   .replace('<meta property="og:image:height" content="1086">', '<meta property="og:image:height" content="630">');
-html = compactStructuredData(compactInlineStyles(enhanceHomepageImages(html)));
+// Drop indentation before structural tags without joining inline text or changing CSS.
+html = compactStructuredData(compactInlineStyles(enhanceHomepageImages(html)))
+  .replace(/^[ \t]+(?=<\/?(?:article|div|footer|header|main|section)(?:\s|>))/gm, "");
 await writeFile(`${outputDirectory}/index.html`, html);
 
 let adminHtml = await readFile("admin/index.html", "utf8");
@@ -210,7 +212,7 @@ const sitemapEntries = [
   { path: "/", image: site.defaultImage },
   { path: "/informacion-del-pedido/" },
   { path: "/privacidad/" },
-  ...categoryPages.map(category => ({ path: `/${category.slug}/`, image: products.find(product => product.category === category.id)?.image })),
+  ...categoryPages.filter(category => !category.emptyMessage || products.some(product => product.category === category.id)).map(category => ({ path: `/${category.slug}/`, image: products.find(product => product.category === category.id)?.image })),
   ...products.map(product => ({ path: productPath(product), image: product.image }))
 ];
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>

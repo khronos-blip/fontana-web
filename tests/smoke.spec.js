@@ -9110,6 +9110,7 @@ test("los filtros muestran los productos sin barras desplegables", async ({ page
     "Stock de hoy",
     "Fonkies · Galletas",
     "Fomb · Bombones",
+    "Marquesas",
     "Foncake · Tortas completas",
     "Salado",
     "Bebida",
